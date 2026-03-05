@@ -29,7 +29,7 @@ Our included plugins can be found [here](https://equicord.org/plugins).
 - **Mullvad DNS Over Discord** (Privacy & Security)
 - **CustomDNS** 
 - **DisableAnimations**
-- **BoosterCount**
+- **BoosterCount** (https://github.com/Reathe/BoosterCount/tree/main)
 - **NoMirroredCam**
 - **OpenOptimizer**
 - **Vcjumkoptimizer**
