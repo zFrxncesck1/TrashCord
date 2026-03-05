@@ -40,7 +40,7 @@ Our included plugins can be found [here](https://equicord.org/plugins).
 - **InviteDefaults**
 - **CustomStream** (https://github.com/MrTopQ/customStream-Vencord)
 - **TypingFriends** (https://github.com/debxylen/Vencord/tree/main/src/plugins/typingFriends)
-- SilentDelete (https://github.com/aurickk/SilentDelete-Vencord) 
+- **SilentDelete** (https://github.com/aurickk/SilentDelete-Vencord) 
 - **VencordPerf**
 - **Hisako's Optimizations** (Currently glitchy)
 - **StereoSound** (Testing)
