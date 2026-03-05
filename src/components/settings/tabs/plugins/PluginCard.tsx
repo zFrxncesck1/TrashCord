@@ -110,7 +110,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
         },
         {
             condition: isUserPlugin,
-            src: "https://equicord.org/assets/icons/misc/userplugin.png",
+            src: "https://github.com/ImHisako/ImHisako/blob/main/Images/Illegalcord.png?raw=true",
             alt: "User",
             title: "User Plugin"
         }
