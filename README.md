@@ -20,7 +20,6 @@ Our included plugins can be found [here](https://equicord.org/plugins).
 - **FakeMuteAndDeafen**
 - **BetterMic**
 - **BetterScreenshare**
-- **DiscordLock** | (https://github.com/vejcowski/DiscordLock/tree/main) 
 - **BigFileUpload**
 - **Stalker**: | (https://github.com/Reycko/EquicordPlugins/tree/main/stalker) With a modded version by me
 - **BadgeSelector** | (https://github.com/002-sans/VencordPlugins/tree/b8c7c98a50c0700f7389b0484e5659fe5ec0f99e/BadgesSelector)
@@ -49,6 +48,8 @@ Our included plugins can be found [here](https://equicord.org/plugins).
 - **embeddedURLs** (https://github.com/ddadiani/Vencord-EmbeddedLinks/blob/main/src/plugins/embeddedURLs/index.ts)
 - **GPU Binder** (https://github.com/UnClide/vencord-gpubinder)
 - **stereoScreenshareAudio** (https://github.com/nerdwave-nick/Vencord-Stereo-Fix/blob/main/src/plugins/stereoScreenshareAudio/index.ts)
+- **DiscordLock** | (https://github.com/vejcowski/DiscordLock/tree/main) 
+- **KeepGifPickerOpen** (https://github.com/pacxwheaa/KeepGifPickerOpen/tree/main)
 
 </details>
 
