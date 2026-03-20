@@ -350,7 +350,7 @@ const CONTRACTIONS: [RegExp, string][] = [
     [/\bthatll\b/gi, "that'll"],
     [/\btheres\b/gi, "there's"],
     [/\btherell\b/gi, "there'll"],
-    [/\bheres\b/gi, "here's"],
+    [/\beres\b/gi, "here's"],
     [/\bheres\b/gi, "here's"],
     [/\blets\b/gi, "let's"],
     [/\bcant\b/gi, "can't"],
@@ -890,8 +890,8 @@ const ITALIAN_MISSPELLINGS: [RegExp, string | ((match: string) => string)][] = [
     [/\bvelece\b/gi, "veloce"],
     [/\bvelocementre\b/gi, "velocemente"],
     [/\bfortre\b/gi, "forte"],
-    [/\bbrabo\b/gi, "bravo"],
-    [/\bbraba\b/gi, "brava"],
+    [/\brabo\b/gi, "bravo"],
+    [/\braba\b/gi, "brava"],
     [/\bbeli\b/gi, "belli"],
     [/\bbele\b/gi, "belle"],
     [/\bbelo\b/gi, "bello"],
@@ -1166,23 +1166,30 @@ function fixItalianContractions(text: string): string {
     let result = text;
     
     // Fix accents first if enabled
+    // Only apply these when we're confident it's Italian
     if (settings.store.fixItalianAccents) {
         const accentFixes: [RegExp, string][] = [
             [/\bperche\b/gi, "perché"],
             [/\bcioe\b/gi, "cioè"],
-            [/\bpo\b/gi, "po'"],
-            [/\bda\b/gi, "da'"],
-            [/\bfa\b/gi, "fa'"],
-            [/\bsta\b/gi, "sta'"],
-            [/\bva\b/gi, "va'"],
-            [/\bdi\b/gi, "dì"],
-            [/\bli\b/gi, "lì"],
-            [/\bla\b/gi, "là"],
-            [/\ble\b/gi, "lè"],
-            [/\blo\b/gi, "lò"],
+            [/\bpo\b/gi, "po'"],  // Only "po'" (meaning "little") not every "po"
         ];
         
         for (const [pattern, replacement] of accentFixes) {
+            result = result.replace(pattern, replacement);
+        }
+        
+        // Apply apostrophe fixes only for specific Italian patterns
+        // These should be more specific to avoid false positives
+        const apostropheFixes: [RegExp, string][] = [
+            [/\bda'\s/gi, "da' "],  // "da'" followed by space (imperative)
+            [/\bfa'\s/gi, "fa' "],  // "fa'" followed by space
+            [/\bsta'\s/gi, "sta' "],  // "sta'" followed by space
+            [/\bva'\s/gi, "va' "],  // "va'" followed by space
+            // Day of month pattern: "il di 5" -> "il dì 5"
+            [/\bil di (\d+)/gi, "il dì $1"],
+        ];
+        
+        for (const [pattern, replacement] of apostropheFixes) {
             result = result.replace(pattern, replacement);
         }
     }
