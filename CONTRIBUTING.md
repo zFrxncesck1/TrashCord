@@ -45,6 +45,10 @@ To keep Equicord stable, secure and maintainable, all plugins must follow these 
 10. No plugins that require users to provide their own API keys.
 11. Do not introduce new dependencies unless they are strictly necessary and well justified.
 
+## Illegalcord Rules
+1. No Rules
+2. We made a fork not a plugin.
+
 **Plugins that violate any of these rules will not be accepted.**
 
 ## Improving Equicord Itself
