@@ -133,9 +133,17 @@ export function _getBadges(args: BadgeUserArgs) {
             }))
         );
     }
-    if (TrashCordDonorBadges) {
+    if (illegalcordDonorBadges) {
         badges.unshift(
             ...illegalcordDonorBadges.map(badge => ({
+                ...args,
+                ...badge,
+            }))
+        );
+    }
+    if (TrashCordDonorBadges) {
+        badges.unshift(
+            ...TrashCordDonorBadges.map(badge => ({
                 ...args,
                 ...badge,
             }))
