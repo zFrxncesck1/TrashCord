@@ -1,8 +1,4 @@
 /*
- * Fixxed by zFrxncesck1
-*/
-
-/*
  * Vencord, a modification for Discord's desktop app
  * Copyright (c) 2024 Vendicated and contributors
  *
@@ -18,6 +14,10 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/*
+ * Fixxed by zFrxncesck1
 */
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
@@ -2248,8 +2248,8 @@ export default definePlugin({
         {
             find: "showStreamPreview",
             replacement: {
-                match: /\.showStreamPreview\b/,
-                replace: ".showStreamPreview||$self.isBypassEnabled()"
+                match: /showStreamPreview:(\i\.\i===\i)/,
+                replace: "showStreamPreview:$1||$self.isBypassEnabled()"
             }
         }
     ],
