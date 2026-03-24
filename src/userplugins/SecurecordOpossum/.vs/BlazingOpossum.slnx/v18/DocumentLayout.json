@@ -1,0 +1,53 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\nmjuk\\Desktop\\Computer\\GitHub Repositories\\BlazingOpossum\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{D1E61BB6-F555-EC48-0442-D3C84FD0DD6F}|BlazingOpossum.Test\\BlazingOpossum.Test.csproj|c:\\users\\nmjuk\\desktop\\computer\\github repositories\\blazingopossum\\blazingopossum.test\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{D1E61BB6-F555-EC48-0442-D3C84FD0DD6F}|BlazingOpossum.Test\\BlazingOpossum.Test.csproj|solutionrelative:blazingopossum.test\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{FDB1D025-A3D1-821E-2F94-9D6F67B37D88}|BlazingOpossum\\BlazingOpossum.csproj|c:\\users\\nmjuk\\desktop\\computer\\github repositories\\blazingopossum\\blazingopossum\\blazingopossum.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{FDB1D025-A3D1-821E-2F94-9D6F67B37D88}|BlazingOpossum\\BlazingOpossum.csproj|solutionrelative:blazingopossum\\blazingopossum.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "BlazingOpossum.cs",
+              "DocumentMoniker": "C:\\Users\\nmjuk\\Desktop\\Computer\\GitHub Repositories\\BlazingOpossum\\BlazingOpossum\\BlazingOpossum.cs",
+              "RelativeDocumentMoniker": "BlazingOpossum\\BlazingOpossum.cs",
+              "ToolTip": "C:\\Users\\nmjuk\\Desktop\\Computer\\GitHub Repositories\\BlazingOpossum\\BlazingOpossum\\BlazingOpossum.cs",
+              "RelativeToolTip": "BlazingOpossum\\BlazingOpossum.cs",
+              "ViewState": "AgIAAPQAAAAAAAAAAAAcwHwAAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-05T21:25:31.824Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\nmjuk\\Desktop\\Computer\\GitHub Repositories\\BlazingOpossum\\BlazingOpossum.Test\\Program.cs",
+              "RelativeDocumentMoniker": "BlazingOpossum.Test\\Program.cs",
+              "ToolTip": "C:\\Users\\nmjuk\\Desktop\\Computer\\GitHub Repositories\\BlazingOpossum\\BlazingOpossum.Test\\Program.cs",
+              "RelativeToolTip": "BlazingOpossum.Test\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACAAAABBAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-02-05T20:58:56.509Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

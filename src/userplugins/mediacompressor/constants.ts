@@ -1,0 +1,10 @@
+export const MEDIABUNNY_URL = "https://cdn.jsdelivr.net/npm/mediabunny@1.39.2/dist/bundles/mediabunny.mjs";
+export const MiB = 1024 * 1024;
+export const MIN_VIDEO_BITRATE = 72_000;
+export const MIN_TOTAL_BITRATE = 96_000;
+export const CONTAINER_OVERHEAD_BYTES = 160 * 1024;
+export const ORIGINAL_BITRATE_SAFETY_FACTOR = 0.96;
+export const RETRY_OVERSHOOT_RATIO = 1.04;
+export const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".ogv"]);
+export const COMPRESS_SYMBOL = Symbol("vcMediaCompressorEnabled");
+export const ORIGINAL_GET_SIZE_SYMBOL = Symbol("vcMediaCompressorOriginalGetSize");

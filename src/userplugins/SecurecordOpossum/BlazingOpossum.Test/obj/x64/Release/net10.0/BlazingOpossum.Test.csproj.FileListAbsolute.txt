@@ -1,0 +1,36 @@
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.exe
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.deps.json
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.runtimeconfig.json
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.pdb
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.AssemblyInfoInputs.cache
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.AssemblyInfo.cs
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.csproj.CoreCompileInputs.cache
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\refint\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.pdb
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.genruntimeconfig.cache
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\ref\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.dll
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.pdb
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.csproj.AssemblyReference.cache
+C:\Users\nmjuk\Desktop\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingO.E4F399D2.Up2Date
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.exe
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.deps.json
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.runtimeconfig.json
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.Test.pdb
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.dll
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\bin\x64\Release\net10.0\BlazingOpossum.pdb
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.csproj.AssemblyReference.cache
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.AssemblyInfoInputs.cache
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.AssemblyInfo.cs
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.csproj.CoreCompileInputs.cache
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingO.E4F399D2.Up2Date
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\refint\BlazingOpossum.Test.dll
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.pdb
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\BlazingOpossum.Test.genruntimeconfig.cache
+C:\Users\nmjuk\Desktop\Computer\GitHub Repositories\BlazingOpossum\BlazingOpossum.Test\obj\x64\Release\net10.0\ref\BlazingOpossum.Test.dll
