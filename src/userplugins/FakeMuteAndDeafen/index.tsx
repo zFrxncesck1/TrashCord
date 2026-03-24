@@ -35,23 +35,15 @@ export const settings = definePluginSettings({
     autoMute: {
         type: OptionType.BOOLEAN,
         description: "Automatically mute when deafened.",
-        default: true
+        default: false
     }
 });
 
 const fakeVoiceState = {
     _selfMute: false,
-    _autoMute: true,
-    get autoMute() {
-        return this._autoMute;
-    },
-    set autoMute(value) {
-        this._autoMute = value;
-        settings.store.autoMute = value;
-    },
     get selfMute() {
         try {
-            if (!this._autoMute) return this._selfMute;
+            if (!settings.store.autoMute) return this._selfMute;
             return this.selfDeaf || this._selfMute;
         } catch (e) {
             return this._selfMute;
@@ -71,9 +63,6 @@ export default definePlugin({
     description: "You can fake mute and deafen yourself. You can continue speaking and being heard during this time.",
     authors: [Devs.feelslove],
     settings,
-    start() {
-        fakeVoiceState._autoMute = settings.store.autoMute;
-    },
     modifyVoiceState(e) {
         for (let i = 0; i < StateKeys.length; i++) {
             const stateKey = StateKeys[i];
@@ -102,11 +91,11 @@ export default definePlugin({
                 children.push(
                     <Menu.MenuSeparator />,
                     <Menu.MenuCheckboxItem
-                        id="auto-mute"
-                        label="Auto Mute"
-                        checked={fakeVoiceState.autoMute}
+                        id="auto-mute-fake-deafen"
+                        label="AutoMute (FakeDeafen)"
+                        checked={settings.store.autoMute}
                         action={() => {
-                            fakeVoiceState.autoMute = !fakeVoiceState.autoMute;
+                            settings.store.autoMute = !settings.store.autoMute;
                         }}
                     />,
                     <Menu.MenuCheckboxItem
@@ -130,6 +119,7 @@ export default definePlugin({
                     checked={fakeVoiceState.selfVideo}
                     action={() => {
                         fakeVoiceState.selfVideo = !fakeVoiceState.selfVideo;
+                        update();
                     }}
                 />
             );
