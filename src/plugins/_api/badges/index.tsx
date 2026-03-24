@@ -30,7 +30,7 @@ import { ContextMenuApi, Menu, Toasts, UserStore } from "@webpack/common";
 
 import Plugins, { PluginMeta } from "~plugins";
 
-import { TrashCordDonorModal, EquicordDonorModal, EquicordTranslatorModal, VencordDonorModal } from "./modals";
+import { TrashCordDonorModal, IllegalcordDonorModal, EquicordDonorModal, EquicordTranslatorModal, VencordDonorModal } from "./modals";
 
 const CONTRIBUTOR_BADGE = "https://cdn.discordapp.com/emojis/1092089799109775453.png?size=64";
 const EQUICORD_CONTRIBUTOR_BADGE = "https://equicord.org/assets/favicon.png";
@@ -81,6 +81,8 @@ const UserPluginContributorBadge: ProfileBadge = {
 
 let DonorBadges = {} as Record<string, Array<Record<"tooltip" | "badge", string>>>;
 let EquicordDonorBadges = {} as Record<string, Array<Record<"tooltip" | "badge", string>>>;
+let IllegalcordDonorBadges = {} as Record<string, Array<Record<"tooltip" | "badge", string>>>;
+let TrashCordDonorBadges = {} as Record<string, Array<Record<"tooltip" | "badge", string>>>;
 
 async function loadBadges(url: string, noCache = false) {
     const init = {} as RequestInit;
@@ -92,9 +94,13 @@ async function loadBadges(url: string, noCache = false) {
 async function loadAllBadges(noCache = false) {
     const vencordBadges = await loadBadges("https://badges.vencord.dev/badges.json", noCache);
     const equicordBadges = await loadBadges("https://badge.equicord.org/badges.json", noCache);
-
+    const illegalcordBadges = await loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache);
+    const TrashCordBadges = await loadBadges("https://raw.githubusercontent.com/zFrxncesck1/zFrxncesck1/refs/heads/main/host/files/badges.json", noCache);
+    
     DonorBadges = vencordBadges;
     EquicordDonorBadges = equicordBadges;
+    IllegalcordDonorBadges = illegalcordBadges;
+    TrashCordDonorBadges = TrashCordBadges;
 }
 
 let intervalId: any;
@@ -254,6 +260,46 @@ export default definePlugin({
             },
             onClick() {
                 return badge.tooltip === "Equicord Translator" ? EquicordTranslatorModal() : EquicordDonorModal();
+            },
+        } satisfies ProfileBadge));
+    },
+    
+    getIllegalcordDonorBadges(userId: string) {
+        return IllegalcordDonorBadges[userId]?.map(badge => ({
+            iconSrc: badge.badge,
+            description: badge.tooltip,
+            position: BadgePosition.START,
+            props: {
+                style: {
+                    borderRadius: "50%",
+                    transform: "scale(0.9)"
+                }
+            },
+            onContextMenu(event, badge) {
+                ContextMenuApi.openContextMenu(event, () => <BadgeContextMenu badge={badge} />);
+            },
+            onClick() {
+                return IllegalcordDonorModal();
+            },
+        } satisfies ProfileBadge));
+    },
+    
+    getTrashCordDonorBadges(userId: string) {
+        return TrashCordDonorBadges[userId]?.map(badge => ({
+            iconSrc: badge.badge,
+            description: badge.tooltip,
+            position: BadgePosition.START,
+            props: {
+                style: {
+                    borderRadius: "50%",
+                    transform: "scale(0.9)"
+                }
+            },
+            onContextMenu(event, badge) {
+                ContextMenuApi.openContextMenu(event, () => <BadgeContextMenu badge={badge} />);
+            },
+            onClick() {
+                return TrashCordDonorModal();
             },
         } satisfies ProfileBadge));
     }
