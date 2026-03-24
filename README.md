@@ -105,11 +105,3 @@ For bug reports or suggestions, use [Issues](https://github.com/zFrxncesck1/Tras
 
 **TrashCord – code like a vandal, create like an artist.**
 ```
-
-## How to apply
-
-- Replace the content of your current `README.md` with this one.
-- If you want the Discord badge to actually link to your community, replace `https://discord.gg/your-invite` with your real invite link (or remove that line if you don't have one yet).
-- Commit and push to your main branch (or whichever branch you want to be the default).
-
-Let me know if you'd like to adjust any part further!
