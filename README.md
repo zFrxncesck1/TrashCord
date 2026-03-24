@@ -1,8 +1,8 @@
 # [<img src="./browser/icon.png" width="40" align="left" alt="TrashCord">](https://github.com/zFrxncesck1/TrashCord) TrashCord
 
-[![Underground](https://img.shields.io/badge/underground-cyberpunk-blueviolet?style=flat)](https://trash-gang.com)
-[![Discord](https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/your-invite) <!-- Replace with your Discord server link if you have one -->
-[![TRASH](https://img.shields.io/badge/TRASH_collective-cyber_gang-black?style=flat)](https://trash-gang.com)
+[![Equibop](https://img.shields.io/badge/Equibop-grey?style=flat)](https://github.com/Equicord/Equibop)
+[![Tests](https://github.com/Equicord/Equicord/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/Equicord/Equicord/actions/workflows/test.yml)
+[![Discord](https://img.shields.io/discord/1173279886065029291.svg?color=768AD4&label=Discord&logo=discord&logoColor=white)](https://equicord.org/discord)
 
 **TrashCord** is an underground fork of Equicord & Vencord, built for those who create without limits.  
 Inspired by the **TRASH collective** – design, music, experimentation.  
