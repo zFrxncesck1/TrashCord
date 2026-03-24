@@ -98,7 +98,7 @@ interface SettingsLayoutBuilder {
 const settings = definePluginSettings({
     settingsLocation: {
         type: OptionType.SELECT,
-        description: "Where to put the Equicord settings section",
+        description: "Where to put the TrashCord settings section",
         options: [
             { label: "At the very top", value: "top" },
             { label: "Above the Nitro section", value: "aboveNitro", default: true },
@@ -204,8 +204,8 @@ export default definePlugin({
         const equicordEntries: SettingsLayoutNode[] = [
             buildEntry({
                 key: "equicord_main",
-                title: "Equicord",
-                panelTitle: "Equicord Settings",
+                title: "TrashCord",
+                panelTitle: "TrashCord Settings",
                 Component: VencordTab,
                 Icon: MainSettingsIcon
             }),
@@ -224,7 +224,7 @@ export default definePlugin({
             !IS_UPDATER_DISABLED && UpdaterTab && buildEntry({
                 key: "equicord_updater",
                 title: "Updater",
-                panelTitle: "Equicord Updater",
+                panelTitle: "TrashCord Updater",
                 Component: UpdaterTab,
                 Icon: UpdaterIcon
             }),
@@ -259,7 +259,7 @@ export default definePlugin({
         const equicordSection: SettingsLayoutNode = {
             key: "equicord_section",
             type: LayoutTypes.SECTION,
-            useTitle: () => "Equicord Settings",
+            useTitle: () => "TrashCord Settings",
             buildLayout: () => equicordEntries
         };
 
