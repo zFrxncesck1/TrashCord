@@ -5,7 +5,7 @@
 [![Discord](https://img.shields.io/discord/1173279886065029291.svg?color=768AD4&label=Discord&logo=discord&logoColor=white)](https://equicord.org/discord)
 
 **TrashCord** is an underground fork of Equicord & Vencord, built for those who create without limits.  
-Inspired by the **TRASH collective** – design, music, experimentation.  
+Inspired by the **TRASH GANG** – design, music, experimentation.  
 No censorship, no arbitrary rules: every plugin is welcome, every idea takes shape.
 
 ---
@@ -76,7 +76,7 @@ You'll find the ZIP file in the `dist` folder. Follow your browser’s guide for
 Special thanks to:
 - [Vendicated](https://github.com/Vendicated) for creating [Vencord](https://github.com/Vendicated/Vencord)
 - [Equicord](https://github.com/Equicord/Equicord) for the solid base
-- [TRASH collective](https://trash-gang.com) for the inspiration and energy
+- [TRASH GANG](https://trash-gang.com) for the inspiration and underground
 
 ---
 
