@@ -82,13 +82,14 @@ Special thanks to:
 
 ## Disclaimer
 
-Discord is a trademark of Discord Inc. Mentioning it is for descriptive purposes only and does not imply any affiliation with or endorsement by Discord Inc.
-
-Using client modifications violates Discord’s Terms of Service.  
-However, Discord generally does not actively ban users for client mods, as long as no abusive plugins are used. All plugins included in TrashCord are considered safe, but if your account is critical, consider the risks before installing any mod.
+Discord is trademark of Discord Inc., and solely mentioned for the sake of descriptivity.
+Mentioning it does not imply any affiliation with or endorsement by Discord Inc.
+Vencord is not connected to Equicord and as such, all donation links go to Vendicated's donation link.
 
 <details>
-<summary>⚠️ Account safety note</summary>
+<summary>Using TrashCord violates Discord's terms of service</summary>
+
+Client modifications are against Discord’s Terms of Service.
 
 There are no known cases of bans for using Vencord/Equicord/TrashCord, but avoid posting screenshots showing the mod in servers that may be hostile to client modifications.
 </details>
@@ -97,8 +98,6 @@ There are no known cases of bans for using Vencord/Equicord/TrashCord, but avoid
 
 ## Development & Contributions
 
-If you'd like to contribute new plugins or ideas, open a pull request on the `trash-features` branch.  
-All creative proposals are welcome.  
 For bug reports or suggestions, use [Issues](https://github.com/zFrxncesck1/TrashCord/issues).
 
 ---
