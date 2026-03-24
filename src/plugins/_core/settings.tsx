@@ -237,7 +237,7 @@ export default definePlugin({
             buildEntry({
                 key: "equicord_cloud",
                 title: "Cloud",
-                panelTitle: "Equicord Cloud",
+                panelTitle: "Cloud",
                 Component: CloudTab,
                 Icon: CloudIcon
             }),
