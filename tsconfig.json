@@ -35,6 +35,7 @@
             ],
             "@plugins/*": [
                 "./plugins/*"
+                "./userplugins/*"
             ],
             "@shared/*": [
                 "./shared/*"
