@@ -104,4 +104,3 @@ For bug reports or suggestions, use [Issues](https://github.com/zFrxncesck1/Tras
 ---
 
 **TrashCord – code like a vandal, create like an artist.**
-```
