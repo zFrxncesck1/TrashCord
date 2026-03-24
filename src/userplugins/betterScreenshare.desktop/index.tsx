@@ -76,8 +76,8 @@ export default definePlugin({
         {
             find: "#{intl::ACCOUNT_SPEAKING_WHILE_MUTED}",
             replacement: {
-                match: /className:\i\.buttons,.{0,50}children:\[/,
-                replace: "$&$self.screenshareSettingsButton(),"
+                match: /children:\[(?=\(0,\i\.jsx\)\(\i\.\i,\{"aria-checked")/,
+                replace: "children:[$self.screenshareSettingsButton(),"
             }
         }
     ],
