@@ -110,7 +110,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
         },
         {
             condition: isUserPlugin,
-            src: "https://trash.clothing/cdn/shop/files/website_icon_32x32.png",
+            src: "https://github.com/zFrxncesck1/zFrxncesck1/blob/main/host/icons/TrashCord_icon.png",
             alt: "User",
             title: "User Plugin"
         }
