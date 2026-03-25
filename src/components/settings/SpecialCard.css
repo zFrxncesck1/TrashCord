@@ -191,8 +191,16 @@
   background-position: center;
   background-repeat: no-repeat;
 }
+/* Donate & Invite buttons: black with 50% transparency */
+.vc-special-card-special .vc-donate-support-button,
+.vc-special-card-special .vc-invite-support-button {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+.vc-special-card-special .vc-donate-support-button:hover,
+.vc-special-card-special .vc-invite-support-button:hover {
+    background-color: rgba(0, 0, 0, 0.7) !important;
+}
 /* Hide original img inside container */
 .vc-special-image-container img {
   display: none;
 }
-
