@@ -154,7 +154,6 @@
 
 .vc-special-image {
     width: 65%;
-    background-image: url('https://64.media.tumblr.com/979cee71b6ef70cf21779c7ad26b87b0/tumblr_pbuan3wbtD1rejrtyo1_1280.gif');
 }
 
 .vc-translate-modal-icon {
@@ -166,3 +165,34 @@
     padding: 12px;
     text-align: center;
 }
+
+
+/* === TrashCord - Features === */
+
+/* Special card background: gif, cover, centered */
+.vc-special-card-special {
+  background-image: url('https://i.pinimg.com/originals/73/e6/3f/73e63f75bf550561054671836b5479b2.gif') !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+/* White text for all card text + buttons */
+.vc-special-card-special .vc-special-title,
+.vc-special-card-special .vc-special-subtitle,
+.vc-special-card-special .vc-special-text,
+.vc-special-card-special .vc-special-hyperlink-text,
+.vc-special-card-special .vc-donate-support-button,
+.vc-special-card-special .vc-invite-support-button {
+  color: #fff !important;
+}
+/* Custom icon container: replace default icon with custom image */
+.vc-special-image-container {
+  background-image: url('https://raw.githubusercontent.com/zFrxncesck1/zFrxncesck1/main/host/icons/TrashCord_icon.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* Hide original img inside container */
+.vc-special-image-container img {
+  display: none;
+}
+
