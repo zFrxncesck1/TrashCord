@@ -74,9 +74,10 @@ You'll find the ZIP file in the `dist` folder. Follow your browser’s guide for
 ## Credits
 
 Special thanks to:
-- [Vendicated](https://github.com/Vendicated) for creating [Vencord](https://github.com/Vendicated/Vencord)
+- [Vendicated](https://github.com/Vendicated) for [Vencord](https://github.com/Vendicated/Vencord)
 - [Equicord](https://github.com/Equicord/Equicord) for the solid base
-- [TRASH GANG](https://trash-gang.com) for the inspiration and underground
+- [ImHisako](https://github.com/ImHisako) for [Illegalcord](https://github.com/ImHisako/Illegalcord) – inspiration and code contributions
+- [TRASH GANG](https://trash-gang.com) for the underground spirit
 
 ---
 
