@@ -542,31 +542,38 @@ export default definePlugin({
     commands: [
         {
             name: "decrypt",
-            description: "Decrypt an encrypted message by replying to it",
+            description: "Decrypt an encrypted message by replying to it or pasting the encrypted text",
             predicate: () => settings.store.pluginActivated,
             options: [
                 {
-                    name: "message",
-                    description: "Reply to the encrypted message you want to decrypt",
+                    name: "encrypted-text",
+                    description: "Paste the encrypted text (optional if replying to a message)",
                     type: 3, // OptionType.STRING
                     required: false
                 }
             ],
             execute: async (args: any[], ctx: any) => {
                 const replyMessage = ctx.message?.referencedMessage;
+                const encryptedTextArg = args[0]?.value;
 
-                if (!replyMessage) {
+                let messageContent: string | undefined;
+
+                // Se c'è un messaggio di risposta, usa quello
+                if (replyMessage) {
+                    messageContent = replyMessage.content;
+                } else if (encryptedTextArg) {
+                    // Altrimenti usa il testo passato come argomento
+                    messageContent = encryptedTextArg;
+                } else {
                     return {
-                        content: "❌ Please reply to an encrypted message to decrypt it!"
+                        content: "❌ Please reply to an encrypted message or paste the encrypted text! Usage: `/decrypt [encrypted-text]`"
                     };
                 }
 
-                const messageContent = replyMessage.content;
-
-                // Check if the replied message is encrypted
+                // Check if the message is encrypted
                 if (!messageContent?.startsWith("🔒ENCRYPTED:") || !messageContent?.endsWith(":ENDLOCK")) {
                     return {
-                        content: "❌ The replied message is not encrypted!"
+                        content: "❌ The message is not encrypted! Make sure it starts with 🔒ENCRYPTED: and ends with :ENDLOCK"
                     };
                 }
 
@@ -600,8 +607,9 @@ export default definePlugin({
                     // Decode message using BlazingOpossum cipher
                     const decryptedMessage = cipher.decrypt(encryptedPart, password);
 
+                    const authorName = replyMessage?.author?.username || "Unknown";
                     return {
-                        content: `🔐 **Decrypted message from ${replyMessage.author.username}**: ${decryptedMessage}`
+                        content: `🔐 **Decrypted message${replyMessage ? ` from ${authorName}` : ''}**: ${decryptedMessage}`
                     };
                 } catch (error) {
                     console.error("Decryption error:", error);
