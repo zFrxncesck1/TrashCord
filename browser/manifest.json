@@ -6,7 +6,7 @@
     "author": "TrashCord",
     "homepage_url": "https://github.com/Equicord/Equicord",
     "icons": {
-        "128": "TrashCord_icon.png"
+        "128": "icon.png"
     },
     "host_permissions": [
         "*://*.discord.com/*",
