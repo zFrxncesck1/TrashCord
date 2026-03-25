@@ -16,16 +16,28 @@ let observer: MutationObserver | null = null;
 let on = false;
 let src: any = null;
 
+function hidePanels() {
+    document.querySelectorAll<HTMLElement>('[class*="activityPanel"]').forEach(el => {
+        el.style.display = "none";
+    });
+}
+
+function showPanels() {
+    document.querySelectorAll<HTMLElement>('[class*="activityPanel"]').forEach(el => {
+        el.style.display = "";
+    });
+}
+
 function startObserver() {
-    const remove = () => document.querySelectorAll('[class*="activityPanel"]').forEach(el => el.remove());
-    remove();
-    observer = new MutationObserver(remove);
+    hidePanels();
+    observer = new MutationObserver(hidePanels);
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function stopObserver() {
     observer?.disconnect();
     observer = null;
+    showPanels();
 }
 
 function streamKey(guildId: string, channelId: string): string {
