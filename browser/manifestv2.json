@@ -1,12 +1,12 @@
 {
     "manifest_version": 2,
     "minimum_chrome_version": "91",
-    "name": "Equicord Web",
+    "name": "TrashCord Web",
     "description": "The other cutest Discord mod now in your browser",
     "author": "TrashCord",
     "homepage_url": "https://github.com/Equicord/Equicord",
     "icons": {
-        "128": "icon.png"
+        "128": "TrashCord_icon.png"
     },
     "permissions": [
         "webRequest",
