@@ -2,9 +2,9 @@
     "manifest_version": 3,
     "minimum_chrome_version": "111",
     "name": "TrashCord Web",
-    "description": "The other cutest Discord mod now in your browser",
+    "description": "The underground Discord client mod now in your browser.",
     "author": "TrashCord",
-    "homepage_url": "https://github.com/Equicord/Equicord",
+    "homepage_url": "https://github.com/zFrxncesck1/TrashCord",
     "icons": {
         "128": "icon.png"
     },
