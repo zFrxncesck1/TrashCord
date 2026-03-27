@@ -31,6 +31,11 @@ const settings = definePluginSettings({
         default: 200,
         markers: [100, 130, 160, 200, 240],
     },
+    autoMobileCamView: {
+        type: OptionType.BOOLEAN,
+        description: "Automatically adapt minimap shape for portrait (mobile) cameras",
+        default: true,
+    },
     forceMirror: {
         type: OptionType.BOOLEAN,
         description: "Force camera to be mirrored. Leave OFF if NoMirroredCamera is enabled.",
@@ -62,7 +67,7 @@ interface ZoomState {
     scale: number; panX: number; panY: number;
     dragging: boolean; lastX: number; lastY: number;
 }
-interface TileEntry { s: ZoomState; setZoom: (v: number) => void; kill: () => void; src: HTMLVideoElement; }
+interface TileEntry { s: ZoomState; setZoom: (v: number) => void; kill: () => void; src: HTMLVideoElement; mobile: boolean; }
 
 const tiles = new WeakMap<Element, TileEntry>();
 let observer: MutationObserver | null = null;
@@ -130,6 +135,32 @@ function findWrapper(tile: HTMLElement): HTMLElement | null {
     return tile.querySelector<HTMLElement>('[class*="videoWrapper"]');
 }
 
+function isMobileCam(tile: HTMLElement, src?: HTMLVideoElement): boolean {
+    if (!settings.store.autoMobileCamView) return false;
+
+    if (src && src.videoWidth > 0 && src.videoHeight > 0)
+        return src.videoHeight > src.videoWidth;
+
+    const sizer = tile.closest<HTMLElement>('[class*="videoSizer"]');
+    if (sizer) {
+        const ar = sizer.style.aspectRatio || sizer.style.getPropertyValue("aspect-ratio");
+        if (ar && ar.trim() !== "") {
+            const parts = ar.split("/");
+            const w = parseFloat(parts[0].trim());
+            const h = parseFloat((parts[1] ?? "1").trim());
+            if (!isNaN(w) && !isNaN(h) && h > 0) return (w / h) < 1;
+        }
+        if (sizer.offsetWidth > 0 && sizer.offsetHeight > 0)
+            return sizer.offsetHeight > sizer.offsetWidth;
+    }
+
+    const vwrap = tile.closest<HTMLElement>('[class*="videoWrapper__"]');
+    if (vwrap && vwrap.offsetWidth > 0 && vwrap.offsetHeight > 0)
+        return vwrap.offsetHeight > vwrap.offsetWidth;
+
+    return false;
+}
+
 const SVG_IN  = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M15.62 17.03a9 9 0 1 1 1.41-1.41l4.68 4.67a1 1 0 0 1-1.42 1.42l-4.67-4.68ZM17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" clip-rule="evenodd"/><path fill="currentColor" d="M11 7a1 1 0 1 0-2 0v2H7a1 1 0 1 0 0 2h2v2a1 1 0 1 0 2 0v-2h2a1 1 0 1 0 0-2h-2V7Z"/></svg>`;
 const SVG_OUT = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M15.62 17.03a9 9 0 1 1 1.41-1.41l4.68 4.67a1 1 0 0 1-1.42 1.42l-4.67-4.68ZM17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" clip-rule="evenodd"/><path fill="currentColor" d="M6 10a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Z"/></svg>`;
 
@@ -148,10 +179,12 @@ function initTile(tile: HTMLElement) {
     wrapper.style.position = "relative";
     wrapper.classList.add(`${P}-host`);
 
+    const mobile = isMobileCam(tile, src);
+
     const s: ZoomState = { scale: 1, panX: 0, panY: 0, dragging: false, lastX: 0, lastY: 0 };
     const max = settings.store.maxZoom;
-    const mmW = settings.store.minimapWidth;
-    const mmH = Math.round(mmW * 9 / 16);
+    const mmW = mobile ? Math.round(settings.store.minimapWidth * 9 / 16) : settings.store.minimapWidth;
+    const mmH = mobile ? settings.store.minimapWidth : Math.round(settings.store.minimapWidth * 9 / 16);
 
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let panelVisible = false;
@@ -183,6 +216,7 @@ function initTile(tile: HTMLElement) {
     minimap.className    = `${P}-minimap`;
     minimap.style.width  = `${mmW}px`;
     minimap.style.height = `${mmH}px`;
+    if (mobile) minimap.classList.add(`${P}-minimap-portrait`);
 
     const mmVid = document.createElement("video");
     mmVid.autoplay = true; mmVid.muted = true; mmVid.playsInline = true;
@@ -307,8 +341,16 @@ function initTile(tile: HTMLElement) {
         }
     };
 
-    const entry: TileEntry = { s, setZoom, kill: () => {}, src };
+    const entry: TileEntry = { s, setZoom, kill: () => {}, src, mobile };
     tiles.set(tile, entry);
+
+    const onVideoMeta = () => {
+        if (isMobileCam(tile, src) !== entry.mobile) {
+            cleanupTile(tile);
+            initTile(tile);
+        }
+    };
+    src.addEventListener("loadedmetadata", onVideoMeta);
 
     const sliderFromPtr = (e: PointerEvent) => {
         const r = sliderTrack.getBoundingClientRect();
@@ -439,6 +481,7 @@ function initTile(tile: HTMLElement) {
         document.getElementById(`${P}-cursor-lock`)?.remove();
         clearInterval(syncTimer);
         src.removeEventListener("loadedmetadata", syncStream);
+        src.removeEventListener("loadedmetadata", onVideoMeta);
         wrapper.removeEventListener("wheel",         onWheel);
         wrapper.removeEventListener("pointerdown",   onPointerDown);
         wrapper.removeEventListener("pointermove",   onPointerMove);
@@ -462,7 +505,9 @@ function scanAllTiles() {
     document.querySelectorAll<HTMLElement>("[data-selenium-video-tile]").forEach(tile => {
         if (tile.dataset[MARK]) {
             const entry = tiles.get(tile);
-            if (isScreenshare(tile) || !entry?.src.isConnected) {
+            const mobileNow = isMobileCam(tile, entry?.src);
+            if (isScreenshare(tile) || !entry?.src.isConnected ||
+                (settings.store.autoMobileCamView && entry && entry.mobile !== mobileNow)) {
                 cleanupTile(tile);
                 if (!isScreenshare(tile)) initTile(tile);
             }
@@ -503,6 +548,10 @@ const CSS = `
     border-bottom: none;
 }
 .${P}-minimap.${P}-mm-dragging { cursor: grabbing; }
+
+.${P}-minimap-portrait {
+    border-radius: 6px 6px 0 0;
+}
 
 .${P}-ind {
     position: absolute;
@@ -607,7 +656,7 @@ const CSS = `
 
 export default definePlugin({
     name: "CamZoom",
-    description: "Scroll-to-zoom & drag-to-pan on webcam tiles. Real-time PiP overlay. Compatible with NoMirroredCamera. Screenshares excluded.",
+    description: "Scroll-to-zoom & drag-to-pan on webcam tiles. Real-time PiP overlay. Auto portrait minimap for mobile cameras. Compatible with NoMirroredCamera. Screenshares excluded.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
 
