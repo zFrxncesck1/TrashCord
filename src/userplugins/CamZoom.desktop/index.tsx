@@ -72,6 +72,7 @@ interface TileEntry { s: ZoomState; setZoom: (v: number) => void; kill: () => vo
 const tiles = new WeakMap<Element, TileEntry>();
 let observer: MutationObserver | null = null;
 let scanInterval: ReturnType<typeof setInterval> | null = null;
+let observerDebounce: ReturnType<typeof setTimeout> | null = null;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -232,7 +233,7 @@ function initTile(tile: HTMLElement) {
         }
     };
     src.addEventListener("loadedmetadata", syncStream);
-    const syncTimer = setInterval(syncStream, 1500);
+    const syncTimer = setInterval(syncStream, 4000);
     syncStream();
 
     const ind = document.createElement("div");
@@ -240,6 +241,7 @@ function initTile(tile: HTMLElement) {
     minimap.append(mmVid, ind);
 
     let mmDragging = false, mmLastX = 0, mmLastY = 0;
+    let mmRafPending = false;
 
     minimap.addEventListener("pointerdown", e => {
         e.preventDefault(); e.stopPropagation();
@@ -255,13 +257,18 @@ function initTile(tile: HTMLElement) {
 
     minimap.addEventListener("pointermove", e => {
         cancelHide();
-        if (!mmDragging) return;
-        const dx = e.clientX - mmLastX, dy = e.clientY - mmLastY;
-        mmLastX = e.clientX; mmLastY = e.clientY;
-        s.panX -= dx * (wrapper.offsetWidth  * s.scale) / minimap.clientWidth;
-        s.panY -= dy * (wrapper.offsetHeight * s.scale) / minimap.clientHeight;
-        clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
-        updateIndicator(wrapper, s, ind);
+        if (!mmDragging || mmRafPending) return;
+        const cx = e.clientX, cy = e.clientY;
+        mmRafPending = true;
+        requestAnimationFrame(() => {
+            mmRafPending = false;
+            const dx = cx - mmLastX, dy = cy - mmLastY;
+            mmLastX = cx; mmLastY = cy;
+            s.panX -= dx * (wrapper.offsetWidth  * s.scale) / minimap.clientWidth;
+            s.panY -= dy * (wrapper.offsetHeight * s.scale) / minimap.clientHeight;
+            clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
+            updateIndicator(wrapper, s, ind);
+        });
     });
 
     const stopMmDrag = (e: PointerEvent) => {
@@ -314,10 +321,11 @@ function initTile(tile: HTMLElement) {
     wrapper.appendChild(panel);
 
     const updateSlider = (v: number) => {
-        const pct = ((v - 1) / (max - 1)) * 100;
-        sliderFill.style.width = `${pct.toFixed(3)}%`;
-        sliderGrab.style.left  = `${pct.toFixed(3)}%`;
-        tooltip.style.left     = `${pct.toFixed(3)}%`;
+        const pct = Math.round(((v - 1) / (max - 1)) * 1000) / 10;
+        const pctStr = `${pct}%`;
+        sliderFill.style.width = pctStr;
+        sliderGrab.style.left  = pctStr;
+        tooltip.style.left     = pctStr;
         tooltip.textContent    = `${Math.round(v * 100)}%`;
         btnMinus.disabled = v <= 1.001;
         btnPlus.disabled  = v >= max - 0.001;
@@ -399,25 +407,41 @@ function initTile(tile: HTMLElement) {
         clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
     });
 
+    let wheelRafPending = false;
+    let pendingDeltaY = 0;
+    let pendingClientX = 0, pendingClientY = 0;
+
     const onWheel = (e: WheelEvent) => {
         if (panel.contains(e.target as Node)) return;
         e.preventDefault();
         showPanel();
-        const dir   = settings.store.invertScroll ? 1 : -1;
-        const delta = dir * e.deltaY * settings.store.zoomSpeed * 0.01;
-        const next  = clamp(s.scale * (1 + delta), 1, max);
-        if (next === s.scale) return;
-        const rect  = wrapper.getBoundingClientRect();
-        const ratio = next / s.scale;
-        s.panX  = (e.clientX - rect.left - rect.width  / 2) * (1 - ratio) + s.panX * ratio;
-        s.panY  = (e.clientY - rect.top  - rect.height / 2) * (1 - ratio) + s.panY * ratio;
-        s.scale = next;
-        if (s.scale <= 1) { s.panX = 0; s.panY = 0; }
-        clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
+        const dir = settings.store.invertScroll ? 1 : -1;
+        pendingDeltaY += e.deltaY;
+        pendingClientX = e.clientX;
+        pendingClientY = e.clientY;
+        if (wheelRafPending) return;
+        wheelRafPending = true;
+        requestAnimationFrame(() => {
+            wheelRafPending = false;
+            const delta = dir * pendingDeltaY * settings.store.zoomSpeed * 0.01;
+            pendingDeltaY = 0;
+            const next = clamp(s.scale * (1 + delta), 1, max);
+            if (next === s.scale) return;
+            const rect  = wrapper.getBoundingClientRect();
+            const ratio = next / s.scale;
+            s.panX  = (pendingClientX - rect.left - rect.width  / 2) * (1 - ratio) + s.panX * ratio;
+            s.panY  = (pendingClientY - rect.top  - rect.height / 2) * (1 - ratio) + s.panY * ratio;
+            s.scale = next;
+            if (s.scale <= 1) { s.panX = 0; s.panY = 0; }
+            clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
+        });
     };
 
     let dragDist = 0;
     const THRESH = 5;
+    let dragRafPending = false;
+    let pendingDX = 0, pendingDY = 0;
+    let pendingCX = 0, pendingCY = 0;
 
     const onPointerDown = (e: PointerEvent) => {
         if (panel.contains(e.target as Node)) return;
@@ -429,7 +453,7 @@ function initTile(tile: HTMLElement) {
         }
         if (e.button !== 0 || s.scale <= 1) return;
         e.preventDefault();
-        dragDist = 0;
+        dragDist = 0; pendingDX = 0; pendingDY = 0;
         wrapper.setPointerCapture(e.pointerId);
         s.dragging = true; s.lastX = e.clientX; s.lastY = e.clientY;
         wrapper.classList.add(`${P}-dragging`);
@@ -439,10 +463,18 @@ function initTile(tile: HTMLElement) {
         if (!s.dragging) return;
         const dx = e.clientX - s.lastX, dy = e.clientY - s.lastY;
         dragDist += Math.hypot(dx, dy);
-        s.panX += dx; s.panY += dy;
+        pendingDX += dx; pendingDY += dy;
+        pendingCX = e.clientX; pendingCY = e.clientY;
         s.lastX = e.clientX; s.lastY = e.clientY;
-        clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
-        showPanel();
+        if (dragRafPending) return;
+        dragRafPending = true;
+        requestAnimationFrame(() => {
+            dragRafPending = false;
+            s.panX += pendingDX; s.panY += pendingDY;
+            pendingDX = 0; pendingDY = 0;
+            clampPan(wrapper, s); applyTransform(vid, wrapper, s, entry);
+            showPanel();
+        });
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -667,13 +699,20 @@ export default definePlugin({
 
         scanAllTiles();
 
-        observer = new MutationObserver(() => { scanAllTiles(); });
+        observer = new MutationObserver(() => {
+            if (observerDebounce) return;
+            observerDebounce = setTimeout(() => {
+                observerDebounce = null;
+                scanAllTiles();
+            }, 150);
+        });
         observer.observe(document.body, { childList: true, subtree: true });
 
-        scanInterval = setInterval(scanAllTiles, 2000);
+        scanInterval = setInterval(scanAllTiles, 5000);
     },
 
     stop() {
+        if (observerDebounce) { clearTimeout(observerDebounce); observerDebounce = null; }
         document.querySelectorAll<HTMLElement>("[data-selenium-video-tile]").forEach(cleanupTile);
         observer?.disconnect();
         observer = null;
