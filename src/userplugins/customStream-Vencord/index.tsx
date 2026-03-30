@@ -49,15 +49,31 @@ const DEFAULT_PROFILE_ID = "default";
 interface Profile {
     id: string;
     name: string;
-    images: Blob[];
     dataUris: string[];
     currentIndex: number;
+}
+
+interface StoredProfile {
+    id: string;
+    name: string;
+    dataUris?: string[];
+    images?: { type: string; data: number[]; }[];
+    currentIndex: number;
+}
+
+interface StoredProfilesData {
+    version?: number;
+    profiles: StoredProfile[];
+    activeProfileId: string;
+}
+
+interface LegacySlideshowData {
+    images: { type: string; data: number[]; }[];
 }
 
 let profiles: Map<string, Profile> = new Map();
 let activeProfileId: string = DEFAULT_PROFILE_ID;
 
-let cachedImages: Blob[] = [];
 let cachedDataUris: string[] = [];
 let currentSlideIndex = 0;
 let lastSlideChangeTime = 0;
@@ -88,13 +104,7 @@ function getRandomNext(): number {
 function getActiveProfile(): Profile {
     let profile = profiles.get(activeProfileId);
     if (!profile) {
-        profile = {
-            id: DEFAULT_PROFILE_ID,
-            name: "Default",
-            images: [],
-            dataUris: [],
-            currentIndex: 0
-        };
+        profile = { id: DEFAULT_PROFILE_ID, name: "Default", dataUris: [], currentIndex: 0 };
         profiles.set(DEFAULT_PROFILE_ID, profile);
     }
     return profile;
@@ -102,7 +112,6 @@ function getActiveProfile(): Profile {
 
 function syncCacheWithActiveProfile() {
     const profile = getActiveProfile();
-    cachedImages = profile.images;
     cachedDataUris = profile.dataUris;
     currentSlideIndex = profile.currentIndex;
     randomQueue = [];
@@ -111,7 +120,7 @@ function syncCacheWithActiveProfile() {
 const imageChangeListeners = new Set<() => void>();
 
 function notifyImageChange() {
-    imageChangeListeners.forEach(listener => listener());
+    imageChangeListeners.forEach(fn => fn());
 }
 
 const settings = definePluginSettings({
@@ -157,54 +166,41 @@ const settings = definePluginSettings({
     }
 });
 
-// DataStore interfaces
-interface StoredImageData {
-    type: string;
-    data: number[];
+function blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 }
 
-interface SlideshowData {
-    images: StoredImageData[];
+function estimateSizeFromDataUri(uri: string): number {
+    const comma = uri.indexOf(",");
+    if (comma === -1) return 0;
+    return Math.round((uri.length - comma - 1) * 0.75);
 }
 
-interface StoredProfile {
-    id: string;
-    name: string;
-    images: StoredImageData[];
-    currentIndex: number;
-}
-
-interface StoredProfilesData {
-    profiles: StoredProfile[];
-    activeProfileId: string;
+async function legacyBytesToDataUri(data: number[], type: string): Promise<string> {
+    const blob = new Blob([new Uint8Array(data)], { type });
+    return blobToDataUrl(blob);
 }
 
 async function saveProfilesToDataStore(): Promise<void> {
     const storedProfiles: StoredProfile[] = [];
-
     for (const [, profile] of profiles) {
-        const images: StoredImageData[] = [];
-        for (const blob of profile.images) {
-            const arrayBuffer = await blob.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
-            images.push({
-                type: blob.type,
-                data: Array.from(uint8Array)
-            });
-        }
         storedProfiles.push({
             id: profile.id,
             name: profile.name,
-            images,
+            dataUris: profile.dataUris,
             currentIndex: profile.currentIndex
         });
     }
-
     await DataStore.set(DATASTORE_KEY_PROFILES, {
+        version: 2,
         profiles: storedProfiles,
         activeProfileId
     });
-
     syncCacheWithActiveProfile();
     notifyImageChange();
 }
@@ -216,60 +212,52 @@ async function loadProfilesFromDataStore(): Promise<void> {
         if (data?.profiles?.length) {
             profiles.clear();
             for (const stored of data.profiles) {
-                const blobs: Blob[] = [];
-                const dataUris: string[] = [];
+                let dataUris: string[];
 
-                for (const img of stored.images) {
-                    const uint8Array = new Uint8Array(img.data);
-                    const blob = new Blob([uint8Array], { type: img.type });
-                    blobs.push(blob);
-                    dataUris.push(await blobToDataUrl(blob));
+                if (stored.dataUris) {
+                    dataUris = stored.dataUris;
+                } else if (stored.images?.length) {
+                    dataUris = [];
+                    for (const img of stored.images) {
+                        dataUris.push(await legacyBytesToDataUri(img.data, img.type));
+                    }
+                } else {
+                    dataUris = [];
                 }
 
                 profiles.set(stored.id, {
                     id: stored.id,
                     name: stored.name,
-                    images: blobs,
                     dataUris,
                     currentIndex: stored.currentIndex
                 });
             }
             activeProfileId = data.activeProfileId || DEFAULT_PROFILE_ID;
+
+            if (!data.version || data.version < 2) {
+                await saveProfilesToDataStore();
+            }
         } else {
-            const oldData: SlideshowData | undefined = await DataStore.get(DATASTORE_KEY_SLIDESHOW);
+            const oldData: LegacySlideshowData | undefined = await DataStore.get(DATASTORE_KEY_SLIDESHOW);
             if (oldData?.images?.length) {
-                const blobs: Blob[] = [];
                 const dataUris: string[] = [];
-
                 for (const img of oldData.images) {
-                    const uint8Array = new Uint8Array(img.data);
-                    const blob = new Blob([uint8Array], { type: img.type });
-                    blobs.push(blob);
-                    dataUris.push(await blobToDataUrl(blob));
+                    dataUris.push(await legacyBytesToDataUri(img.data, img.type));
                 }
-
-                const oldIndex = await loadSlideIndex();
+                const oldIndex: number = (await DataStore.get(DATASTORE_KEY_INDEX)) ?? 0;
                 profiles.set(DEFAULT_PROFILE_ID, {
                     id: DEFAULT_PROFILE_ID,
                     name: "Default",
-                    images: blobs,
                     dataUris,
                     currentIndex: oldIndex
                 });
                 activeProfileId = DEFAULT_PROFILE_ID;
-
                 await saveProfilesToDataStore();
                 await DataStore.del(DATASTORE_KEY_SLIDESHOW);
                 await DataStore.del(DATASTORE_KEY_INDEX);
                 await DataStore.del(DATASTORE_KEY);
             } else {
-                profiles.set(DEFAULT_PROFILE_ID, {
-                    id: DEFAULT_PROFILE_ID,
-                    name: "Default",
-                    images: [],
-                    dataUris: [],
-                    currentIndex: 0
-                });
+                profiles.set(DEFAULT_PROFILE_ID, { id: DEFAULT_PROFILE_ID, name: "Default", dataUris: [], currentIndex: 0 });
                 activeProfileId = DEFAULT_PROFILE_ID;
             }
         }
@@ -277,30 +265,15 @@ async function loadProfilesFromDataStore(): Promise<void> {
         syncCacheWithActiveProfile();
     } catch (error) {
         console.error("[CustomStreamTopQ] Error loading profiles:", error);
-        profiles.set(DEFAULT_PROFILE_ID, {
-            id: DEFAULT_PROFILE_ID,
-            name: "Default",
-            images: [],
-            dataUris: [],
-            currentIndex: 0
-        });
+        profiles.set(DEFAULT_PROFILE_ID, { id: DEFAULT_PROFILE_ID, name: "Default", dataUris: [], currentIndex: 0 });
         activeProfileId = DEFAULT_PROFILE_ID;
     }
 }
 
 function createProfile(name: string): Profile | null {
-    // Check profile limit
-    if (profiles.size >= MAX_PROFILES) {
-        return null;
-    }
+    if (profiles.size >= MAX_PROFILES) return null;
     const id = `profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const profile: Profile = {
-        id,
-        name,
-        images: [],
-        dataUris: [],
-        currentIndex: 0
-    };
+    const profile: Profile = { id, name, dataUris: [], currentIndex: 0 };
     profiles.set(id, profile);
     return profile;
 }
@@ -308,9 +281,8 @@ function createProfile(name: string): Profile | null {
 function deleteProfile(profileId: string): boolean {
     const profile = profiles.get(profileId);
     if (!profile) return false;
-    if (profile.images.length > 0) return false; // cannot delete profile with images
-    if (profileId === DEFAULT_PROFILE_ID) return false; // cannot delete default profile
-
+    if (profile.dataUris.length > 0) return false;
+    if (profileId === DEFAULT_PROFILE_ID) return false;
     profiles.delete(profileId);
     if (activeProfileId === profileId) {
         activeProfileId = DEFAULT_PROFILE_ID;
@@ -345,27 +317,8 @@ async function saveSlideIndex(index: number): Promise<void> {
     await saveProfilesToDataStore();
 }
 
-async function loadSlideIndex(): Promise<number> {
-    const index = await DataStore.get(DATASTORE_KEY_INDEX);
-    return typeof index === "number" ? index : 0;
-}
-
-async function saveImagesToDataStore(blobs: Blob[]): Promise<void> {
-    const profile = getActiveProfile();
-    profile.images = blobs;
-
-    profile.dataUris = [];
-    for (const blob of blobs) {
-        profile.dataUris.push(await blobToDataUrl(blob));
-    }
-
-    syncCacheWithActiveProfile();
-    await saveProfilesToDataStore();
-}
-
 async function deleteAllImages(): Promise<void> {
     const profile = getActiveProfile();
-    profile.images = [];
     profile.dataUris = [];
     profile.currentIndex = 0;
     syncCacheWithActiveProfile();
@@ -374,19 +327,15 @@ async function deleteAllImages(): Promise<void> {
 
 async function deleteImageAtIndex(index: number): Promise<void> {
     const profile = getActiveProfile();
-    if (index < 0 || index >= profile.images.length) return;
-
-    profile.images.splice(index, 1);
+    if (index < 0 || index >= profile.dataUris.length) return;
     profile.dataUris.splice(index, 1);
-
-    if (profile.images.length === 0) {
+    if (profile.dataUris.length === 0) {
         profile.currentIndex = 0;
     } else if (index < profile.currentIndex) {
-        profile.currentIndex = profile.currentIndex - 1;
+        profile.currentIndex--;
     } else if (index === profile.currentIndex) {
-        profile.currentIndex = Math.min(profile.currentIndex, profile.images.length - 1);
+        profile.currentIndex = Math.min(profile.currentIndex, profile.dataUris.length - 1);
     }
-
     syncCacheWithActiveProfile();
     await saveProfilesToDataStore();
 }
@@ -394,76 +343,50 @@ async function deleteImageAtIndex(index: number): Promise<void> {
 async function moveImage(fromIndex: number, toIndex: number): Promise<void> {
     const profile = getActiveProfile();
     if (fromIndex === toIndex) return;
-    if (fromIndex < 0 || fromIndex >= profile.images.length) return;
-    if (toIndex < 0 || toIndex >= profile.images.length) return;
-
-    [profile.images[fromIndex], profile.images[toIndex]] = [profile.images[toIndex], profile.images[fromIndex]];
+    if (fromIndex < 0 || fromIndex >= profile.dataUris.length) return;
+    if (toIndex < 0 || toIndex >= profile.dataUris.length) return;
     [profile.dataUris[fromIndex], profile.dataUris[toIndex]] = [profile.dataUris[toIndex], profile.dataUris[fromIndex]];
-
-    if (profile.currentIndex === fromIndex) {
-        profile.currentIndex = toIndex;
-    } else if (profile.currentIndex === toIndex) {
-        profile.currentIndex = fromIndex;
-    }
-
+    if (profile.currentIndex === fromIndex) profile.currentIndex = toIndex;
+    else if (profile.currentIndex === toIndex) profile.currentIndex = fromIndex;
     syncCacheWithActiveProfile();
     await saveProfilesToDataStore();
 }
 
-async function addImage(blob: Blob): Promise<void> {
+async function addImageUri(dataUri: string): Promise<void> {
     const profile = getActiveProfile();
-    profile.images.push(blob);
-    profile.dataUris.push(await blobToDataUrl(blob));
+    profile.dataUris.push(dataUri);
     syncCacheWithActiveProfile();
     await saveProfilesToDataStore();
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
 }
 
 function getImageCount(): number {
-    return cachedImages.length;
+    return cachedDataUris.length;
 }
 
-async function processImage(blob: Blob): Promise<Blob> {
+async function processImage(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(blob);
 
         img.onload = () => {
             URL.revokeObjectURL(url);
-
             const targetWidth = 1280;
             const targetHeight = 720;
-
-                        const canvas = document.createElement("canvas");
+            const canvas = document.createElement("canvas");
             canvas.width = targetWidth;
             canvas.height = targetHeight;
             const ctx = canvas.getContext("2d")!;
-
-            // black background for transparency
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-            // cover-fit scaling
             const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
             const scaledWidth = img.width * scale;
             const scaledHeight = img.height * scale;
             const x = (targetWidth - scaledWidth) / 2;
             const y = (targetHeight - scaledHeight) / 2;
-
             ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-
-            // Discord uses JPEG for stream previews, quality 0.7 keeps it under ~100KB
-            canvas.toBlob((newBlob) => {
+            canvas.toBlob(newBlob => {
                 if (newBlob) {
-                    resolve(newBlob);
+                    blobToDataUrl(newBlob).then(resolve).catch(reject);
                 } else {
                     reject(new Error("Failed to convert image"));
                 }
@@ -522,20 +445,11 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         };
     }, []);
 
-    const loadImages = async () => {
+    const loadImages = () => {
         setIsLoading(true);
         const profile = profiles.get(currentProfileId) || getActiveProfile();
-        const uris: string[] = [];
-        const sizes: number[] = [];
-        for (const blob of profile.images) {
-            try {
-                const uri = await blobToDataUrl(blob);
-                uris.push(uri);
-                sizes.push(blob.size);
-            } catch (e) {
-                console.error("[CustomStreamTopQ] Error:", e);
-            }
-        }
+        const uris = profile.dataUris.slice();
+        const sizes = uris.map(estimateSizeFromDataUri);
         setImages(uris);
         setImageSizes(sizes);
         setIsLoading(false);
@@ -597,17 +511,14 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
     const handleDeleteProfile = async (profileId: string) => {
         const profile = profiles.get(profileId);
         if (!profile) return;
-
-        if (profile.images.length > 0) {
+        if (profile.dataUris.length > 0) {
             setError("Delete all images first!");
             return;
         }
-
         if (profileId === DEFAULT_PROFILE_ID) {
             setError("Cannot delete default profile");
             return;
         }
-
         Alerts.show({
             title: `Delete profile "${profile.name}"?`,
             body: "This action cannot be undone.",
@@ -618,9 +529,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                 deleteProfile(profileId);
                 await saveProfilesToDataStore();
                 setProfileList(getProfileList());
-                if (currentProfileId === profileId) {
-                    handleProfileSwitch(DEFAULT_PROFILE_ID);
-                }
+                if (currentProfileId === profileId) handleProfileSwitch(DEFAULT_PROFILE_ID);
                 showToast("Profile deleted", Toasts.Type.SUCCESS);
             }
         });
@@ -644,15 +553,13 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
 
     const handleDroppedFiles = async (files: FileList | File[]) => {
         const profile = profiles.get(currentProfileId) || getActiveProfile();
-        const remaining = MAX_IMAGES_PER_PROFILE - profile.images.length;
+        const remaining = MAX_IMAGES_PER_PROFILE - profile.dataUris.length;
         if (remaining <= 0) {
             setError(`Limit of ${MAX_IMAGES_PER_PROFILE} images reached!`);
             return;
         }
-
         setIsLoading(true);
         setError("");
-
         try {
             let added = 0;
             for (const file of files) {
@@ -660,19 +567,13 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                     setError(`Added ${added}. Limit of ${MAX_IMAGES_PER_PROFILE} reached!`);
                     break;
                 }
-                if (!file.type.startsWith("image/") || file.type === "image/gif") {
-                    continue;
-                }
-                if (file.size > 8 * 1024 * 1024) {
-                    continue;
-                }
-
-                const processedBlob = await processImage(file);
-                await addImage(processedBlob);
+                if (!file.type.startsWith("image/") || file.type === "image/gif") continue;
+                if (file.size > 8 * 1024 * 1024) continue;
+                const dataUri = await processImage(file);
+                await addImageUri(dataUri);
                 added++;
             }
-
-            await loadImages();
+            loadImages();
             if (added > 0) {
                 showToast(`Added: ${added}`, Toasts.Type.SUCCESS);
                 forceUploadPreview();
@@ -680,25 +581,20 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         } catch {
             setError("File processing error");
         }
-
         setIsLoading(false);
     };
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (draggedIndex === null && e.dataTransfer.types.includes("Files")) {
-            setIsDragging(true);
-        }
+        if (draggedIndex === null && e.dataTransfer.types.includes("Files")) setIsDragging(true);
     };
 
     const handleDragLeave = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
-        const x = e.clientX;
-        const y = e.clientY;
-        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+        if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
             setIsDragging(false);
         }
     };
@@ -707,11 +603,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            await handleDroppedFiles(files);
-        }
+        if (e.dataTransfer.files.length > 0) await handleDroppedFiles(e.dataTransfer.files);
     };
 
     const handleFileSelect = (multiple: boolean) => {
@@ -722,17 +614,14 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         input.onchange = async (e: any) => {
             const files = e.target.files;
             if (!files?.length) return;
-
             const profile = profiles.get(currentProfileId) || getActiveProfile();
-            const remaining = MAX_IMAGES_PER_PROFILE - profile.images.length;
+            const remaining = MAX_IMAGES_PER_PROFILE - profile.dataUris.length;
             if (remaining <= 0) {
                 setError(`Limit of ${MAX_IMAGES_PER_PROFILE} images reached!`);
                 return;
             }
-
             setIsLoading(true);
             setError("");
-
             try {
                 let added = 0;
                 for (const file of files) {
@@ -740,19 +629,13 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                         setError(`Added ${added}. Limit of ${MAX_IMAGES_PER_PROFILE} reached!`);
                         break;
                     }
-                    if (file.type === "image/gif" || file.type.startsWith("video/")) {
-                        continue;
-                    }
-                    if (file.size > 8 * 1024 * 1024) {
-                        continue;
-                    }
-
-                    const processedBlob = await processImage(file);
-                    await addImage(processedBlob);
+                    if (file.type === "image/gif" || file.type.startsWith("video/")) continue;
+                    if (file.size > 8 * 1024 * 1024) continue;
+                    const dataUri = await processImage(file);
+                    await addImageUri(dataUri);
                     added++;
                 }
-
-                await loadImages();
+                loadImages();
                 if (added > 0) {
                     showToast(`Added: ${added}`, Toasts.Type.SUCCESS);
                     forceUploadPreview();
@@ -760,7 +643,6 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
             } catch {
                 setError("File processing error");
             }
-
             setIsLoading(false);
         };
         input.click();
@@ -770,23 +652,19 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         await deleteImageAtIndex(index);
         const profile = profiles.get(currentProfileId) || getActiveProfile();
         let newIndex = pendingIndex;
-        if (profile.images.length === 0) {
-            newIndex = 0;
-        } else if (pendingIndex >= profile.images.length) {
-            newIndex = profile.images.length - 1;
-        }
+        if (profile.dataUris.length === 0) newIndex = 0;
+        else if (pendingIndex >= profile.dataUris.length) newIndex = profile.dataUris.length - 1;
         setPendingIndex(newIndex);
         currentSlideIndex = newIndex;
-        await loadImages();
+        loadImages();
         setProfileList(getProfileList());
-        if (profile.images.length > 0) { userSelectedIndex = currentSlideIndex; forceUploadPreview(); }
+        if (profile.dataUris.length > 0) { userSelectedIndex = currentSlideIndex; forceUploadPreview(); }
         showToast("Deleted", Toasts.Type.MESSAGE);
     };
 
     const handleClearAll = async () => {
         const profile = profiles.get(currentProfileId);
-        if (!profile || profile.images.length === 0) return;
-
+        if (!profile || profile.dataUris.length === 0) return;
         Alerts.show({
             title: `Delete all images from "${profile.name}"?`,
             body: `Are you sure you want to delete all ${images.length} images? This action cannot be undone.`,
@@ -814,17 +692,9 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         forceUploadPreview();
     };
 
-    const togglePlugin = () => {
-        setPluginEnabled(!pluginEnabled);
-    };
-
-    const toggleSlideshow = () => {
-        setSlideshowOn(!slideshowOn);
-    };
-
-    const toggleRandom = () => {
-        setRandomOn(!randomOn);
-    };
+    const togglePlugin = () => setPluginEnabled(v => !v);
+    const toggleSlideshow = () => setSlideshowOn(v => !v);
+    const toggleRandom = () => setRandomOn(v => !v);
 
     const handleSave = async () => {
         settings.store.replaceEnabled = pluginEnabled;
@@ -840,9 +710,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
         rootProps.onClose();
     };
 
-    const handleCancel = () => {
-        rootProps.onClose();
-    };
+    const handleCancel = () => rootProps.onClose();
 
     const handleImageDragStart = (e: React.DragEvent, index: number) => {
         e.stopPropagation();
@@ -854,9 +722,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
     const handleImageDragOver = (e: React.DragEvent, index: number) => {
         e.preventDefault();
         e.stopPropagation();
-        if (draggedIndex !== null && draggedIndex !== index) {
-            setDragOverIndex(index);
-        }
+        if (draggedIndex !== null && draggedIndex !== index) setDragOverIndex(index);
     };
 
     const handleImageDragLeave = (e: React.DragEvent) => {
@@ -867,22 +733,16 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
     const handleImageDrop = async (e: React.DragEvent, toIndex: number) => {
         e.preventDefault();
         e.stopPropagation();
-
         if (draggedIndex !== null && draggedIndex !== toIndex) {
             let newPendingIndex = pendingIndex;
-            if (pendingIndex === draggedIndex) {
-                newPendingIndex = toIndex;
-            } else if (pendingIndex === toIndex) {
-                newPendingIndex = draggedIndex;
-            }
-
+            if (pendingIndex === draggedIndex) newPendingIndex = toIndex;
+            else if (pendingIndex === toIndex) newPendingIndex = draggedIndex;
             await moveImage(draggedIndex, toIndex);
             setPendingIndex(newPendingIndex);
             currentSlideIndex = newPendingIndex;
-            await loadImages();
+            loadImages();
             showToast(`Moved: #${draggedIndex + 1} → #${toIndex + 1}`, Toasts.Type.SUCCESS);
         }
-
         setDraggedIndex(null);
         setDragOverIndex(null);
     };
@@ -932,14 +792,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                             boxShadow: "0 8px 32px rgba(0,0,0,0.5)"
                         }}
                     />
-                    <div style={{
-                        position: "absolute",
-                        top: "20px",
-                        right: "20px",
-                        color: "white",
-                        fontSize: "14px",
-                        opacity: 0.7
-                    }}>
+                    <div style={{ position: "absolute", top: "20px", right: "20px", color: "white", fontSize: "14px", opacity: 0.7 }}>
                         Click to close
                     </div>
                     <div style={{
@@ -1020,9 +873,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                             justifyContent: "center",
                             gap: "10px",
                             transition: "all 0.2s ease",
-                            boxShadow: pluginEnabled
-                                ? "0 4px 12px rgba(59, 165, 92, 0.3)"
-                                : "0 4px 12px rgba(237, 66, 69, 0.3)"
+                            boxShadow: pluginEnabled ? "0 4px 12px rgba(59, 165, 92, 0.3)" : "0 4px 12px rgba(237, 66, 69, 0.3)"
                         }}
                     >
                         <span style={{ fontSize: "18px" }}>{pluginEnabled ? "✅" : "❌"}</span>
@@ -1110,10 +961,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                     onChange={e => setNewProfileName(e.target.value)}
                                     onKeyDown={e => {
                                         if (e.key === "Enter") handleCreateProfile();
-                                        if (e.key === "Escape") {
-                                            setIsCreatingProfile(false);
-                                            setNewProfileName("");
-                                        }
+                                        if (e.key === "Escape") { setIsCreatingProfile(false); setNewProfileName(""); }
                                     }}
                                     autoFocus
                                     style={{
@@ -1127,51 +975,16 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                         outline: "none"
                                     }}
                                 />
-                                <button
-                                    onClick={handleCreateProfile}
-                                    style={{
-                                        backgroundColor: "rgba(59, 165, 92, 0.9)",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: "6px",
-                                        padding: "8px 14px",
-                                        fontSize: "13px",
-                                        fontWeight: "600",
-                                        cursor: "pointer"
-                                    }}
-                                >
-                                    ✓
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setIsCreatingProfile(false);
-                                        setNewProfileName("");
-                                    }}
-                                    style={{
-                                        backgroundColor: "rgba(237, 66, 69, 0.9)",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: "6px",
-                                        padding: "8px 14px",
-                                        fontSize: "13px",
-                                        fontWeight: "600",
-                                        cursor: "pointer"
-                                    }}
-                                >
-                                    ✕
-                                </button>
+                                <button onClick={handleCreateProfile} style={{ backgroundColor: "rgba(59, 165, 92, 0.9)", color: "white", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>✓</button>
+                                <button onClick={() => { setIsCreatingProfile(false); setNewProfileName(""); }} style={{ backgroundColor: "rgba(237, 66, 69, 0.9)", color: "white", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>✕</button>
                             </div>
                         )}
 
-                        <div style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "8px"
-                        }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                             {profileList.map((profile: Profile) => {
                                 const isActive = profile.id === currentProfileId;
                                 const isEditing = editingProfileId === profile.id;
-                                const canDelete = profile.id !== DEFAULT_PROFILE_ID && profile.images.length === 0;
+                                const canDelete = profile.id !== DEFAULT_PROFILE_ID && profile.dataUris.length === 0;
 
                                 return (
                                     <div
@@ -1182,21 +995,13 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             gap: "6px",
                                             padding: "8px 12px",
                                             borderRadius: "8px",
-                                            backgroundColor: isActive 
-                                                ? "#5865F2"
-                                                : "var(--background-secondary-alt)",
-                                            background: isActive 
-                                                ? "linear-gradient(135deg, #5865F2 0%, #4752c4 100%)" 
-                                                : "var(--background-secondary-alt)",
+                                            backgroundColor: isActive ? "#5865F2" : "var(--background-secondary-alt)",
+                                            background: isActive ? "linear-gradient(135deg, #5865F2 0%, #4752c4 100%)" : "var(--background-secondary-alt)",
                                             color: "#ffffff",
                                             cursor: "pointer",
                                             transition: "all 0.2s ease",
-                                            border: isActive 
-                                                ? "2px solid #5865F2" 
-                                                : "1px solid var(--background-modifier-accent)",
-                                            boxShadow: isActive 
-                                                ? "0 3px 10px rgba(88, 101, 242, 0.4)" 
-                                                : "0 1px 4px rgba(0,0,0,0.1)",
+                                            border: isActive ? "2px solid #5865F2" : "1px solid var(--background-modifier-accent)",
+                                            boxShadow: isActive ? "0 3px 10px rgba(88, 101, 242, 0.4)" : "0 1px 4px rgba(0,0,0,0.1)",
                                             minWidth: "100px"
                                         }}
                                         onClick={() => !isEditing && handleProfileSwitch(profile.id)}
@@ -1241,102 +1046,43 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             />
                                         ) : (
                                             <>
-
-                                                {isActive && (
-                                                    <span style={{ 
-                                                        fontSize: "12px",
-                                                        fontWeight: "bold"
-                                                    }}>✓</span>
-                                                )}
-
-                                                {!isActive && (
-                                                    <span style={{ fontSize: "12px" }}>📁</span>
-                                                )}
-                                                <span style={{ 
-                                                    fontWeight: "600", 
-                                                    fontSize: "12px",
-                                                    letterSpacing: "0.2px",
-                                                    color: "#ffffff"
-                                                }}>
+                                                {isActive && <span style={{ fontSize: "12px", fontWeight: "bold" }}>✓</span>}
+                                                {!isActive && <span style={{ fontSize: "12px" }}>📁</span>}
+                                                <span style={{ fontWeight: "600", fontSize: "12px", letterSpacing: "0.2px", color: "#ffffff" }}>
                                                     {profile.name}
                                                 </span>
                                                 <span style={{
                                                     fontSize: "10px",
                                                     fontWeight: "700",
-                                                    backgroundColor: isActive 
-                                                        ? "rgba(255,255,255,0.25)" 
-                                                        : "var(--brand-experiment)",
+                                                    backgroundColor: isActive ? "rgba(255,255,255,0.25)" : "var(--brand-experiment)",
                                                     color: "#ffffff",
                                                     padding: "2px 6px",
                                                     borderRadius: "6px",
                                                     minWidth: "20px",
                                                     textAlign: "center"
                                                 }}>
-                                                    {profile.images.length}
+                                                    {profile.dataUris.length}
                                                 </span>
                                             </>
                                         )}
 
                                         {isActive && !isEditing && (
-                                            <div style={{ 
-                                                display: "flex", 
-                                                gap: "6px", 
-                                                marginLeft: "6px",
-                                                paddingLeft: "8px",
-                                                borderLeft: "1px solid rgba(255,255,255,0.3)"
-                                            }}>
+                                            <div style={{ display: "flex", gap: "6px", marginLeft: "6px", paddingLeft: "8px", borderLeft: "1px solid rgba(255,255,255,0.3)" }}>
                                                 <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setEditingProfileId(profile.id);
-                                                        setEditingProfileName(profile.name);
-                                                    }}
-                                                    style={{
-                                                        backgroundColor: "rgba(255,255,255,0.2)",
-                                                        color: "white",
-                                                        border: "none",
-                                                        borderRadius: "6px",
-                                                        width: "28px",
-                                                        height: "28px",
-                                                        cursor: "pointer",
-                                                        fontSize: "13px",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        transition: "all 0.15s ease"
-                                                    }}
+                                                    onClick={(e) => { e.stopPropagation(); setEditingProfileId(profile.id); setEditingProfileName(profile.name); }}
+                                                    style={{ backgroundColor: "rgba(255,255,255,0.2)", color: "white", border: "none", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}
                                                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.3)"}
                                                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.15)"}
                                                     title="Rename"
-                                                >
-                                                    ✏️
-                                                </button>
+                                                >✏️</button>
                                                 {canDelete && (
                                                     <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDeleteProfile(profile.id);
-                                                        }}
-                                                        style={{
-                                                            backgroundColor: "rgba(237, 66, 69, 0.9)",
-                                                            color: "white",
-                                                            border: "none",
-                                                            borderRadius: "6px",
-                                                            width: "28px",
-                                                            height: "28px",
-                                                            cursor: "pointer",
-                                                            fontSize: "13px",
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "center",
-                                                            transition: "all 0.15s ease"
-                                                        }}
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteProfile(profile.id); }}
+                                                        style={{ backgroundColor: "rgba(237, 66, 69, 0.9)", color: "white", border: "none", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer", fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}
                                                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(237, 66, 69, 1)"}
                                                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(237, 66, 69, 0.9)"}
                                                         title="Delete profile (only if empty)"
-                                                    >
-                                                        🗑️
-                                                    </button>
+                                                    >🗑️</button>
                                                 )}
                                             </div>
                                         )}
@@ -1360,11 +1106,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                         </div>
                     </div>
 
-                    <div style={{
-                        display: "flex",
-                        gap: "10px",
-                        marginBottom: "16px"
-                    }}>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
                         <div
                             onClick={toggleSlideshow}
                             style={{
@@ -1416,17 +1158,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                             gap: "12px",
                             border: "1px solid var(--background-modifier-accent)"
                         }}>
-                            {/* Profile name */}
-                            <div style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                backgroundColor: "rgba(88, 101, 242, 0.15)",
-                                borderRadius: "8px",
-                                border: "1px solid rgba(88, 101, 242, 0.3)",
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                            }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 14px", backgroundColor: "rgba(88, 101, 242, 0.15)", borderRadius: "8px", border: "1px solid rgba(88, 101, 242, 0.3)", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                                 <span style={{ fontSize: "18px" }}>📁</span>
                                 <div style={{ display: "flex", flexDirection: "column", lineHeight: "1.2" }}>
                                     <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Profile</span>
@@ -1436,16 +1168,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                 </div>
                             </div>
 
-                            {/* Images count */}
-                            <div style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "8px 14px",
-                                backgroundColor: "var(--background-tertiary)",
-                                borderRadius: "8px",
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                            }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 14px", backgroundColor: "var(--background-tertiary)", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                                 <span style={{ fontSize: "18px" }}>📊</span>
                                 <div style={{ display: "flex", flexDirection: "column", lineHeight: "1.2" }}>
                                     <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Images</span>
@@ -1456,18 +1179,8 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                 </div>
                             </div>
 
-                            {/* Selected */}
                             {images.length > 0 && (
-                                <div style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "8px 14px",
-                                    backgroundColor: "rgba(88, 101, 242, 0.15)",
-                                    borderRadius: "8px",
-                                    border: "1px solid rgba(88, 101, 242, 0.3)",
-                                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                                }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 14px", backgroundColor: "rgba(88, 101, 242, 0.15)", borderRadius: "8px", border: "1px solid rgba(88, 101, 242, 0.3)", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                                     <span style={{ fontSize: "18px" }}>📍</span>
                                     <div style={{ display: "flex", flexDirection: "column", lineHeight: "1.2" }}>
                                         <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Selected</span>
@@ -1476,18 +1189,8 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                 </div>
                             )}
 
-                            {/* Stream status */}
                             {images.length > 1 && slideshowOn && pluginEnabled && (
-                                <div style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "8px 14px",
-                                    backgroundColor: streamActive ? "rgba(59, 165, 92, 0.15)" : "var(--background-tertiary)",
-                                    borderRadius: "8px",
-                                    border: streamActive ? "1px solid rgba(59, 165, 92, 0.3)" : "none",
-                                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                                }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 14px", backgroundColor: streamActive ? "rgba(59, 165, 92, 0.15)" : "var(--background-tertiary)", borderRadius: "8px", border: streamActive ? "1px solid rgba(59, 165, 92, 0.3)" : "none", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                                     <span style={{ fontSize: "18px" }}>{streamActive ? "🟢" : "⚫"}</span>
                                     <div style={{ display: "flex", flexDirection: "column", lineHeight: "1.2" }}>
                                         <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Slideshow</span>
@@ -1498,28 +1201,14 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                 </div>
                             )}
 
-                            {/* Timer */}
                             {images.length > 0 && pluginEnabled && streamActive && lastSlideChangeTime > 0 && (
-                                <div style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                    padding: "8px 14px",
-                                    backgroundColor: "rgba(88, 101, 242, 0.15)",
-                                    borderRadius: "8px",
-                                    border: "1px solid rgba(88, 101, 242, 0.3)",
-                                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-                                }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 14px", backgroundColor: "rgba(88, 101, 242, 0.15)", borderRadius: "8px", border: "1px solid rgba(88, 101, 242, 0.3)", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                                     <span style={{ fontSize: "18px" }}>⏱️</span>
                                     <div style={{ display: "flex", flexDirection: "column", lineHeight: "1.2" }}>
                                         <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Timer</span>
                                         <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-                                            <span style={{ fontSize: "14px", fontWeight: "700", color: "#5865F2" }}>
-                                                {formatTime(timerSeconds)}
-                                            </span>
-                                            <span style={{ fontSize: "12px", fontWeight: "500", color: "var(--text-muted)" }}>
-                                                ago
-                                            </span>
+                                            <span style={{ fontSize: "14px", fontWeight: "700", color: "#5865F2" }}>{formatTime(timerSeconds)}</span>
+                                            <span style={{ fontSize: "12px", fontWeight: "500", color: "var(--text-muted)" }}>ago</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1528,38 +1217,19 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                     )}
 
                     <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
-                        <Button
-                            onClick={() => handleFileSelect(false)}
-                            disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
-                            style={{ padding: "10px 16px" }}
-                        >
+                        <Button onClick={() => handleFileSelect(false)} disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE} style={{ padding: "10px 16px" }}>
                             {isLoading ? "⏳..." : "📁 Add Image"}
                         </Button>
-                        <Button
-                            onClick={() => handleFileSelect(true)}
-                            disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
-                            style={{ padding: "10px 16px" }}
-                        >
+                        <Button onClick={() => handleFileSelect(true)} disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE} style={{ padding: "10px 16px" }}>
                             📁+ Multiple
                         </Button>
-                        <Button
-                            color={Button.Colors.RED}
-                            onClick={handleClearAll}
-                            disabled={images.length === 0}
-                            style={{ padding: "10px 16px" }}
-                        >
+                        <Button color={Button.Colors.RED} onClick={handleClearAll} disabled={images.length === 0} style={{ padding: "10px 16px" }}>
                             🗑️ Delete All
                         </Button>
                     </div>
 
                     {error && (
-                        <div style={{
-                            padding: "8px 12px",
-                            backgroundColor: "var(--status-danger-background)",
-                            borderRadius: "4px",
-                            marginBottom: "16px",
-                            color: "var(--status-danger)"
-                        }}>
+                        <div style={{ padding: "8px 12px", backgroundColor: "var(--status-danger-background)", borderRadius: "4px", marginBottom: "16px", color: "var(--status-danger)" }}>
                             ❌ {error}
                         </div>
                     )}
@@ -1595,21 +1265,9 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             position: "relative",
                                             borderRadius: "8px",
                                             overflow: "hidden",
-                                            border: isDragTarget
-                                                ? "3px solid #faa61a"
-                                                : isCurrent
-                                                    ? "3px solid #3ba55c"
-                                                    : isNext
-                                                        ? "3px solid #5865F2"
-                                                        : "3px solid transparent",
+                                            border: isDragTarget ? "3px solid #faa61a" : isCurrent ? "3px solid #3ba55c" : isNext ? "3px solid #5865F2" : "3px solid transparent",
                                             backgroundColor: "var(--background-secondary)",
-                                            boxShadow: isDragTarget
-                                                ? "0 4px 20px rgba(250, 166, 26, 0.4)"
-                                                : isCurrent
-                                                    ? "0 4px 20px rgba(59, 165, 92, 0.4)"
-                                                    : isNext
-                                                        ? "0 4px 16px rgba(88, 101, 242, 0.3)"
-                                                        : "0 2px 8px rgba(0,0,0,0.2)",
+                                            boxShadow: isDragTarget ? "0 4px 20px rgba(250, 166, 26, 0.4)" : isCurrent ? "0 4px 20px rgba(59, 165, 92, 0.4)" : isNext ? "0 4px 16px rgba(88, 101, 242, 0.3)" : "0 2px 8px rgba(0,0,0,0.2)",
                                             cursor: "grab",
                                             opacity: isBeingDragged ? 0.5 : 1,
                                             transition: "all 0.15s ease"
@@ -1627,25 +1285,11 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             }
                                         }}
                                     >
-
-                                        <div style={{
-                                            position: "relative",
-                                            width: "100%",
-                                            paddingTop: "56.25%", // 16:9 aspect ratio
-                                            backgroundColor: "#000"
-                                        }}>
+                                        <div style={{ position: "relative", width: "100%", paddingTop: "56.25%", backgroundColor: "#000" }}>
                                             <img
                                                 src={src}
                                                 alt={`Slide ${index + 1}`}
-                                                style={{
-                                                    position: "absolute",
-                                                    top: 0,
-                                                    left: 0,
-                                                    width: "100%",
-                                                    height: "100%",
-                                                    objectFit: "contain",
-                                                    display: "block"
-                                                }}
+                                                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "contain", display: "block" }}
                                             />
                                         </div>
 
@@ -1653,11 +1297,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             position: "absolute",
                                             top: "8px",
                                             left: "8px",
-                                            backgroundColor: isCurrent
-                                                ? "#3ba55c"
-                                                : isNext
-                                                    ? "#5865F2"
-                                                    : "rgba(0,0,0,0.75)",
+                                            backgroundColor: isCurrent ? "#3ba55c" : isNext ? "#5865F2" : "rgba(0,0,0,0.75)",
                                             color: "white",
                                             padding: "4px 8px",
                                             borderRadius: "6px",
@@ -1673,40 +1313,14 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                             #{index + 1}
                                         </div>
 
-                                        <div style={{
-                                            position: "absolute",
-                                            top: "8px",
-                                            right: "8px",
-                                            display: "flex",
-                                            gap: "6px"
-                                        }}>
-
+                                        <div style={{ position: "absolute", top: "8px", right: "8px", display: "flex", gap: "6px" }}>
                                             <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setPreviewImage(src);
-                                                }}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    color: "white",
-                                                    border: "none",
-                                                    borderRadius: "6px",
-                                                    width: "28px",
-                                                    height: "28px",
-                                                    cursor: "pointer",
-                                                    fontSize: "14px",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    backdropFilter: "blur(4px)",
-                                                    transition: "background-color 0.15s"
-                                                }}
+                                                onClick={(e) => { e.stopPropagation(); setPreviewImage(src); }}
+                                                style={{ backgroundColor: "rgba(0,0,0,0.75)", color: "white", border: "none", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", transition: "background-color 0.15s" }}
                                                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(88, 101, 242, 0.9)"}
                                                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(0,0,0,0.75)"}
                                                 title="View"
-                                            >
-                                                🔍
-                                            </button>
+                                            >🔍</button>
 
                                             <button
                                                 onClick={(e) => {
@@ -1716,82 +1330,27 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                                                     a.download = `stream-preview-${index + 1}.jpg`;
                                                     a.click();
                                                 }}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    color: "white",
-                                                    border: "none",
-                                                    borderRadius: "6px",
-                                                    width: "28px",
-                                                    height: "28px",
-                                                    cursor: "pointer",
-                                                    fontSize: "14px",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    backdropFilter: "blur(4px)",
-                                                    transition: "background-color 0.15s"
-                                                }}
+                                                style={{ backgroundColor: "rgba(0,0,0,0.75)", color: "white", border: "none", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", transition: "background-color 0.15s" }}
                                                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(88, 101, 242, 0.9)"}
                                                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(0,0,0,0.75)"}
                                                 title="Download"
-                                            >
-                                                ⬇
-                                            </button>
+                                            >⬇</button>
 
                                             <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDelete(index);
-                                                }}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    color: "white",
-                                                    border: "none",
-                                                    borderRadius: "6px",
-                                                    width: "28px",
-                                                    height: "28px",
-                                                    cursor: "pointer",
-                                                    fontSize: "14px",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    backdropFilter: "blur(4px)",
-                                                    transition: "background-color 0.15s"
-                                                }}
+                                                onClick={(e) => { e.stopPropagation(); handleDelete(index); }}
+                                                style={{ backgroundColor: "rgba(0,0,0,0.75)", color: "white", border: "none", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", transition: "background-color 0.15s" }}
                                                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(237, 66, 69, 0.9)"}
                                                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(0,0,0,0.75)"}
                                                 title="Delete"
-                                            >
-                                                ✕
-                                            </button>
+                                            >✕</button>
                                         </div>
 
                                         {isCurrent && (
-                                            <div style={{
-                                                position: "absolute",
-                                                bottom: 0,
-                                                left: 0,
-                                                right: 0,
-                                                height: "4px",
-                                                backgroundColor: "#3ba55c",
-                                                borderRadius: "0 0 5px 5px"
-                                            }} />
+                                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "4px", backgroundColor: "#3ba55c", borderRadius: "0 0 5px 5px" }} />
                                         )}
 
                                         {imageSizes[index] && (
-                                            <div style={{
-                                                position: "absolute",
-                                                bottom: "6px",
-                                                right: "8px",
-                                                backgroundColor: "rgba(0,0,0,0.8)",
-                                                color: "white",
-                                                padding: "4px 8px",
-                                                borderRadius: "4px",
-                                                fontSize: "11px",
-                                                fontWeight: "500",
-                                                backdropFilter: "blur(4px)",
-                                                whiteSpace: "nowrap"
-                                            }}>
+                                            <div style={{ position: "absolute", bottom: "6px", right: "8px", backgroundColor: "rgba(0,0,0,0.8)", color: "white", padding: "4px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: "500", backdropFilter: "blur(4px)", whiteSpace: "nowrap" }}>
                                                 📦 {formatFileSize(imageSizes[index])}
                                             </div>
                                         )}
@@ -1800,32 +1359,14 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                             })}
                         </div>
                     ) : (
-                        <div style={{
-                            padding: "40px",
-                            textAlign: "center",
-                            backgroundColor: "var(--background-secondary)",
-                            borderRadius: "12px",
-                            border: "2px dashed var(--background-modifier-accent)"
-                        }}>
+                        <div style={{ padding: "40px", textAlign: "center", backgroundColor: "var(--background-secondary)", borderRadius: "12px", border: "2px dashed var(--background-modifier-accent)" }}>
                             <div style={{ fontSize: "48px", marginBottom: "12px" }}>📷</div>
-                            <Text variant="text-lg/semibold" style={{ color: "var(--text-normal)", marginBottom: "8px" }}>
-                                No images
-                            </Text>
-                            <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>
-                                Drag images here or click "Add Image"
-                            </Text>
+                            <Text variant="text-lg/semibold" style={{ color: "var(--text-normal)", marginBottom: "8px" }}>No images</Text>
+                            <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>Drag images here or click "Add Image"</Text>
                         </div>
                     )}
 
-                    <div style={{
-                        marginTop: "16px",
-                        padding: "10px 14px",
-                        backgroundColor: "var(--background-secondary)",
-                        borderRadius: "6px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px"
-                    }}>
+                    <div style={{ marginTop: "16px", padding: "10px 14px", backgroundColor: "var(--background-secondary)", borderRadius: "6px", display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "16px" }}>💾</span>
                         <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
                             Images stored locally • Limit: {MAX_IMAGES_PER_PROFILE} images per profile
@@ -1839,23 +1380,8 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                         📁 {profiles.get(currentProfileId)?.name || "Default"}: {images.length} / {MAX_IMAGES_PER_PROFILE} images
                     </Text>
                     <div style={{ display: "flex", gap: "10px" }}>
-                        <Button
-                            onClick={handleCancel}
-                            style={{
-                                padding: "10px 20px"
-                            }}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            color={Button.Colors.GREEN}
-                            onClick={handleSave}
-                            style={{
-                                padding: "10px 24px"
-                            }}
-                        >
-                            ✓ Save
-                        </Button>
+                        <Button onClick={handleCancel} style={{ padding: "10px 20px" }}>Cancel</Button>
+                        <Button color={Button.Colors.GREEN} onClick={handleSave} style={{ padding: "10px 24px" }}>✓ Save</Button>
                     </div>
                 </div>
             </ModalFooter>
@@ -1878,53 +1404,17 @@ function StreamPreviewIcon({ imageCount, isEnabled, isSlideshowEnabled, isRandom
     return (
         <div style={{ position: "relative" }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-
-                <path
-                    fill="currentColor"
-                    d="M21 3H3C1.9 3 1 3.9 1 5V17C1 18.1 1.9 19 3 19H8V21H16V19H21C22.1 19 23 18.1 23 17V5C23 3.9 22.1 3 21 3ZM21 17H3V5H21V17Z"
-                />
-
-                <path
-                    fill={isEnabled ? "var(--status-positive)" : "currentColor"}
-                    d="M12 7C10.34 7 9 8.34 9 10C9 11.66 10.34 13 12 13C13.66 13 15 11.66 15 10C15 8.34 13.66 7 12 7Z"
-                />
-                <path
-                    fill={isEnabled ? "var(--status-positive)" : "currentColor"}
-                    d="M18 14L15 11L12 14L9 11L6 14V15H18V14Z"
-                />
+                <path fill="currentColor" d="M21 3H3C1.9 3 1 3.9 1 5V17C1 18.1 1.9 19 3 19H8V21H16V19H21C22.1 19 23 18.1 23 17V5C23 3.9 22.1 3 21 3ZM21 17H3V5H21V17Z" />
+                <path fill={isEnabled ? "var(--status-positive)" : "currentColor"} d="M12 7C10.34 7 9 8.34 9 10C9 11.66 10.34 13 12 13C13.66 13 15 11.66 15 10C15 8.34 13.66 7 12 7Z" />
+                <path fill={isEnabled ? "var(--status-positive)" : "currentColor"} d="M18 14L15 11L12 14L9 11L6 14V15H18V14Z" />
             </svg>
-
             {imageCount > 1 && isSlideshowEnabled && isEnabled && (
-                <div style={{
-                    position: "absolute",
-                    top: "-4px",
-                    right: "-6px",
-                    backgroundColor: "var(--status-positive)",
-                    color: "white",
-                    fontSize: "9px",
-                    fontWeight: "bold",
-                    borderRadius: "6px",
-                    minWidth: "12px",
-                    height: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "0 3px"
-                }}>
+                <div style={{ position: "absolute", top: "-4px", right: "-6px", backgroundColor: "var(--status-positive)", color: "white", fontSize: "9px", fontWeight: "bold", borderRadius: "6px", minWidth: "12px", height: "12px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
                     {imageCount}
                 </div>
             )}
-
             {imageCount > 1 && isSlideshowEnabled && isRandom && isEnabled && (
-                <div style={{
-                    position: "absolute",
-                    bottom: "-4px",
-                    right: "-6px",
-                    fontSize: "10px",
-                    lineHeight: "1"
-                }}>
-                    🎲
-                </div>
+                <div style={{ position: "absolute", bottom: "-4px", right: "-6px", fontSize: "10px", lineHeight: "1" }}>🎲</div>
             )}
         </div>
     );
@@ -1970,8 +1460,9 @@ function StreamPreviewPanelButton(props: { nameplate?: any; }) {
         imageChangeListeners.add(updateState);
 
         const timerInterval = setInterval(() => {
-            setStreamActive(isStreamActive);
-            if (lastSlideChangeTime > 0 && isStreamActive) {
+            if (!isStreamActive) return;
+            setStreamActive(true);
+            if (lastSlideChangeTime > 0) {
                 setSecondsAgo(Math.floor((Date.now() - lastSlideChangeTime) / 1000));
             }
         }, 1000);
@@ -1985,18 +1476,11 @@ function StreamPreviewPanelButton(props: { nameplate?: any; }) {
     const getTooltip = () => {
         if (imageCount === 0) return "Select Stream Preview";
         if (!isEnabled) return `Stream preview (disabled, ${imageCount} images)`;
-
-        const timeInfo = lastSlideChangeTime > 0 && streamActive
-            ? `\n⏱️ sent ${formatTime(secondsAgo)} ago`
-            : streamActive ? "" : "\n⚫ Stream not active";
-
+        const timeInfo = lastSlideChangeTime > 0 && streamActive ? `\n⏱️ sent ${formatTime(secondsAgo)} ago` : streamActive ? "" : "\n⚫ Stream not active";
         if (imageCount === 1) return `Stream preview (1 image)${timeInfo}`;
-
         if (isSlideshowEnabled) {
             const slideInfo = `\n📍 Current: #${currentIndex + 1}`;
-            if (isRandom) {
-                return `Stream preview (${imageCount} images, random)${slideInfo}${timeInfo}`;
-            }
+            if (isRandom) return `Stream preview (${imageCount} images, random)${slideInfo}${timeInfo}`;
             return `Stream preview (${imageCount} images, slideshow)${slideInfo}${timeInfo}`;
         }
         return `Stream preview (${imageCount} images)${timeInfo}`;
@@ -2004,41 +1488,16 @@ function StreamPreviewPanelButton(props: { nameplate?: any; }) {
 
     const renderTooltip = () => {
         const tooltipText = getTooltip();
-
         if (currentImageUri && isEnabled && imageCount > 0 && streamActive) {
             return (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-                    <div style={{
-                        width: "160px",
-                        height: "90px",
-                        borderRadius: "4px",
-                        overflow: "hidden",
-                        border: "2px solid var(--status-positive)",
-                        boxShadow: "0 0 8px rgba(59, 165, 92, 0.5)"
-                    }}>
-                        <img
-                            src={currentImageUri}
-                            alt="Preview"
-                            style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                display: "block"
-                            }}
-                        />
+                    <div style={{ width: "160px", height: "90px", borderRadius: "4px", overflow: "hidden", border: "2px solid var(--status-positive)", boxShadow: "0 0 8px rgba(59, 165, 92, 0.5)" }}>
+                        <img src={currentImageUri} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                     </div>
-                    <div style={{
-                        whiteSpace: "pre-line",
-                        textAlign: "center",
-                        fontSize: "12px",
-                        lineHeight: "1.4"
-                    }}>
-                        {tooltipText}
-                    </div>
+                    <div style={{ whiteSpace: "pre-line", textAlign: "center", fontSize: "12px", lineHeight: "1.4" }}>{tooltipText}</div>
                 </div>
             );
         }
-
         return tooltipText;
     };
 
@@ -2070,38 +1529,19 @@ interface StreamContextProps {
 const streamContextMenuPatch: NavContextMenuPatchCallback = (children: any[], { stream }: StreamContextProps) => {
     const currentUser = UserStore.getCurrentUser();
     if (!currentUser || stream.ownerId !== currentUser.id) return;
-
     const group = findGroupChildrenByChildId(["fullscreen", "popout"], children);
-
     if (group) {
-        group.push(
-            <Menu.MenuItem
-                id="custom-stream-preview"
-                label="Custom Stream Preview"
-                icon={ImageIcon}
-                action={openImagePicker}
-            />
-        );
+        group.push(<Menu.MenuItem id="custom-stream-preview" label="Custom Stream Preview" icon={ImageIcon} action={openImagePicker} />);
     } else {
-        children.push(
-            <Menu.MenuSeparator />,
-            <Menu.MenuItem
-                id="custom-stream-preview"
-                label="Custom Stream Preview"
-                icon={ImageIcon}
-                action={openImagePicker}
-            />
-        );
+        children.push(<Menu.MenuSeparator />, <Menu.MenuItem id="custom-stream-preview" label="Custom Stream Preview" icon={ImageIcon} action={openImagePicker} />);
     }
 };
 
 function advanceSlide() {
     if (cachedDataUris.length <= 1) return;
-    if (settings.store.slideshowRandom) {
-        currentSlideIndex = getRandomNext();
-    } else {
-        currentSlideIndex = (currentSlideIndex + 1) % cachedDataUris.length;
-    }
+    currentSlideIndex = settings.store.slideshowRandom
+        ? getRandomNext()
+        : (currentSlideIndex + 1) % cachedDataUris.length;
     getActiveProfile().currentIndex = currentSlideIndex;
     notifyImageChange();
 }
@@ -2167,13 +1607,11 @@ function isBypassEnabled(): boolean {
 
 function getCustomThumbnail(originalThumbnail: string): string {
     isStreamActive = true;
-
     if (!settings.store.replaceEnabled || cachedDataUris.length === 0) {
         actualStreamImageUri = null;
         notifyImageChange();
         return originalThumbnail;
     }
-
     const idx = Math.min(currentSlideIndex, cachedDataUris.length - 1);
     lastSlideChangeTime = Date.now();
     actualStreamImageUri = cachedDataUris[idx];
@@ -2184,31 +1622,13 @@ function getCustomThumbnail(originalThumbnail: string): string {
 
 const manageStreamsContextPatch: NavContextMenuPatchCallback = (children: any[]) => {
     const group = findGroupChildrenByChildId(["manage-streams-stop-streaming", "manage-streams-change-windows"], children);
-    const item = (
-        <Menu.MenuItem
-            id="custom-stream-preview-manage"
-            label="Custom Stream Preview"
-            icon={ImageIcon}
-            action={openImagePicker}
-        />
-    );
-    if (group) {
-        group.push(item);
-    } else {
-        children.push(<Menu.MenuSeparator />, item);
-    }
+    const item = <Menu.MenuItem id="custom-stream-preview-manage" label="Custom Stream Preview" icon={ImageIcon} action={openImagePicker} />;
+    if (group) group.push(item);
+    else children.push(<Menu.MenuSeparator />, item);
 };
 
 const streamOptionsContextPatch: NavContextMenuPatchCallback = (children: any[]) => {
-    const item = (
-        <Menu.MenuItem
-            id="custom-stream-preview-options"
-            label="Custom Stream Preview"
-            icon={ImageIcon}
-            action={openImagePicker}
-        />
-    );
-    children.push(<Menu.MenuSeparator />, item);
+    children.push(<Menu.MenuSeparator />, <Menu.MenuItem id="custom-stream-preview-options" label="Custom Stream Preview" icon={ImageIcon} action={openImagePicker} />);
 };
 
 export default definePlugin({
@@ -2277,8 +1697,7 @@ export default definePlugin({
 
         const onStreamCreate = (e: any) => {
             const key: string = e?.streamKey ?? "";
-            const userId = key.split(":").pop();
-            if (userId !== myId()) return;
+            if (key.split(":").pop() !== myId()) return;
             capturedStreamKey = key;
             isStreamActive = true;
             notifyImageChange();
@@ -2287,8 +1706,7 @@ export default definePlugin({
 
         const onStreamUpdate = (e: any) => {
             const key: string = e?.streamKey ?? "";
-            const userId = key.split(":").pop();
-            if (userId !== myId()) return;
+            if (key.split(":").pop() !== myId()) return;
             capturedStreamKey = key;
             isStreamActive = true;
             notifyImageChange();
@@ -2297,8 +1715,7 @@ export default definePlugin({
 
         const onStreamDelete = (e: any) => {
             const key: string = e?.streamKey ?? "";
-            const userId = key.split(":").pop();
-            if (userId !== myId()) return;
+            if (key.split(":").pop() !== myId()) return;
             isStreamActive = false;
             capturedStreamKey = null;
             actualStreamImageUri = null;
@@ -2317,11 +1734,8 @@ export default definePlugin({
             instantTimer = setTimeout(() => {
                 if (cachedDataUris.length > 0) {
                     if (settings.store.instantSlideshow && settings.store.slideshowEnabled && cachedDataUris.length > 1) {
-                        if (userSelectedIndex !== null) {
-                            userSelectedIndex = null;
-                        } else {
-                            advanceSlide();
-                        }
+                        if (userSelectedIndex !== null) userSelectedIndex = null;
+                        else advanceSlide();
                     }
                     if (settings.store.instantSlideshow || settings.store.bypassPreviewToggle) {
                         forceUploadPreview();
@@ -2331,7 +1745,6 @@ export default definePlugin({
             }, ms);
         };
         scheduleTimer();
-
     },
 
     stop() {
@@ -2344,7 +1757,6 @@ export default definePlugin({
             FluxDispatcher.unsubscribe("STREAM_DELETE", h.onStreamDelete);
             FluxDispatcher.unsubscribe("STREAM_STOP", h.onStreamDelete);
         }
-        cachedImages = [];
         cachedDataUris = [];
         currentSlideIndex = 0;
         isStreamActive = false;
