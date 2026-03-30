@@ -1,6 +1,13 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import definePlugin, { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
-import { Menu, Toasts } from "@webpack/common";
+import { findByCodeLazy, findByPropsLazy } from "@webpack";
+import { ChannelStore, FluxDispatcher, Menu, SelectedChannelStore, Toasts, UserStore } from "@webpack/common";
 
 const settings = definePluginSettings({
     intervalMs: {
@@ -10,55 +17,57 @@ const settings = definePluginSettings({
     }
 });
 
-let interval: ReturnType<typeof setInterval> | null = null;
-let keyListener: ((e: KeyboardEvent) => void) | null = null;
-let observer: MutationObserver | null = null;
-let on = false;
+const streamStart    = findByCodeLazy('dispatch({type:"STREAM_START"');
+const mediaEngine    = findByPropsLazy("getMediaEngine");
+const desktopSources = findByCodeLazy("desktop sources");
+
+let interval:    ReturnType<typeof setInterval> | null = null;
+let keyListener: ((e: KeyboardEvent) => void)  | null = null;
+let observer:    MutationObserver              | null = null;
+let on  = false;
 let src: any = null;
+let uid = "";
 
-function hidePanels() {
-    document.querySelectorAll<HTMLElement>('[class*="activityPanel"]').forEach(el => {
-        el.style.display = "none";
-    });
-}
-
-function showPanels() {
-    document.querySelectorAll<HTMLElement>('[class*="activityPanel"]').forEach(el => {
-        el.style.display = "";
+let rafPending = false;
+function removeActivityPanels() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+        rafPending = false;
+        document.querySelectorAll('[class*="activityPanel"]').forEach(el => el.remove());
     });
 }
 
 function startObserver() {
-    hidePanels();
-    observer = new MutationObserver(hidePanels);
+    removeActivityPanels();
+    observer = new MutationObserver(removeActivityPanels);
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function stopObserver() {
     observer?.disconnect();
     observer = null;
-    showPanels();
 }
 
 function streamKey(guildId: string, channelId: string): string {
-    return `guild:${guildId}:${channelId}:${Vencord.Webpack.Common.UserStore.getCurrentUser().id}`;
+    return `guild:${guildId}:${channelId}:${uid}`;
 }
 
 function forceClose() {
-    const channelId = Vencord.Webpack.Common.SelectedChannelStore.getVoiceChannelId();
+    const channelId = SelectedChannelStore.getVoiceChannelId();
     if (!channelId) return;
-    const channel = Vencord.Webpack.Common.ChannelStore.getChannel(channelId);
+    const channel = ChannelStore.getChannel(channelId);
     const key = streamKey(channel.guild_id, channelId);
-    Vencord.Webpack.Common.FluxDispatcher.dispatch({ type: "STREAM_STOP", streamKey: key });
-    Vencord.Webpack.Common.FluxDispatcher.dispatch({ type: "STREAM_DELETE", streamKey: key });
+    FluxDispatcher.dispatch({ type: "STREAM_STOP",   streamKey: key });
+    FluxDispatcher.dispatch({ type: "STREAM_DELETE", streamKey: key });
 }
 
 function tick() {
-    const channelId = Vencord.Webpack.Common.SelectedChannelStore.getVoiceChannelId();
+    const channelId = SelectedChannelStore.getVoiceChannelId();
     if (!channelId) { stopSpam(); return; }
-    const channel = Vencord.Webpack.Common.ChannelStore.getChannel(channelId);
+    const channel = ChannelStore.getChannel(channelId);
     if (!on) {
-        Vencord.Webpack.findByCode('dispatch({type:"STREAM_START"')(channel.guild_id, channelId, {
+        streamStart(channel.guild_id, channelId, {
             pid: null, sourceId: src.id, sourceName: src.name,
             audioSourceId: null, sound: true, previewDisabled: false
         });
@@ -76,14 +85,16 @@ function stopSpam() {
     if (keyListener) { document.removeEventListener("keydown", keyListener); keyListener = null; }
     if (on) { forceClose(); on = false; }
     src = null;
+    uid = "";
     stopObserver();
     Toasts.show({ message: "⏹ ScreenshareSpammer - Stopped", type: Toasts.Type.SUCCESS, id: Toasts.genId(), options: { duration: 1500 } });
 }
 
 async function startSpam() {
     if (interval) return;
-    const engine = Vencord.Webpack.findByProps("getMediaEngine").getMediaEngine();
-    src = await Vencord.Webpack.findByCode("desktop sources")(engine, ["screen"], null);
+    uid = UserStore.getCurrentUser().id;
+    const engine = mediaEngine.getMediaEngine();
+    src = await desktopSources(engine, ["screen"], null);
     keyListener = (e: KeyboardEvent) => {
         if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === "S") { e.preventDefault(); stopSpam(); }
     };
