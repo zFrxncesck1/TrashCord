@@ -38,6 +38,11 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Enable debug logging",
         default: false
+    },
+    prefix: {
+        type: OptionType.STRING,
+        description: "Command prefix",
+        default: ">"
     }
 });
 
@@ -55,6 +60,16 @@ function normalizeDomain(input: string): string {
         .replace(/^www\./, "")
         .replace(/\/.*$/, "")
         .replace(/\.$/, "");
+}
+
+function isValidIPv4(ip: string): boolean {
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipRegex.test(ip)) return false;
+
+    return ip.split(".").every(octet => {
+        const num = Number(octet);
+        return Number.isInteger(num) && num >= 0 && num <= 255;
+    });
 }
 
 async function getDomainInfo(domain: string): Promise<DomainInfo | null> {
@@ -196,120 +211,149 @@ function createIPMessage(info: IPInfo) {
     ].join("\n");
 }
 
+async function runDomainLookup(channelId: string, rawDomain: string) {
+    const domain = normalizeDomain(rawDomain);
+    logDebug("Looking up domain:", domain);
+
+    sendBotMessage(channelId, {
+        content: "Looking up domain information..."
+    });
+
+    const info = await getDomainInfo(domain);
+
+    if (!info) {
+        sendBotMessage(channelId, {
+            content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
+        });
+        return;
+    }
+
+    sendBotMessage(channelId, {
+        content: createDomainMessage(info)
+    });
+}
+
+async function runIPLookup(channelId: string, ip: string) {
+    logDebug("Looking up IP:", ip);
+
+    sendBotMessage(channelId, {
+        content: "Looking up IP information..."
+    });
+
+    const info = await getIPInfo(ip);
+
+    if (!info) {
+        sendBotMessage(channelId, {
+            content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
+        });
+        return;
+    }
+
+    sendBotMessage(channelId, {
+        content: createIPMessage(info)
+    });
+}
+
+function parseAndHandleMessage(text: string, channelId: string): boolean {
+    const prefix = settings.store.prefix || ">";
+    if (!text.startsWith(prefix)) return false;
+
+    const withoutPrefix = text.slice(prefix.length).trim();
+    if (!withoutPrefix.length) return false;
+
+    const [command, ...rest] = withoutPrefix.split(/\s+/);
+    const arg = rest.join(" ").trim();
+
+    if (command === "domain") {
+        if (!arg) {
+            sendBotMessage(channelId, {
+                content: "Please provide a domain name!\nExample: >domain google.com"
+            });
+            return true;
+        }
+
+        void runDomainLookup(channelId, arg);
+        return true;
+    }
+
+    if (command === "iplookup") {
+        if (!arg) {
+            sendBotMessage(channelId, {
+                content: "Please provide an IP address!\nExample: >iplookup 1.1.1.1"
+            });
+            return true;
+        }
+
+        if (!isValidIPv4(arg)) {
+            sendBotMessage(channelId, {
+                content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
+            });
+            return true;
+        }
+
+        void runIPLookup(channelId, arg);
+        return true;
+    }
+
+    return false;
+}
+
+let removeKeydownListener: (() => void) | null = null;
+
 export default definePlugin({
     name: "OSINTToolkit",
     description: "OSINT - Domain age lookup & IP information",
     authors: [{ name: "Irritably", id: 928787166916640838n }],
     settings,
 
-    commands: [
-        {
-            name: "domain",
-            description: "Get domain registration information and age (FREE - No API key)",
-            predicate: () => true,
-            options: [
-                {
-                    name: "domain",
-                    description: "The domain to lookup (e.g., google.com)",
-                    type: 3,
-                    required: true
-                }
-            ],
-            execute: async (args: any[], ctx: any) => {
-                const domainInput = args[0]?.value as string;
+    start() {
+        const handler = (event: KeyboardEvent) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
 
-                if (!domainInput) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Please provide a domain name!"
-                    });
-                    return;
-                }
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
 
-                const domain = normalizeDomain(domainInput);
-                logDebug("Looking up domain:", domain);
+            const isTextbox =
+                target.getAttribute("role") === "textbox" ||
+                target.tagName === "TEXTAREA" ||
+                target.tagName === "INPUT";
 
-                sendBotMessage(ctx.channel.id, {
-                    content: "Looking up domain information..."
-                });
+            if (!isTextbox) return;
 
-                const info = await getDomainInfo(domain);
+            const text =
+                (target as HTMLTextAreaElement).value ??
+                target.textContent ??
+                "";
 
-                if (!info) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
-                    });
-                    return;
-                }
+            if (!text.trim()) return;
 
-                sendBotMessage(ctx.channel.id, {
-                    content: createDomainMessage(info)
-                });
+            const channelId =
+                location.pathname.split("/").filter(Boolean).pop();
+
+            if (!channelId) return;
+
+            const handled = parseAndHandleMessage(text.trim(), channelId);
+
+            if (!handled) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if ("value" in (target as HTMLTextAreaElement)) {
+                (target as HTMLTextAreaElement).value = "";
+            } else {
+                target.textContent = "";
             }
-        },
-        {
-            name: "iplookup",
-            description: "Get geolocation and network information for an IP (FREE - No API key)",
-            predicate: () => true,
-            options: [
-                {
-                    name: "ip",
-                    description: "The IP address to lookup (IPv4)",
-                    type: 3,
-                    required: true
-                }
-            ],
-            execute: async (args: any[], ctx: any) => {
-                const ipInput = args[0]?.value as string;
 
-                if (!ipInput) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Please provide an IP address!"
-                    });
-                    return;
-                }
+            target.dispatchEvent(new Event("input", { bubbles: true }));
+        };
 
-                const ip = ipInput.trim();
+        document.addEventListener("keydown", handler, true);
+        removeKeydownListener = () => document.removeEventListener("keydown", handler, true);
+    },
 
-                const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-                if (!ipRegex.test(ip)) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
-                    });
-                    return;
-                }
-
-                const octets = ip.split(".");
-                const validOctets = octets.every(octet => {
-                    const num = Number(octet);
-                    return Number.isInteger(num) && num >= 0 && num <= 255;
-                });
-
-                if (!validOctets) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Invalid IP address! Each number must be between 0-255"
-                    });
-                    return;
-                }
-
-                logDebug("Looking up IP:", ip);
-
-                sendBotMessage(ctx.channel.id, {
-                    content: "Looking up IP information..."
-                });
-
-                const info = await getIPInfo(ip);
-
-                if (!info) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
-                    });
-                    return;
-                }
-
-                sendBotMessage(ctx.channel.id, {
-                    content: createIPMessage(info)
-                });
-            }
-        }
-    ]
+    stop() {
+        removeKeydownListener?.();
+        removeKeydownListener = null;
+    }
 });
