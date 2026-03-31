@@ -39,19 +39,16 @@ const settings = definePluginSettings({
         description: "Enable debug logging",
         default: false
     },
-    prefix: {
-        type: OptionType.STRING,
-        description: "Command prefix used in chat interception",
-        default: ">"
-    },
     availableCommands: {
         type: OptionType.STRING,
         description:
             "Available commands:\n" +
-            ">iplookup 1.1.1.1 - Lookup an IPv4 address\n" +
-            ">domain google.com - Lookup a domain via RDAP\n" +
+            "/domain <domain> - Lookup a domain via RDAP\n" +
+            "/iplookup <ipv4> - Lookup an IPv4 address\n" +
             "\n" +
-            "These commands are intercepted locally by the plugin.",
+            "Example:\n" +
+            "/domain google.com\n" +
+            "/iplookup 1.1.1.1",
         default: "OSINTToolkit command list"
     }
 });
@@ -157,8 +154,8 @@ async function getIPInfo(ip: string): Promise<IPInfo | null> {
             region: data.regionName || data.region,
             country: data.countryCode || data.country,
             countryName: data.countryName || data.country,
-            lat: typeof data.latitude === "number" ? data.latitude : (typeof data.lat === "number" ? data.lat : undefined),
-            lon: typeof data.longitude === "number" ? data.longitude : (typeof data.lon === "number" ? data.lon : undefined),
+            lat: typeof data.latitude === "number" ? data.latitude : undefined,
+            lon: typeof data.longitude === "number" ? data.longitude : undefined,
             org: data.organization || data.asnOrganization || data.org,
             isp: data.isp || data.asnOrganization,
             timezone,
@@ -192,14 +189,16 @@ function createDomainMessage(info: DomainInfo) {
     const ageText = info.registrationDate ? calculateDomainAge(info.registrationDate) : "Unknown";
 
     return [
-        `>>> 🔍 Domain Information: ${info.domain}`,
-        `Registration Date: ${info.registrationDate || "N/A"}`,
-        `Domain Age: ${ageText}`,
-        `Expiration Date: ${info.expirationDate || "N/A"}`,
-        `Registrar: ${info.registrar || "Unknown"}`,
-        `Last Updated: ${info.updatedAt || "N/A"}`,
-        `DNSSEC: ${info.dnssec || "N/A"}`,
-        `Status: ${info.status?.length ? info.status.join(", ") : "N/A"}`
+        "```txt",
+        `[DOMAIN LOOKUP] ${info.domain}`,
+        `Registration : ${info.registrationDate || "N/A"}`,
+        `Age          : ${ageText}`,
+        `Expiration   : ${info.expirationDate || "N/A"}`,
+        `Registrar    : ${info.registrar || "Unknown"}`,
+        `Updated      : ${info.updatedAt || "N/A"}`,
+        `DNSSEC       : ${info.dnssec || "N/A"}`,
+        `Status       : ${info.status?.length ? info.status.join(", ") : "N/A"}`,
+        "```"
     ].join("\n");
 }
 
@@ -210,141 +209,19 @@ function createIPMessage(info: IPInfo) {
             : "Unknown";
 
     return [
-        `>>> 🌐 IP Information: ${info.ip}`,
-        `Location: ${info.city || "Unknown"}, ${info.region || "Unknown"}`,
-        `Country: ${info.countryName || "Unknown"} (${info.country || "?"})`,
-        `Timezone: ${info.timezone || "Unknown"}`,
-        `ZIP Code: ${info.zip || "Unknown"}`,
-        `ISP: ${info.isp || "Unknown"}`,
-        `Organization: ${info.org || "Unknown"}`,
-        `Coordinates: ${coordinates}`
+        "```txt",
+        `[IP LOOKUP] ${info.ip}`,
+        `City         : ${info.city || "Unknown"}`,
+        `Region       : ${info.region || "Unknown"}`,
+        `Country      : ${info.countryName || "Unknown"} (${info.country || "?"})`,
+        `Timezone     : ${info.timezone || "Unknown"}`,
+        `ZIP Code     : ${info.zip || "Unknown"}`,
+        `ISP          : ${info.isp || "Unknown"}`,
+        `Organization : ${info.org || "Unknown"}`,
+        `Coordinates  : ${coordinates}`,
+        "```"
     ].join("\n");
 }
-
-async function runDomainLookup(channelId: string, rawDomain: string) {
-    const domain = normalizeDomain(rawDomain);
-    logDebug("Looking up domain:", domain);
-
-    sendBotMessage(channelId, {
-        content: "Looking up domain information..."
-    });
-
-    const info = await getDomainInfo(domain);
-
-    if (!info) {
-        sendBotMessage(channelId, {
-            content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
-        });
-        return;
-    }
-
-    sendBotMessage(channelId, {
-        content: createDomainMessage(info)
-    });
-}
-
-async function runIPLookup(channelId: string, ip: string) {
-    logDebug("Looking up IP:", ip);
-
-    sendBotMessage(channelId, {
-        content: "Looking up IP information..."
-    });
-
-    const info = await getIPInfo(ip);
-
-    if (!info) {
-        sendBotMessage(channelId, {
-            content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
-        });
-        return;
-    }
-
-    sendBotMessage(channelId, {
-        content: createIPMessage(info)
-    });
-}
-
-function parseAndHandleMessage(text: string, channelId: string): boolean {
-    const prefix = settings.store.prefix || ">";
-    if (!text.startsWith(prefix)) return false;
-
-    const withoutPrefix = text.slice(prefix.length).trim();
-    if (!withoutPrefix.length) return false;
-
-    const [command, ...rest] = withoutPrefix.split(/\s+/);
-    const arg = rest.join(" ").trim();
-
-    if (command === "domain") {
-        if (!arg) {
-            sendBotMessage(channelId, {
-                content: "Please provide a domain name!\nExample: >domain google.com"
-            });
-            return true;
-        }
-
-        void runDomainLookup(channelId, arg);
-        return true;
-    }
-
-    if (command === "iplookup") {
-        if (!arg) {
-            sendBotMessage(channelId, {
-                content: "Please provide an IP address!\nExample: >iplookup 1.1.1.1"
-            });
-            return true;
-        }
-
-        if (!isValidIPv4(arg)) {
-            sendBotMessage(channelId, {
-                content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
-            });
-            return true;
-        }
-
-        void runIPLookup(channelId, arg);
-        return true;
-    }
-
-    return false;
-}
-
-function clearComposer(target: HTMLElement) {
-    try {
-        if ("value" in (target as HTMLTextAreaElement)) {
-            const input = target as HTMLTextAreaElement;
-            input.value = "";
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-            return;
-        }
-
-        target.textContent = "";
-
-        target.dispatchEvent(new InputEvent("beforeinput", {
-            bubbles: true,
-            cancelable: true,
-            inputType: "deleteContentBackward",
-            data: null
-        }));
-
-        target.dispatchEvent(new InputEvent("input", {
-            bubbles: true,
-            inputType: "deleteContentBackward",
-            data: null
-        }));
-
-        target.dispatchEvent(new Event("change", { bubbles: true }));
-
-        const selection = window.getSelection();
-        if (selection) {
-            selection.removeAllRanges();
-        }
-    } catch (err) {
-        console.error("[OSINT] Failed to clear composer:", err);
-    }
-}
-
-let removeListeners: (() => void) | null = null;
 
 export default definePlugin({
     name: "OSINTToolkit",
@@ -352,89 +229,100 @@ export default definePlugin({
     authors: [{ name: "Irritably", id: 928787166916640838n }],
     settings,
 
-    start() {
-        const handler = (event: KeyboardEvent) => {
-            if (event.key !== "Enter" || event.shiftKey) return;
+    commands: [
+        {
+            name: "domain",
+            description: "Get domain registration information and age",
+            predicate: () => true,
+            options: [
+                {
+                    name: "domain",
+                    description: "The domain to lookup (e.g., google.com)",
+                    type: 3,
+                    required: true
+                }
+            ],
+            execute: async (args: any[], ctx: any) => {
+                const domainInput = args[0]?.value as string;
 
-            const target = event.target as HTMLElement | null;
-            if (!target) return;
+                if (!domainInput) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: "Please provide a domain name!"
+                    });
+                    return;
+                }
 
-            const isTextbox =
-                target.getAttribute("role") === "textbox" ||
-                target.tagName === "TEXTAREA" ||
-                target.tagName === "INPUT";
+                const domain = normalizeDomain(domainInput);
+                logDebug("Looking up domain:", domain);
 
-            if (!isTextbox) return;
+                sendBotMessage(ctx.channel.id, {
+                    content: "Looking up domain information..."
+                });
 
-            const text =
-                (target as HTMLTextAreaElement).value ??
-                target.textContent ??
-                "";
+                const info = await getDomainInfo(domain);
 
-            if (!text.trim()) return;
+                if (!info) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
+                    });
+                    return;
+                }
 
-            const channelId = location.pathname.split("/").filter(Boolean).pop();
-            if (!channelId) return;
+                sendBotMessage(ctx.channel.id, {
+                    content: createDomainMessage(info)
+                });
+            }
+        },
+        {
+            name: "iplookup",
+            description: "Get geolocation and network information for an IP",
+            predicate: () => true,
+            options: [
+                {
+                    name: "ip",
+                    description: "The IP address to lookup (IPv4)",
+                    type: 3,
+                    required: true
+                }
+            ],
+            execute: async (args: any[], ctx: any) => {
+                const ipInput = args[0]?.value as string;
 
-            const handled = parseAndHandleMessage(text.trim(), channelId);
-            if (!handled) return;
+                if (!ipInput) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: "Please provide an IP address!"
+                    });
+                    return;
+                }
 
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
+                const ip = ipInput.trim();
 
-            clearComposer(target);
-        };
+                if (!isValidIPv4(ip)) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
+                    });
+                    return;
+                }
 
-        const keyupHandler = (event: KeyboardEvent) => {
-            if (event.key !== "Enter") return;
+                logDebug("Looking up IP:", ip);
 
-            const target = event.target as HTMLElement | null;
-            if (!target) return;
+                sendBotMessage(ctx.channel.id, {
+                    content: "Looking up IP information..."
+                });
 
-            const isTextbox =
-                target.getAttribute("role") === "textbox" ||
-                target.tagName === "TEXTAREA" ||
-                target.tagName === "INPUT";
+                const info = await getIPInfo(ip);
 
-            if (!isTextbox) return;
+                if (!info) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
+                    });
+                    return;
+                }
 
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-        };
-
-        const keypressHandler = (event: KeyboardEvent) => {
-            if (event.key !== "Enter") return;
-
-            const target = event.target as HTMLElement | null;
-            if (!target) return;
-
-            const isTextbox =
-                target.getAttribute("role") === "textbox" ||
-                target.tagName === "TEXTAREA" ||
-                target.tagName === "INPUT";
-
-            if (!isTextbox) return;
-
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-        };
-
-        document.addEventListener("keydown", handler, true);
-        document.addEventListener("keyup", keyupHandler, true);
-        document.addEventListener("keypress", keypressHandler, true);
-
-        removeListeners = () => {
-            document.removeEventListener("keydown", handler, true);
-            document.removeEventListener("keyup", keyupHandler, true);
-            document.removeEventListener("keypress", keypressHandler, true);
-        };
-    },
-
-    stop() {
-        removeListeners?.();
-        removeListeners = null;
-    }
+                sendBotMessage(ctx.channel.id, {
+                    content: createIPMessage(info)
+                });
+            }
+        }
+    ]
 });
