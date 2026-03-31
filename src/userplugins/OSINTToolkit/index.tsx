@@ -5,7 +5,7 @@
  */
 
 import { definePluginSettings } from "@api/Settings";
-import { sendBotMessage } from "@api/Commands";
+import { ApplicationCommandInputType, sendBotMessage } from "@api/Commands";
 import definePlugin, { OptionType } from "@utils/types";
 
 interface DomainInfo {
@@ -45,10 +45,12 @@ const settings = definePluginSettings({
             "Available commands:\n" +
             "/domain <domain> - Lookup a domain via RDAP\n" +
             "/iplookup <ipv4> - Lookup an IPv4 address\n" +
+            "/myip - Show your public IP information\n" +
             "\n" +
             "Example:\n" +
             "/domain google.com\n" +
-            "/iplookup 1.1.1.1",
+            "/iplookup 1.1.1.1\n" +
+            "/myip",
         default: "OSINTToolkit command list"
     }
 });
@@ -167,6 +169,40 @@ async function getIPInfo(ip: string): Promise<IPInfo | null> {
     }
 }
 
+async function getMyIP(): Promise<IPInfo | null> {
+    try {
+        const response = await fetch("https://free.freeipapi.com/api/json");
+
+        if (!response.ok) {
+            throw new Error(`My IP lookup failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const timezone =
+            Array.isArray(data.timeZones) && data.timeZones.length > 0
+                ? data.timeZones[0]
+                : data.timeZone || data.timezone;
+
+        return {
+            ip: data.ipAddress || data.ip,
+            city: data.cityName || data.city,
+            region: data.regionName || data.region,
+            country: data.countryCode || data.country,
+            countryName: data.countryName || data.country,
+            lat: typeof data.latitude === "number" ? data.latitude : undefined,
+            lon: typeof data.longitude === "number" ? data.longitude : undefined,
+            org: data.organization || data.asnOrganization || data.org,
+            isp: data.isp || data.asnOrganization,
+            timezone,
+            zip: data.zipCode || data.zip
+        };
+    } catch (error) {
+        console.error("My IP lookup error:", error);
+        return null;
+    }
+}
+
 function calculateDomainAge(registrationDate: string): string {
     const now = new Date();
     const regDate = new Date(registrationDate);
@@ -233,6 +269,7 @@ export default definePlugin({
         {
             name: "domain",
             description: "Get domain registration information and age",
+            inputType: ApplicationCommandInputType.BUILT_IN,
             predicate: () => true,
             options: [
                 {
@@ -276,6 +313,7 @@ export default definePlugin({
         {
             name: "iplookup",
             description: "Get geolocation and network information for an IP",
+            inputType: ApplicationCommandInputType.BUILT_IN,
             predicate: () => true,
             options: [
                 {
@@ -315,6 +353,31 @@ export default definePlugin({
                 if (!info) {
                     sendBotMessage(ctx.channel.id, {
                         content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
+                    });
+                    return;
+                }
+
+                sendBotMessage(ctx.channel.id, {
+                    content: createIPMessage(info)
+                });
+            }
+        },
+        {
+            name: "myip",
+            description: "Show your public IP address and geolocation",
+            inputType: ApplicationCommandInputType.BUILT_IN,
+            predicate: () => true,
+            options: [],
+            execute: async (args: any[], ctx: any) => {
+                sendBotMessage(ctx.channel.id, {
+                    content: "Looking up your IP information..."
+                });
+
+                const info = await getMyIP();
+
+                if (!info) {
+                    sendBotMessage(ctx.channel.id, {
+                        content: "Failed to retrieve your IP information.\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error"
                     });
                     return;
                 }
