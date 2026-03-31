@@ -49,8 +49,8 @@ function stopObserver() {
     observer = null;
 }
 
-function streamKey(guildId: string, channelId: string): string {
-    return `guild:${guildId}:${channelId}:${uid}`;
+function streamKey(guildId: string | null | undefined, channelId: string): string {
+    return guildId ? `guild:${guildId}:${channelId}:${uid}` : `call:${channelId}:${uid}`;
 }
 
 function forceClose() {
