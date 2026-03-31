@@ -41,8 +41,18 @@ const settings = definePluginSettings({
     },
     prefix: {
         type: OptionType.STRING,
-        description: "Command prefix",
+        description: "Command prefix used in chat interception",
         default: ">"
+    },
+    availableCommands: {
+        type: OptionType.STRING,
+        description:
+            "Available commands:\n" +
+            ">iplookup 1.1.1.1 - Lookup an IPv4 address\n" +
+            ">domain google.com - Lookup a domain via RDAP\n" +
+            "\n" +
+            "These commands are intercepted locally by the plugin.",
+        default: "OSINTToolkit command list"
     }
 });
 
@@ -298,7 +308,43 @@ function parseAndHandleMessage(text: string, channelId: string): boolean {
     return false;
 }
 
-let removeKeydownListener: (() => void) | null = null;
+function clearComposer(target: HTMLElement) {
+    try {
+        if ("value" in (target as HTMLTextAreaElement)) {
+            const input = target as HTMLTextAreaElement;
+            input.value = "";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            return;
+        }
+
+        target.textContent = "";
+
+        target.dispatchEvent(new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "deleteContentBackward",
+            data: null
+        }));
+
+        target.dispatchEvent(new InputEvent("input", {
+            bubbles: true,
+            inputType: "deleteContentBackward",
+            data: null
+        }));
+
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+        }
+    } catch (err) {
+        console.error("[OSINT] Failed to clear composer:", err);
+    }
+}
+
+let removeListeners: (() => void) | null = null;
 
 export default definePlugin({
     name: "OSINTToolkit",
@@ -327,33 +373,68 @@ export default definePlugin({
 
             if (!text.trim()) return;
 
-            const channelId =
-                location.pathname.split("/").filter(Boolean).pop();
-
+            const channelId = location.pathname.split("/").filter(Boolean).pop();
             if (!channelId) return;
 
             const handled = parseAndHandleMessage(text.trim(), channelId);
-
             if (!handled) return;
 
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation();
 
-            if ("value" in (target as HTMLTextAreaElement)) {
-                (target as HTMLTextAreaElement).value = "";
-            } else {
-                target.textContent = "";
-            }
+            clearComposer(target);
+        };
 
-            target.dispatchEvent(new Event("input", { bubbles: true }));
+        const keyupHandler = (event: KeyboardEvent) => {
+            if (event.key !== "Enter") return;
+
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+
+            const isTextbox =
+                target.getAttribute("role") === "textbox" ||
+                target.tagName === "TEXTAREA" ||
+                target.tagName === "INPUT";
+
+            if (!isTextbox) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+        };
+
+        const keypressHandler = (event: KeyboardEvent) => {
+            if (event.key !== "Enter") return;
+
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+
+            const isTextbox =
+                target.getAttribute("role") === "textbox" ||
+                target.tagName === "TEXTAREA" ||
+                target.tagName === "INPUT";
+
+            if (!isTextbox) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
         };
 
         document.addEventListener("keydown", handler, true);
-        removeKeydownListener = () => document.removeEventListener("keydown", handler, true);
+        document.addEventListener("keyup", keyupHandler, true);
+        document.addEventListener("keypress", keypressHandler, true);
+
+        removeListeners = () => {
+            document.removeEventListener("keydown", handler, true);
+            document.removeEventListener("keyup", keyupHandler, true);
+            document.removeEventListener("keypress", keypressHandler, true);
+        };
     },
 
     stop() {
-        removeKeydownListener?.();
-        removeKeydownListener = null;
+        removeListeners?.();
+        removeListeners = null;
     }
 });
