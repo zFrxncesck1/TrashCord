@@ -696,6 +696,102 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
     const toggleSlideshow = () => setSlideshowOn(v => !v);
     const toggleRandom = () => setRandomOn(v => !v);
 
+    const handleExport = () => {
+        const data: StoredProfilesData = {
+            version: 2,
+            profiles: Array.from(profiles.values()).map(p => ({
+                id: p.id,
+                name: p.name,
+                dataUris: p.dataUris,
+                currentIndex: p.currentIndex
+            })),
+            activeProfileId
+        };
+        const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `customstream-backup-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast("Backup exported!", Toasts.Type.SUCCESS);
+    };
+
+    const handleImport = () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = async (e: any) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const data: StoredProfilesData = JSON.parse(text);
+                if (!data.profiles || !Array.isArray(data.profiles)) {
+                    setError("Invalid backup file");
+                    return;
+                }
+                Alerts.show({
+                    title: "Import Backup?",
+                    body: `This will replace ALL current profiles with ${data.profiles.length} profile(s) from the backup. This cannot be undone.`,
+                    confirmText: "Import",
+                    cancelText: "Cancel",
+                    onConfirm: async () => {
+                        profiles.clear();
+                        for (const stored of data.profiles) {
+                            profiles.set(stored.id, {
+                                id: stored.id,
+                                name: stored.name,
+                                dataUris: stored.dataUris ?? [],
+                                currentIndex: stored.currentIndex
+                            });
+                        }
+                        if (!profiles.has(DEFAULT_PROFILE_ID)) {
+                            profiles.set(DEFAULT_PROFILE_ID, { id: DEFAULT_PROFILE_ID, name: "Default", dataUris: [], currentIndex: 0 });
+                        }
+                        activeProfileId = data.activeProfileId && profiles.has(data.activeProfileId) ? data.activeProfileId : DEFAULT_PROFILE_ID;
+                        await saveProfilesToDataStore();
+                        syncCacheWithActiveProfile();
+                        setCurrentProfileId(activeProfileId);
+                        setProfileList(getProfileList());
+                        setPendingIndex(getActiveProfile().currentIndex);
+                        loadImages();
+                        showToast("Backup imported!", Toasts.Type.SUCCESS);
+                    }
+                });
+            } catch {
+                setError("Failed to read backup file");
+            }
+        };
+        input.click();
+    };
+
+    const handleReset = () => {
+        Alerts.show({
+            title: "Reset All Data?",
+            body: "This will permanently delete ALL profiles and images. This cannot be undone.",
+            confirmText: "Reset Everything",
+            cancelText: "Cancel",
+            confirmColor: "red",
+            onConfirm: async () => {
+                profiles.clear();
+                profiles.set(DEFAULT_PROFILE_ID, { id: DEFAULT_PROFILE_ID, name: "Default", dataUris: [], currentIndex: 0 });
+                activeProfileId = DEFAULT_PROFILE_ID;
+                cachedDataUris = [];
+                currentSlideIndex = 0;
+                randomQueue = [];
+                userSelectedIndex = null;
+                await saveProfilesToDataStore();
+                setCurrentProfileId(DEFAULT_PROFILE_ID);
+                setProfileList(getProfileList());
+                setImages([]);
+                setPendingIndex(0);
+                notifyImageChange();
+                showToast("Reset complete", Toasts.Type.MESSAGE);
+            }
+        });
+    };
+
     const handleSave = async () => {
         settings.store.replaceEnabled = pluginEnabled;
         settings.store.slideshowEnabled = slideshowOn;
@@ -1216,7 +1312,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                         </div>
                     )}
 
-                    <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
                         <Button onClick={() => handleFileSelect(false)} disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE} style={{ padding: "10px 16px" }}>
                             {isLoading ? "⏳..." : "📁 Add Image"}
                         </Button>
@@ -1226,6 +1322,82 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                         <Button color={Button.Colors.RED} onClick={handleClearAll} disabled={images.length === 0} style={{ padding: "10px 16px" }}>
                             🗑️ Delete All
                         </Button>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                        <button
+                            onClick={handleExport}
+                            style={{
+                                padding: "9px 16px",
+                                borderRadius: "8px",
+                                border: "none",
+                                cursor: "pointer",
+                                background: "linear-gradient(135deg, #5865F2 0%, #4752c4 100%)",
+                                color: "white",
+                                fontWeight: "600",
+                                fontSize: "13px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                boxShadow: "0 2px 8px rgba(88, 101, 242, 0.35)",
+                                transition: "opacity 0.15s ease"
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.82"; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                        >
+                            ⬆️ Export Backup
+                        </button>
+                        <button
+                            onClick={handleImport}
+                            style={{
+                                padding: "9px 16px",
+                                borderRadius: "8px",
+                                border: "none",
+                                cursor: "pointer",
+                                background: "linear-gradient(135deg, #5865F2 0%, #4752c4 100%)",
+                                color: "white",
+                                fontWeight: "600",
+                                fontSize: "13px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                boxShadow: "0 2px 8px rgba(88, 101, 242, 0.35)",
+                                transition: "opacity 0.15s ease"
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = "0.82"; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                        >
+                            ⬇️ Import Backup
+                        </button>
+                        <button
+                            onClick={handleReset}
+                            style={{
+                                padding: "9px 16px",
+                                borderRadius: "8px",
+                                cursor: "pointer",
+                                backgroundColor: "rgba(237, 66, 69, 0.12)",
+                                color: "var(--status-danger)",
+                                fontWeight: "600",
+                                fontSize: "13px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                border: "1px solid rgba(237, 66, 69, 0.4)",
+                                transition: "all 0.15s ease"
+                            }}
+                            onMouseEnter={e => {
+                                const el = e.currentTarget as HTMLElement;
+                                el.style.backgroundColor = "rgba(237, 66, 69, 0.88)";
+                                el.style.color = "white";
+                            }}
+                            onMouseLeave={e => {
+                                const el = e.currentTarget as HTMLElement;
+                                el.style.backgroundColor = "rgba(237, 66, 69, 0.12)";
+                                el.style.color = "var(--status-danger)";
+                            }}
+                        >
+                            🔄 Reset All
+                        </button>
                     </div>
 
                     {error && (
@@ -1369,7 +1541,7 @@ function ImagePickerModal({ rootProps }: { rootProps: any; }) {
                     <div style={{ marginTop: "16px", padding: "10px 14px", backgroundColor: "var(--background-secondary)", borderRadius: "6px", display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "16px" }}>💾</span>
                         <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
-                            Images stored locally • Limit: {MAX_IMAGES_PER_PROFILE} images per profile
+                            Images stored locally • Limit: {MAX_IMAGES_PER_PROFILE} images per profile • Use Export/Import to back up your profiles
                         </Text>
                     </div>
                 </div>
@@ -1634,12 +1806,7 @@ const streamOptionsContextPatch: NavContextMenuPatchCallback = (children: any[])
 export default definePlugin({
     name: "CustomStreamTopQ",
     description: "Custom stream preview images with profiles & slideshow. GitHub: https://github.com/MrTopQ/customStream-Vencord",
-    authors: [
-        {
-            name: "TopQ",
-            id: 523800559791374356n
-        }
-    ],
+    authors: [{ name: "TopQ", id: 523800559791374356n }, { name: "zFrxncesck1", id: 456195985404592149n }],
 
     settings,
 
