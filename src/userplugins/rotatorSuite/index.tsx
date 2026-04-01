@@ -23,12 +23,13 @@ function minutesToMs(raw: string): number {
     return isNaN(n) || n <= 0 ? 0 : Math.round(n * 60000);
 }
 
-type StatusType = "online" | "idle" | "dnd" | "invisible";
+type StatusType = "online" | "idle" | "dnd" | "invisible" | "auto";
 const STATUS_OPTIONS: { value: StatusType; label: string; color: string }[] = [
     { value: "online",    label: "Online",    color: "#23a55a" },
     { value: "idle",      label: "Idle",      color: "#f0b232" },
     { value: "dnd",       label: "DND",       color: "#f23f43" },
     { value: "invisible", label: "Invis",     color: "#80848e" },
+    { value: "auto",      label: "Auto",      color: "#9c67ff" },
 ];
 
 type NickMode = "custom" | "global" | "both";
@@ -47,6 +48,7 @@ interface GuildEntry {
     manual: boolean; nickMode: NickMode; lastNickVal?: string | null;
     guildPronouns: string[]; guildPronounsEnabled: boolean;
     guildPronounsSeqIdx: number; guildPronounsLastVal: string | null;
+    guildPronounsMode: NickMode; voiceActivated: boolean;
 }
 interface StatusEntry {
     emojiName: string | null; emojiId: string | null; text: string;
@@ -97,18 +99,31 @@ let globalNickTimer: ReturnType<typeof setTimeout> | null = null;
 let globalSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let pluginActive = false;
 let onCloseHandler: (() => void) | null = null;
+let voiceCheckInterval: ReturnType<typeof setInterval> | null = null;
+let lastVoiceGuildId: string | null = null;
+let cachedVoiceStateStore: any = null;
+let cachedChannelStore: any = null;
 
 async function applyCloseStatus(): Promise<void> {
     if (!settings.store.closeStatusEnabled) return;
     const raw = settings.store.closeStatusText.trim();
-    if (!raw && !settings.store.closeStatusEmoji.trim()) return;
-    const parsed = parseDiscordEmoji(settings.store.closeStatusEmoji.trim() + (raw ? " " + raw : ""));
+    const emojiRaw = settings.store.closeStatusEmoji.trim();
+    if (!raw && !emojiRaw) return;
+    const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
+    const statusType = settings.store.closeStatusType as StatusType;
     const entry: StatusEntry = {
         ...parsed,
-        status: settings.store.closeStatusType as StatusType,
+        status: statusType === "auto" ? undefined : statusType,
         clearAfter: undefined,
     };
     await applyStatus(entry);
+}
+
+async function applyCloseClan(): Promise<void> {
+    if (!settings.store.closeClanEnabled) return;
+    const id = settings.store.closeClanId.trim();
+    if (!id || !/^\d{17,20}$/.test(id)) return;
+    await applyClan(id);
 }
 
 const saveData = () => DataStore.set(SK, {
@@ -152,7 +167,7 @@ function getDiscordGuilds(): { id: string; name: string }[] {
 function syncGuildsFromDiscord() {
     for (const { id, name } of getDiscordGuilds())
         if (!guilds.find(g => g.id === id))
-            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null });
+            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false });
 }
 
 function nickModeOf(g: GuildEntry): NickMode { return g.nickMode ?? ((g as any).useGlobal ? "global" : "custom"); }
@@ -223,22 +238,30 @@ function tickAllNicks() {
 }
 
 function pronounsForGuild(g: GuildEntry): string[] {
+    const m: NickMode = g.guildPronounsMode ?? "custom";
+    if (m === "global") return globalGuildPronouns;
+    if (m === "both") return [...new Set([...globalGuildPronouns, ...(g.guildPronouns ?? [])])];
     const local = g.guildPronouns ?? [];
     return local.length > 0 ? local : globalGuildPronouns;
 }
 
 function scheduleGuildPronounsTick(g: GuildEntry, ms: number) {
-    guildPronounsTimers.set(g.id, setTimeout(async () => {
-        if (!pluginActive || !g.guildPronounsEnabled || !settings.store.serverPronounsEnabled || !guildPronounsTimers.has(g.id)) return;
+    const tid = setTimeout(async () => {
+        if (guildPronounsTimers.get(g.id) !== tid) return;
+        if (!pluginActive || !g.guildPronounsEnabled || !settings.store.serverPronounsEnabled) {
+            guildPronounsTimers.delete(g.id); return;
+        }
         const pool = pronounsForGuild(g);
         if (!pool.length) { guildPronounsTimers.delete(g.id); return; }
         const { val: pr, next, lastPicked } = pickItem(pool, g.guildPronounsSeqIdx ?? 0, settings.store.serverPronounsRandomize, g.guildPronounsLastVal);
         g.guildPronounsSeqIdx = next; g.guildPronounsLastVal = lastPicked;
         if (pr) await applyGuildPronoun(g.id, pr);
         saveData();
-        if (!settings.store.globalSync) scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
+        if (pluginActive && g.guildPronounsEnabled && settings.store.serverPronounsEnabled && !settings.store.globalSync && guildPronounsTimers.get(g.id) === tid)
+            scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
         else guildPronounsTimers.delete(g.id);
-    }, ms));
+    }, ms) as ReturnType<typeof setTimeout>;
+    guildPronounsTimers.set(g.id, tid);
 }
 function startGuildPronouns(g: GuildEntry) {
     if (!guildPronounsTimers.has(g.id) && !settings.store.globalSync && g.guildPronounsEnabled && settings.store.serverPronounsEnabled && pronounsForGuild(g).length > 0)
@@ -315,8 +338,8 @@ async function applyStatus(entry: StatusEntry, retries = 3): Promise<void> {
                 createdAtMs: Date.now().toString(),
                 expiresAtMs,
             });
-            if (entry.status && PresenceSetting) await PresenceSetting.updateSetting(entry.status);
-            if (settings.store.enableLogs) console.log(`[RS/Status] -> "${entry.text}" [${entry.status ?? "online"}]`);
+            if (entry.status && entry.status !== "auto" && PresenceSetting) await PresenceSetting.updateSetting(entry.status);
+            if (settings.store.enableLogs) console.log(`[RS/Status] -> "${entry.text}" [${entry.status ?? "auto"}]`);
             return;
         } catch (e) {
             if (settings.store.enableLogs) console.warn("[RS/Status] UserSetting fallback RestAPI:", e);
@@ -354,10 +377,18 @@ function getActiveStatusPool(): StatusEntry[] {
     } catch { return statusEntries; }
 }
 
+function isEvalEntry(e: StatusEntry): boolean {
+    return !!(e.text?.startsWith("eval ") || e.emojiName?.startsWith("eval "));
+}
+
 function tickStatus() {
     if (!settings.store.statusEnabled) return;
     const pool = getActiveStatusPool();
     if (!pool.length) return;
+    if (pool.length === 1 && isEvalEntry(pool[0])) {
+        resolveStatusEntry(pool[0]).then(resolved => applyStatus(resolved));
+        return;
+    }
     const { val: entry, next, lastPicked } = pickItem(pool, statusSeqIdx, settings.store.statusRandomize, pool.find(e => statusKey(e) === statusLastVal) ?? null);
     statusSeqIdx = next; statusLastVal = lastPicked ? statusKey(lastPicked) : null;
     if (entry) resolveStatusEntry(entry).then(resolved => applyStatus(resolved));
@@ -444,11 +475,24 @@ async function patchProfile(body: Record<string, string>) {
     } catch (e: any) { if (settings.store.enableLogs) console.error("[RS/Profile]:", e); }
 }
 
-async function applyGlobalNick(displayName: string): Promise<void> {
-    try {
-        await RestAPI.patch({ url: "/users/@me/profile", body: { display_name: displayName } });
-        if (settings.store.enableLogs) console.log(`[RS/GlobalNick] -> "${displayName}"`);
-    } catch (e: any) { if (settings.store.enableLogs) console.error("[RS/GlobalNick]:", e); }
+async function applyGlobalNick(displayName: string, retries = 3): Promise<void> {
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            await RestAPI.patch({ url: "/users/@me", body: { global_name: displayName } });
+            if (settings.store.enableLogs) console.log(`[RS/GlobalNick] -> "${displayName}"`);
+            return;
+        } catch (e: any) {
+            const st = e?.status ?? e?.response?.status ?? 0;
+            if (st === 429) {
+                const ra = Math.max(parseFloat(e?.body?.retry_after ?? e?.retry_after ?? "300") || 300, 10);
+                if (settings.store.enableLogs) console.warn(`[RS/GlobalNick] 429 retry ${ra}s`);
+                await new Promise(r => setTimeout(r, ra * 1000 + 500));
+                continue;
+            }
+            if (settings.store.enableLogs) console.error(`[RS/GlobalNick] attempt=${attempt + 1}:`, e);
+            if (attempt < retries - 1) await new Promise(r => setTimeout(r, 2000));
+        }
+    }
 }
 
 async function applyGuildPronoun(guildId: string, pronouns: string): Promise<void> {
@@ -502,12 +546,13 @@ function tickGlobalNick() {
 }
 function scheduleGlobalNickLoop() {
     if (globalNickTimer !== null) return;
+    const ms = Math.max(300000, getMs(settings.store.globalNickIntervalSeconds));
     globalNickTimer = setTimeout(() => {
         globalNickTimer = null;
         if (!pluginActive || settings.store.globalSync) return;
         tickGlobalNick(); saveData();
         if (settings.store.globalNickEnabled) scheduleGlobalNickLoop();
-    }, getMs(settings.store.globalNickIntervalSeconds));
+    }, ms);
 }
 function stopGlobalNickTimer() { if (globalNickTimer) { clearTimeout(globalNickTimer); globalNickTimer = null; } }
 
@@ -524,11 +569,69 @@ function scheduleGlobalLoop() {
 }
 function stopGlobalTimer() { if (globalSyncTimer) { clearTimeout(globalSyncTimer); globalSyncTimer = null; } }
 
+function getMyVoiceGuildId(): string | null {
+    try {
+        const user = UserStore.getCurrentUser(); if (!user) return null;
+        if (!cachedVoiceStateStore) cachedVoiceStateStore = findByProps("getVoiceStateForUser", "getVoiceStatesForChannel");
+        const state = cachedVoiceStateStore?.getVoiceStateForUser?.(user.id);
+        if (!state?.channelId) return null;
+        if (!cachedChannelStore) cachedChannelStore = findByProps("getChannel", "getDMFromUserId");
+        const ch = cachedChannelStore?.getChannel?.(state.channelId);
+        return ch ? (ch.guild_id ?? "DM") : null;
+    } catch { return null; }
+}
+
+function onVoiceJoin(guildId: string | null) {
+    if (!pluginActive || settings.store.globalSync) return;
+    if (settings.store.voiceActivateGlobal) {
+        if (settings.store.nickEnabled)
+            for (const g of guilds.filter(x => x.enabled && !nickTimers.has(x.id)))
+                scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+        if (settings.store.serverPronounsEnabled)
+            for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0 && !guildPronounsTimers.has(x.id)))
+                scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
+        return;
+    }
+    if (!guildId || guildId === "DM") return;
+    const g = guilds.find(x => x.id === guildId && x.voiceActivated);
+    if (!g) return;
+    if (settings.store.nickEnabled && g.enabled && !nickTimers.has(g.id)) scheduleNickTick(g, 300);
+    if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0 && settings.store.serverPronounsEnabled && !guildPronounsTimers.has(g.id))
+        scheduleGuildPronounsTick(g, 300);
+}
+
+function onVoiceLeave(prevGuildId: string | null) {
+    if (!pluginActive) return;
+    if (settings.store.voiceActivateGlobal) { stopAllNicks(); stopAllGuildPronouns(); return; }
+    if (!prevGuildId || prevGuildId === "DM") return;
+    const g = guilds.find(x => x.id === prevGuildId && x.voiceActivated);
+    if (g) { stopNickGuild(prevGuildId); stopGuildPronouns(prevGuildId); }
+}
+
+function startVoiceWatcher() {
+    if (voiceCheckInterval !== null) return;
+    lastVoiceGuildId = getMyVoiceGuildId();
+    voiceCheckInterval = setInterval(() => {
+        if (!pluginActive) return;
+        const curr = getMyVoiceGuildId();
+        if (curr === lastVoiceGuildId) return;
+        const prev = lastVoiceGuildId; lastVoiceGuildId = curr;
+        if (curr && !prev) onVoiceJoin(curr);
+        else if (!curr && prev) onVoiceLeave(prev);
+        else { onVoiceLeave(prev); onVoiceJoin(curr); }
+    }, 2000);
+}
+
+function stopVoiceWatcher() {
+    if (voiceCheckInterval) { clearInterval(voiceCheckInterval); voiceCheckInterval = null; }
+    lastVoiceGuildId = null;
+}
+
 function stopAllRotators() {
     stopAllNicks(); stopAllGuildPronouns();
     stopStatusTimer(); stopClanTimer();
     stopBioTimer(); stopPronounsTimer(); stopGlobalNickTimer();
-    stopGlobalTimer();
+    stopGlobalTimer(); stopVoiceWatcher();
 }
 
 function startAllRotators() {
@@ -536,18 +639,20 @@ function startAllRotators() {
     if (!pluginActive) return;
     if (settings.store.clanEnabled) scheduleClanLoop();
     if (settings.store.globalSync) {
-        globalTick();
-        scheduleGlobalLoop();
+        globalTick(); scheduleGlobalLoop();
     } else {
         if (settings.store.statusEnabled) scheduleStatusLoop();
         if (settings.store.profileBioEnabled) scheduleBioLoop();
         if (settings.store.profilePronounsEnabled) schedulePronounsLoop();
         if (settings.store.globalNickEnabled) scheduleGlobalNickLoop();
-        if (settings.store.nickEnabled)
-            for (const g of guilds.filter(x => x.enabled)) startNickGuild(g);
-        for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0))
-            startGuildPronouns(g);
+        if (!settings.store.voiceActivateGlobal) {
+            if (settings.store.nickEnabled)
+                for (const g of guilds.filter(x => x.enabled && !x.voiceActivated)) startNickGuild(g);
+            for (const g of guilds.filter(x => x.guildPronounsEnabled && !x.voiceActivated && pronounsForGuild(x).length > 0))
+                startGuildPronouns(g);
+        }
     }
+    if (settings.store.voiceActivateEnabled) startVoiceWatcher();
 }
 
 function SettingsSep({ title, color = "#9c67ff" }: { title: string; color?: string }) {
@@ -588,7 +693,10 @@ const settings = definePluginSettings({
     closeStatusEnabled: { type: OptionType.BOOLEAN, default: false, description: "Apply a default status when Discord closes (beforeunload). Does not fire on crash/kill." },
     closeStatusText: { type: OptionType.STRING, default: "", description: "Status text to apply on close." },
     closeStatusEmoji: { type: OptionType.STRING, default: "", description: "Emoji prefix for on-close status (unicode or <:name:id>)." },
-    closeStatusType: { type: OptionType.STRING, default: "online", description: "Presence type on close: online | idle | dnd | invisible." },
+    closeStatusType: { type: OptionType.STRING, default: "auto", description: "Presence type on close: online | idle | dnd | invisible | auto." },
+    _sCloseClanGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="On Close Clan" color={C.clan} /> },
+    closeClanEnabled: { type: OptionType.BOOLEAN, default: false, description: "Switch to a specific clan when Discord closes (beforeunload)." },
+    closeClanId: { type: OptionType.STRING, default: "", description: "Clan server ID to apply on close." },
     _sClanGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Clan" color={C.clan} /> },
     clanEnabled: { type: OptionType.BOOLEAN, default: false, description: "Clan switcher enabled (configure in Clan tab)." },
     clanIntervalSeconds: { type: OptionType.STRING, default: "5", description: "Clan interval seconds (configure in Clan tab)." },
@@ -598,7 +706,7 @@ const settings = definePluginSettings({
     _sProfileGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Profile" color={C.bio} /> },
     globalNickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Global display name rotation enabled (Profile tab)." },
     globalNickRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize global display name rotation order (Profile tab)." },
-    globalNickIntervalSeconds: { type: OptionType.STRING, default: "360", description: "Seconds between display name changes. Discord rate-limits this endpoint — recommended 360 minimum." },
+    globalNickIntervalSeconds: { type: OptionType.STRING, default: "300", description: "Seconds between display name changes. Discord rate-limits /users/@me - minimum enforced at 300s." },
     profilePronounsEnabled: { type: OptionType.BOOLEAN, default: false, description: "Global pronouns rotation enabled (Profile tab)." },
     pronounsRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize global pronouns rotation order (Profile tab)." },
     pronounsIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between global pronoun changes (Profile tab)." },
@@ -606,12 +714,15 @@ const settings = definePluginSettings({
     bioRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize bio rotation order (Profile tab)." },
     bioIntervalSeconds: { type: OptionType.STRING, default: "60", description: "Seconds between bio changes (Profile tab)." },
     _sServerProfilesGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Server Profiles" color={C.nick} /> },
-    nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch — when OFF, no nick timers run even if servers are toggled on." },
+    nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch - when OFF, no nick timers run even if servers are toggled on." },
     nickIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server nickname changes (Server Profiles tab)." },
     nickRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize server nickname order (Server Profiles tab)." },
-    serverPronounsEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server pronouns master switch — when OFF, no server pronoun timers run." },
+    serverPronounsEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server pronouns master switch - when OFF, no server pronoun timers run." },
     serverPronounsRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize server pronoun order (Server Profiles tab)." },
     serverPronounsIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server pronoun changes (Server Profiles tab)." },
+    _sVoice: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Voice Activation" color="#7986cb" /> },
+    voiceActivateEnabled: { type: OptionType.BOOLEAN, default: false, description: "Enable voice-based activation (configure in Server Profiles tab).", onChange: v => { if (pluginActive) { stopVoiceWatcher(); if (v) startVoiceWatcher(); else startAllRotators(); } } },
+    voiceActivateGlobal: { type: OptionType.BOOLEAN, default: false, description: "Global: activate ALL server nick+pronoun rotators when in any voice/call. Overrides per-server." },
     _sMisc: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Misc" color={C.hint} /> },
     showButton: { type: OptionType.BOOLEAN, default: true, description: "Show the Rotator Suite button in the user area (bottom-left)." },
     autoStart: { type: OptionType.BOOLEAN, default: true, description: "Auto-start all enabled rotators when Discord loads." },
@@ -881,7 +992,7 @@ function StatusLivePreview({ entry, statusType }: { entry: Pick<StatusEntry, "em
                 <img className="rs-preview-avatar"
                     src={user ? getAvatarUrl(user.id, user.avatar) : undefined}
                     alt="" />
-                <span style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: dot, border: "2px solid rgba(20,5,50,.9)", display: "block" }} />
+                <span style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: dot === "#9c67ff" ? "linear-gradient(135deg,#9c67ff,#6a1fff)" : dot, border: "2px solid rgba(20,5,50,.9)", display: "block" }} />
             </div>
             <div className="rs-preview-info">
                 <div className="rs-preview-label">PREVIEW</div>
@@ -951,7 +1062,7 @@ function StatusRunModeSelector({ presets, forceUpdate }: { presets: StatusPreset
     const MODES: { key: "all" | "presets" | "none"; label: string; cls: string; hint: string }[] = [
         { key: "all",     label: "All Entries",      cls: "active-all",     hint: "Cycle through every status entry regardless of preset" },
         { key: "presets", label: "Selected Presets",  cls: "active-presets", hint: "Only cycle entries belonging to the checked presets below" },
-        { key: "none",    label: "None",              cls: "active-none",    hint: "Status rotator is paused — no entries will be cycled" },
+        { key: "none",    label: "None",              cls: "active-none",    hint: "Status rotator is paused - no entries will be cycled" },
     ];
 
     const activeHint = MODES.find(m => m.key === mode)?.hint ?? "";
@@ -964,7 +1075,7 @@ function StatusRunModeSelector({ presets, forceUpdate }: { presets: StatusPreset
     return (
         <div style={{ marginBottom: 4 }}>
             <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".7px", color: C.status, marginBottom: 5 }}>
-                Run Mode — pool: <span style={{ color: pool > 0 ? C.enabled : C.del }}>{pool} entries</span>
+                Run Mode - pool: <span style={{ color: pool > 0 ? C.enabled : C.del }}>{pool} entries</span>
             </div>
             <div className="rs-run-mode-row">
                 {MODES.map(m => (
@@ -978,7 +1089,7 @@ function StatusRunModeSelector({ presets, forceUpdate }: { presets: StatusPreset
             <div className="rs-run-mode-hint">{activeHint}</div>
             {mode === "presets" && (
                 <div className="rs-preset-check-row">
-                    {presets.length === 0 && <span style={{ fontSize: 11, color: "#5a4a7a", fontStyle: "italic" }}>No presets yet — create one below.</span>}
+                    {presets.length === 0 && <span style={{ fontSize: 11, color: "#5a4a7a", fontStyle: "italic" }}>No presets yet - create one below.</span>}
                     {presets.map(p => {
                         const cnt = statusEntries.filter(e => e.preset === p.name).length;
                         const checked = selected.includes(p.name);
@@ -1010,7 +1121,7 @@ function OnCloseStatusPanel({ forceUpdate }: { forceUpdate: () => void }) {
     const enabled = settings.store.closeStatusEnabled;
     const [text, setText] = React.useState(settings.store.closeStatusText);
     const [emoji, setEmoji] = React.useState(settings.store.closeStatusEmoji);
-    const [type, setType] = React.useState<StatusType>(settings.store.closeStatusType as StatusType);
+    const [type, setType] = React.useState<StatusType>((settings.store.closeStatusType as StatusType) || "auto");
 
     const save = () => {
         settings.store.closeStatusText = text.trim();
@@ -1021,7 +1132,7 @@ function OnCloseStatusPanel({ forceUpdate }: { forceUpdate: () => void }) {
 
     return (
         <div>
-            <PanelToggle label="On-Close Status" description="Apply a fixed status when Discord closes (beforeunload — not fired on crash/kill)"
+            <PanelToggle label="On-Close Status" description="Apply a fixed status when Discord closes (beforeunload - not fired on crash/kill)"
                 value={enabled} color="#64b5f6"
                 onChange={v => { settings.store.closeStatusEnabled = v; forceUpdate(); }} />
             {enabled && (
@@ -1036,7 +1147,9 @@ function OnCloseStatusPanel({ forceUpdate }: { forceUpdate: () => void }) {
                             placeholder="Status text..."
                             style={{ flex: 1, background: "rgba(10,0,30,.7)", border: "1px solid rgba(124,77,255,.35)", borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "3px 7px", outline: "none" }} />
                     </div>
-                    <div style={{ fontSize: 10, color: "#64b5f6", opacity: .7 }}>Leave text empty to clear the status entirely on close.</div>
+                    <div style={{ fontSize: 10, color: "#64b5f6", opacity: .7 }}>
+                        <b>Auto</b> = mantieni la presenza attuale, aggiorna solo il testo. Leave text empty to clear the status entirely on close.
+                    </div>
                 </div>
             )}
         </div>
@@ -1106,9 +1219,9 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
 
     function addPreset() {
         const name = newPresetName.trim(); if (!name) return;
-        if (presets.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-        statusPresets = [...presets, { id: Date.now().toString(), name }];
-        saveData(); setNewPresetName(""); forceUpdate();
+        if (statusPresets.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
+        statusPresets = [...statusPresets, { id: Date.now().toString(), name }];
+        setNewPresetName(""); saveData(); forceUpdate();
     }
 
     function removePreset(id: string) {
@@ -1149,7 +1262,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                 placeholder="Status text... or Discord emoji <:name:id> + text"
                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); add(); } }} />
             <div className="rs-hint" style={{ marginBottom: 4 }}>
-                Prefix with <b>eval </b> for dynamic JS — e.g. <b>eval new Date().toLocaleTimeString()</b> · clock emoji: <b>eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][(new Date()).getHours()%12]</b>
+                Prefix with <b>eval </b> for dynamic JS - e.g. <b>eval new Date().toLocaleTimeString()</b> · clock emoji: <b>eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][(new Date()).getHours()%12]</b>
             </div>
             <StatusTypeSelector value={draftStatusType} onChange={setDraftStatusType} />
             <ClearAfterSelector value={draftClearAfter} onChange={setDraftClearAfter} />
@@ -1158,7 +1271,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <span style={{ fontSize: 11, color: C.hint }}>Preset:</span>
                     <select value={draftPreset} onChange={e => setDraftPreset(e.target.value)}
                         style={{ flex: 1, background: "rgba(10,0,30,.7)", border: "1px solid rgba(124,77,255,.3)", borderRadius: 6, color: "#f0eaff", fontSize: 11, padding: "2px 6px", outline: "none" }}>
-                        <option value="">— none —</option>
+                        <option value="">- none -</option>
                         {presets.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                     </select>
                 </div>
@@ -1224,7 +1337,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                 <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.status }}>
-                    List {filterPreset ? `"${filterPreset}"` : "— All"}
+                    List {filterPreset ? `"${filterPreset}"` : "- All"}
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span className="rs-count">{filteredList.length}</span>
@@ -1254,7 +1367,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                                 {presets.length > 0 && (
                                     <select value={editPreset} onChange={e => setEditPreset(e.target.value)}
                                         style={{ background: "rgba(10,0,30,.7)", border: "1px solid rgba(124,77,255,.3)", borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "2px 5px", outline: "none" }}>
-                                        <option value="">— no preset —</option>
+                                        <option value="">- no preset -</option>
                                         {presets.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                                     </select>
                                 )}
@@ -1288,6 +1401,39 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
             <div className="rs-hint" style={{ marginTop: 6 }}>
                 Ctrl+Enter to add · Enabled: <b style={{ color: settings.store.statusEnabled ? C.enabled : "#757575" }}>{settings.store.statusEnabled ? "yes" : "no"}</b> · Interval: <b style={{ color: C.data }}>{settings.store.statusIntervalSeconds}s</b> · Mode: <b style={{ color: "#ab47bc" }}>{settings.store.statusRandomize ? "random" : "seq"}</b>
             </div>
+        </div>
+    );
+}
+
+function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
+    const enabled = settings.store.closeClanEnabled;
+    const [id, setId] = React.useState(settings.store.closeClanId);
+
+    const save = () => { settings.store.closeClanId = id.trim(); forceUpdate(); };
+
+    return (
+        <div>
+            <PanelToggle label="On-Close Clan" description="Switch to a specific clan server when Discord closes (beforeunload - not fired on crash/kill)"
+                value={enabled} color={C.clan}
+                onChange={v => { settings.store.closeClanEnabled = v; forceUpdate(); }} />
+            {enabled && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 10px", border: `1px solid ${C.clan}33`, borderRadius: 7, background: "rgba(10,20,50,.5)", marginTop: 3 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: C.hint, flexShrink: 0 }}>Clan Server ID:</span>
+                        <input value={id} onChange={e => setId(e.target.value)} onBlur={save}
+                            onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") save(); }}
+                            placeholder="Server ID (17-20 digits)..."
+                            style={{ flex: 1, background: "rgba(10,0,30,.7)", border: `1px solid ${C.clan}44`, borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
+                    </div>
+                    {id.trim() && !/^\d{17,20}$/.test(id.trim()) && (
+                        <div style={{ fontSize: 10, color: "#ef9a9a" }}>⚠ Invalid ID - must be 17-20 digits.</div>
+                    )}
+                    {id.trim() && /^\d{17,20}$/.test(id.trim()) && (
+                        <div style={{ fontSize: 10, color: C.clan, opacity: .8 }}>Clan ID <b>{id.trim()}</b> will be applied upon closure.</div>
+                    )}
+                    <div style={{ fontSize: 10, color: C.hint, opacity: .7 }}>Paste the ID of the server whose clan badge you want to show upon closure.</div>
+                </div>
+            )}
         </div>
     );
 }
@@ -1327,6 +1473,8 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <PanelInterval label="Auto-Detect Refresh" description="How often to re-fetch your server list (seconds)"
                         storeKey="clanAutoDetectRefreshSeconds" />
                 )}
+                <div className="rs-divider" style={{ margin: "6px 0" }} />
+                <OnCloseClanPanel forceUpdate={forceUpdate} />
             </div>
             <div className="rs-divider" style={{ margin: "8px 0" }} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
@@ -1337,7 +1485,7 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                 </div>
             </div>
             <div className="rs-hint" style={{ marginBottom: 8 }}>
-                {autoDetect ? <span>Auto-Detect <b style={{ color: C.enabled }}>ON</b> — cycling all joined servers.</span>
+                {autoDetect ? <span>Auto-Detect <b style={{ color: C.enabled }}>ON</b> - cycling all joined servers.</span>
                     : <span>Server IDs to rotate clan tag. Click ID to edit inline.</span>}
             </div>
             {confirm && <ConfirmBox msg="Delete all clan IDs?" onConfirm={() => { clanIds = []; clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); setConfirm(false); }} onCancel={() => setConfirm(false)} />}
@@ -1467,11 +1615,11 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                     rndValue={settings.store.globalNickRandomize} onToggleRnd={v => { settings.store.globalNickRandomize = v; forceUpdate(); }}
                     enableColor={C.nick}
                 />
-                <PanelInterval label="Display Name Interval" description="Seconds between display name changes. Discord rate-limits this endpoint — values below ~360s may cause 429 errors. Recommended: 245s or more."
+                <PanelInterval label="Display Name Interval" description="Seconds between display name changes. Min enforced: 300s. Uses /users/@me global_name - separate endpoint from bio/pronouns."
                     storeKey="globalNickIntervalSeconds" disabled={settings.store.globalSync}
                     onApply={() => { if (pluginActive && settings.store.globalNickEnabled && !settings.store.globalSync) { stopGlobalNickTimer(); scheduleGlobalNickLoop(); } }} />
                 <div className="rs-hint" style={{ margin: "4px 0 6px" }}>
-                    Changes your <b style={{ color: C.nick }}>global display name</b> (Discord "Display Name" field). Max 32 chars. Click to edit, drag to reorder.
+                    Changes your <b style={{ color: C.nick }}>global display name</b> via <b style={{ color: C.hint }}>/users/@me</b> (global_name). Max 32 chars. Minimum interval: 300s.
                 </div>
                 <div className="rs-divider" style={{ margin: "5px 0 6px" }} />
                 {confirmGn && <ConfirmBox msg="Delete all display name entries?" onConfirm={() => { globalNickEntries = []; globalNickSeqIdx = 0; globalNickLastVal = null; saveData(); forceUpdate(); setConfirmGn(false); }} onCancel={() => setConfirmGn(false)} />}
@@ -1543,7 +1691,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <div className="rs-divider" style={{ margin: "7px 0 6px" }} />
                 {confirmBio && <ConfirmBox msg="Delete all bio entries?" onConfirm={() => { bioEntries = []; bioSeqIdx = 0; bioLastVal = null; saveData(); forceUpdate(); setConfirmBio(false); }} onCancel={() => setConfirmBio(false)} />}
                 <div className="rs-bio-list">
-                    {bioEntries.length === 0 && <div className="rs-empty">No bio entries — add below.</div>}
+                    {bioEntries.length === 0 && <div className="rs-empty">No bio entries - add below.</div>}
                     {bioEntries.map((e, i) => (
                         <div key={`bio_${i}_${e.slice(0, 8)}`} {...bioDProps(i)} className={bioCls(i, `rs-bio-item${bioEditIdx === i ? " editing" : ""}`)}>
                             <span className="rs-drag" style={{ padding: "5px 3px", display: "flex", alignItems: "center", alignSelf: "stretch" }}>⠿</span>
@@ -1605,18 +1753,26 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
     function toggleGuild(g: GuildEntry) {
         g.enabled = !g.enabled;
         if (g.enabled) {
-            if (!settings.store.globalSync && settings.store.nickEnabled) scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
-            if (g.guildPronounsEnabled && (g.guildPronouns?.length ?? 0) > 0 && !settings.store.globalSync) startGuildPronouns(g);
+            const voiceOnly = g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal;
+            if (!voiceOnly && !settings.store.globalSync) {
+                if (settings.store.nickEnabled) scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+                if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0) startGuildPronouns(g);
+            }
         } else {
-            stopNickGuild(g.id);
+            stopNickGuild(g.id); stopGuildPronouns(g.id);
         }
         saveData(); forceUpdate();
+    }
+    function toggleNickActive(g: GuildEntry) {
+        if (nickTimers.has(g.id)) stopNickGuild(g.id);
+        else if (settings.store.nickEnabled && !settings.store.globalSync) scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+        forceUpdate();
     }
     function cycleMode(g: GuildEntry) { g.nickMode = NM_NEXT[nickModeOf(g)]; g.seqIndex = 0; g.lastNickVal = null; saveData(); forceUpdate(); }
     function addManual() {
         const id = manualId.trim(); const name = manualName.trim() || id;
         if (!id || !/^\d{17,20}$/.test(id) || guilds.find(g => g.id === id)) return;
-        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null });
+        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false });
         saveData(); setManualId(""); setManualName(""); forceUpdate();
     }
     function removeGuild(g: GuildEntry) { stopNickGuild(g.id); guilds = guilds.filter(x => x.id !== g.id); saveData(); forceUpdate(); }
@@ -1649,7 +1805,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     storeKey="nickIntervalSeconds" disabled={settings.store.globalSync}
                     onApply={() => { if (pluginActive && settings.store.nickEnabled && !settings.store.globalSync) { stopAllNicks(); for (const g of guilds.filter(x => x.enabled)) startNickGuild(g); } }} />
                 <div className="rs-hint" style={{ marginTop: 5 }}>
-                    Nick source mode per server — <b style={{ color: NM_COLOR.custom }}>Custom</b>: server-specific only · <b style={{ color: NM_COLOR.global }}>Global</b>: shared pool · <b style={{ color: NM_COLOR.both }}>Both</b>: merged
+                    Nick source mode per server - <b style={{ color: NM_COLOR.custom }}>Custom</b>: server-specific only · <b style={{ color: NM_COLOR.global }}>Global</b>: shared pool · <b style={{ color: NM_COLOR.both }}>Both</b>: merged
                 </div>
             </div>
 
@@ -1665,6 +1821,32 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     storeKey="serverPronounsIntervalSeconds" disabled={settings.store.globalSync}
                     onApply={() => { if (pluginActive && settings.store.serverPronounsEnabled && !settings.store.globalSync) { stopAllGuildPronouns(); for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0)) startGuildPronouns(g); } }} />
                 <div className="rs-hint" style={{ marginTop: 5 }}>Each server can have its own pronoun list. Servers with no local entries fall back to the <b style={{ color: C.pronoun }}>Global Pronoun Pool</b>.</div>
+            </div>
+
+            <div className="rs-card" style={{ marginBottom: 8, border: "1.5px solid rgba(121,134,203,.3)", background: "rgba(10,10,40,.5)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".8px", color: "#7986cb" }}>Voice Activation</span>
+                    <div style={{ flex: 1, height: 1, background: "rgba(121,134,203,.2)" }} />
+                    <button
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 6, border: `1px solid ${settings.store.voiceActivateEnabled ? "#7986cb55" : "rgba(80,60,110,.3)"}`, background: settings.store.voiceActivateEnabled ? "#7986cb20" : "rgba(15,5,35,.5)", color: settings.store.voiceActivateEnabled ? "#7986cb" : "#5a4a7a", cursor: "pointer", fontSize: 11, fontWeight: 800 }}
+                        onClick={() => { settings.store.voiceActivateEnabled = !settings.store.voiceActivateEnabled; if (pluginActive) { stopVoiceWatcher(); if (settings.store.voiceActivateEnabled) startVoiceWatcher(); else startAllRotators(); } forceUpdate(); }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: settings.store.voiceActivateEnabled ? "#7986cb" : "#3a2a5a", display: "inline-block" }} />
+                        {settings.store.voiceActivateEnabled ? "Enabled" : "Disabled"}
+                    </button>
+                </div>
+                {settings.store.voiceActivateEnabled && (
+                    <div style={{ display: "flex", flexDirection: "column" as const, gap: 4 }}>
+                        <PanelToggle label="Global Voice" description="Join ANY voice/call/DM → start ALL enabled server nick+pronoun cycles. Leave → stop all. Overrides per-server."
+                            value={settings.store.voiceActivateGlobal} color="#7986cb"
+                            onChange={v => { settings.store.voiceActivateGlobal = v; if (pluginActive) startAllRotators(); forceUpdate(); }} />
+                        <div className="rs-hint">
+                            {settings.store.voiceActivateGlobal
+                                ? "Global: all server nicks+pronouns activate on any voice join, deactivate on leave."
+                                : "Per-server: use the 🔊 VC-only / Always button (left of ON/OFF) on each server card to set its mode."
+                            }
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
@@ -1776,19 +1958,24 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                 <span className="rs-server-name">{g.name}</span>
                                 <span className="rs-server-id">{g.id}</span>
                                 <span className="rs-badge" style={{ background: `${NM_COLOR[mode]}18`, color: NM_COLOR[mode], border: `1px solid ${NM_COLOR[mode]}33` }}>
-                                    {NM_LABEL[mode]} · {mode === "global" ? globalNicks.length : mode === "both" ? effective.length : g.nicks.length}
+                                    {NM_LABEL[mode]} · {mode === "global" ? globalNicks.length : mode === "both" ? effective.length : g.nicks.length} nicks
                                 </span>
                                 {g.guildPronounsEnabled && (
-                                    <span className="rs-badge" style={{ background: `${C.pronoun}18`, color: C.pronoun, border: `1px solid ${C.pronoun}33` }}>
-                                        {gPrList.length > 0 ? `${gPrList.length} pronouns` : "pool fallback"}
+                                    <span className="rs-badge" style={{ background: `${NM_COLOR[g.guildPronounsMode ?? "custom"]}18`, color: NM_COLOR[g.guildPronounsMode ?? "custom"], border: `1px solid ${NM_COLOR[g.guildPronounsMode ?? "custom"]}33` }}>
+                                        {NM_LABEL[g.guildPronounsMode ?? "custom"]} · {effectivePrList.length} pr
                                     </span>
                                 )}
                                 {g.manual && <span className="rs-badge" style={{ background: "rgba(120,120,120,.12)", color: "#9e9e9e" }}>manual</span>}
                             </div>
                             <div className="rs-actions">
-                                <button className="rs-btn-sm rs-btn"
-                                    style={{ background: `${NM_COLOR[mode]}18`, color: NM_COLOR[mode], border: `1px solid ${NM_COLOR[mode]}33`, fontSize: 11 }}
-                                    onClick={() => cycleMode(g)}>{NM_LABEL[mode]}</button>
+                                {settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal && (
+                                    <button
+                                        style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 8px", borderRadius: 6, border: `1px solid ${g.voiceActivated ? "#7986cb55" : "rgba(80,60,110,.3)"}`, background: g.voiceActivated ? "#7986cb22" : "rgba(15,5,35,.5)", color: g.voiceActivated ? "#7986cb" : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
+                                        title="Toggle: Voice-only activates nicks+pronouns only when in this server's voice"
+                                        onClick={() => { g.voiceActivated = !g.voiceActivated; saveData(); forceUpdate(); }}>
+                                        🔊 {g.voiceActivated ? "VC-only" : "Always"}
+                                    </button>
+                                )}
                                 <Button size={Button.Sizes.SMALL} color={g.enabled ? Button.Colors.GREEN : Button.Colors.GREY} className="rs-btn-sm"
                                     onClick={() => toggleGuild(g)}>{g.enabled ? "ON" : "OFF"}</Button>
                                 {g.manual && <button className="rs-del-btn" onClick={() => removeGuild(g)}>&#10005;</button>}
@@ -1796,16 +1983,31 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                         </div>
                         {g.enabled && (
                             <div className="rs-nick-expand">
-                                <div className="rs-hint" style={{ marginBottom: 5 }}>
-                                    Nick source: <b style={{ color: NM_COLOR[mode] }}>
-                                        {mode === "custom" ? "Custom nicks only (falls back to global pool if empty)" : mode === "global" ? "Global pool only" : "Global pool + custom nicks, merged"}
-                                    </b>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".7px", color: NM_COLOR[mode] }}>Nicks</span>
+                                    <div style={{ flex: 1, height: 1, background: `${NM_COLOR[mode]}22` }} />
+                                    <span className="rs-count" style={{ background: `${NM_COLOR[mode]}18`, color: NM_COLOR[mode] }}>
+                                        {mode === "global" ? globalNicks.length : mode === "both" ? effective.length : g.nicks.length}
+                                    </span>
+                                    <button
+                                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${NM_COLOR[mode]}44`, background: `${NM_COLOR[mode]}18`, color: NM_COLOR[mode], cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0, transition: "all .15s" }}
+                                        title="Cycle: Custom → Global → Both" onClick={() => cycleMode(g)}>{NM_LABEL[mode]}
+                                    </button>
+                                    <button
+                                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${running ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`, background: running ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)", color: running ? NM_COLOR[mode] : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
+                                        onClick={() => toggleNickActive(g)}>
+                                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: running ? NM_COLOR[mode] : "#3a2a5a", display: "inline-block" }} />
+                                        {running ? "Active" : "Inactive"}
+                                    </button>
+                                </div>
+                                <div className="rs-hint" style={{ marginBottom: 5, color: NM_COLOR[mode] }}>
+                                    {mode === "custom" ? "Server-specific nicks only (falls back to global if empty)" : mode === "global" ? "Global pool only" : "Global pool + server-specific, merged"}
                                 </div>
                                 {(mode === "custom" || mode === "both") && (
                                     <>
                                         <div className="rs-nick-list">
                                             {g.nicks.length === 0
-                                                ? <span className="rs-empty">{mode === "custom" ? `No custom nicks — using global pool (${globalNicks.length}).` : "No custom nicks yet."}</span>
+                                                ? <span className="rs-empty">{mode === "custom" ? `No custom nicks - using global pool (${globalNicks.length}).` : "No custom nicks yet."}</span>
                                                 : g.nicks.map((n, ni) => (
                                                     <div key={`${g.id}_n_${ni}`}
                                                         draggable
@@ -1847,9 +2049,14 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".7px", color: C.pronoun }}>Pronouns</span>
                                         <div style={{ flex: 1, height: 1, background: `${C.pronoun}22` }} />
                                         <span className="rs-count" style={{ background: `${C.pronoun}18`, color: C.pronoun }}>
-                                            {gPrList.length > 0 ? `${gPrList.length} local` : effectivePrList.length > 0 ? `${effectivePrList.length} pool` : "0"}
+                                            {effectivePrList.length}
                                         </span>
-                                        <RndBtn value={settings.store.serverPronounsRandomize} color={C.pronoun} onChange={v => { settings.store.serverPronounsRandomize = v; forceUpdate(); }} />
+                                        <button
+                                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${NM_COLOR[g.guildPronounsMode ?? "custom"]}44`, background: `${NM_COLOR[g.guildPronounsMode ?? "custom"]}18`, color: NM_COLOR[g.guildPronounsMode ?? "custom"], cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0, transition: "all .15s" }}
+                                            title="Cycle pronoun‑source mode: Custom → Global → Both"
+                                            onClick={() => { const cur: NickMode = g.guildPronounsMode ?? "custom"; g.guildPronounsMode = NM_NEXT[cur]; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; saveData(); forceUpdate(); }}>
+                                            {NM_LABEL[g.guildPronounsMode ?? "custom"]}
+                                        </button>
                                         <button
                                             style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${g.guildPronounsEnabled ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`, background: g.guildPronounsEnabled ? `${C.pronoun}20` : "rgba(15,5,35,.55)", color: g.guildPronounsEnabled ? C.pronoun : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
                                             onClick={() => { g.guildPronounsEnabled = !g.guildPronounsEnabled; if (pluginActive) { if (g.guildPronounsEnabled) startGuildPronouns(g); else stopGuildPronouns(g.id); } saveData(); forceUpdate(); }}>
@@ -1857,11 +2064,17 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                             {g.guildPronounsEnabled ? "Active" : "Inactive"}
                                         </button>
                                     </div>
-                                    {gPrList.length === 0 && effectivePrList.length > 0 && (
-                                        <div className="rs-hint" style={{ marginBottom: 4, color: C.pronoun }}>No local entries — using {effectivePrList.length} from the global pronoun pool.</div>
+                                    {(g.guildPronounsMode ?? "custom") === "custom" && gPrList.length === 0 && effectivePrList.length > 0 && (
+                                        <div className="rs-hint" style={{ marginBottom: 4, color: C.pronoun }}>No local entries - using {effectivePrList.length} from the global pronoun pool.</div>
                                     )}
-                                    {gPrList.length === 0 && effectivePrList.length === 0 && (
-                                        <div className="rs-empty" style={{ marginBottom: 4 }}>No pronouns set — add local entries or fill the global pronoun pool above.</div>
+                                    {(g.guildPronounsMode ?? "custom") === "global" && (
+                                        <div className="rs-hint" style={{ marginBottom: 4, color: NM_COLOR.global }}>Using global pool only (<b>{globalGuildPronouns.length} entries</b>). Switch to Custom or Both to use local.</div>
+                                    )}
+                                    {(g.guildPronounsMode ?? "custom") === "both" && (
+                                        <div className="rs-hint" style={{ marginBottom: 4, color: NM_COLOR.both }}>Merged: {globalGuildPronouns.length} global + {gPrList.length} local = <b>{effectivePrList.length} total</b>.</div>
+                                    )}
+                                    {effectivePrList.length === 0 && (
+                                        <div className="rs-empty" style={{ marginBottom: 4 }}>No pronouns set - add local entries or fill the global pronoun pool above.</div>
                                     )}
                                     {gPrList.map((pr, pi) => (
                                         <div key={`${g.id}_pr_${pi}`}
@@ -1969,7 +2182,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                 setImportMsg({ ok: true, text: `Imported successfully (exported ${d})` });
                 forceUpdate(); setTimeout(() => setImportMsg(null), 5000);
             } catch {
-                setImportMsg({ ok: false, text: "Import failed — invalid or corrupt JSON" });
+                setImportMsg({ ok: false, text: "Import failed - invalid or corrupt JSON" });
                 setTimeout(() => setImportMsg(null), 5000);
             }
         };
@@ -2182,7 +2395,7 @@ function RSUserAreaButton() {
     if (!settings.store.showButton) return null;
     return (
         <UserAreaButton
-            tooltipText={active ? "Rotator Suite — running" : "Rotator Suite"}
+            tooltipText={active ? "Rotator Suite - running" : "Rotator Suite"}
             icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
@@ -2196,7 +2409,7 @@ function RSUserAreaButton() {
 
 export default definePlugin({
     name: "Rotator Suite",
-    description: "All-in-one Discord identity rotator. Cycles status (presence + presets), clan, bio, global pronouns, global display name, server nicknames, and per-server pronouns — each with its own independent timer. Profile has 3 independent cycles (bio/pronouns/display name). Server Profiles has 2 (nicknames/pronouns). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
+    description: "All-in-one Discord identity rotator. Cycles status (presence + presets), clan, bio, global pronouns, global display name, server nicknames, and per-server pronouns - each with its own independent timer. Profile has 3 independent cycles (bio/pronouns/display name). Server Profiles has 2 (nicknames/pronouns). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
@@ -2238,6 +2451,8 @@ export default definePlugin({
             guildPronounsEnabled: g.guildPronounsEnabled ?? false,
             guildPronounsSeqIdx: g.guildPronounsSeqIdx ?? 0,
             guildPronounsLastVal: g.guildPronounsLastVal ?? null,
+            guildPronounsMode: g.guildPronounsMode ?? "custom" as NickMode,
+            voiceActivated: g.voiceActivated ?? false,
         }));
         bioEntries   = stored.bioEntries   ?? [];
         pronounsList = stored.pronounsList ?? "";
@@ -2270,13 +2485,13 @@ export default definePlugin({
             startAllRotators();
         }
 
-        onCloseHandler = () => { applyCloseStatus(); };
+        onCloseHandler = () => { applyCloseStatus(); applyCloseClan(); };
         window.addEventListener("beforeunload", onCloseHandler);
     },
 
     stop() {
         pluginActive = false;
-        cachedToken = null; cachedGuildStore = null;
+        cachedToken = null; cachedGuildStore = null; cachedVoiceStateStore = null; cachedChannelStore = null;
         stopAllRotators();
         if (onCloseHandler) { window.removeEventListener("beforeunload", onCloseHandler); onCloseHandler = null; }
         Vencord.Api.UserArea.removeUserAreaButton("rotator-suite");
