@@ -1,9 +1,3 @@
-/*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { FluxDispatcher } from "@webpack/common";
@@ -13,6 +7,7 @@ function applyToDiscord(key: string, value: boolean) {
 }
 
 function applyAllToDiscord() {
+    applyToDiscord("autoEnable", false);
     applyToDiscord("enabled", settings.store.streamerEnabled);
     applyToDiscord("hidePersonalInformation", settings.store.hidePersonalInformation);
     applyToDiscord("hideInviteLinks", settings.store.hideInviteLinks);
@@ -20,6 +15,16 @@ function applyAllToDiscord() {
     applyToDiscord("disableNotifications", settings.store.disableNotifications);
     applyToDiscord("hideWindowFromScreenCapture", settings.store.hideWindowFromScreenCapture);
 }
+
+function dismissBanner() {
+    const banner = document.querySelector("[class*='colorStreamerMode']");
+    if (!banner) return;
+    const disableBtn = banner.querySelector("button") as HTMLElement | null;
+    disableBtn?.click();
+}
+
+let observer: MutationObserver | null = null;
+let reapplyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const settings = definePluginSettings({
     streamerEnabled: {
@@ -54,7 +59,7 @@ const settings = definePluginSettings({
     },
     hideWindowFromScreenCapture: {
         type: OptionType.BOOLEAN,
-        description: "Hide Discord window from screen capture tools",
+        description: "Hide Discord window from screen capture",
         default: false,
         onChange: (v: boolean) => applyToDiscord("hideWindowFromScreenCapture", v),
     },
@@ -68,11 +73,25 @@ export default definePlugin({
 
     start() {
         applyAllToDiscord();
+        observer = new MutationObserver(dismissBanner);
+        observer.observe(document.body, { childList: true, subtree: true });
+    },
+
+    stop() {
+        observer?.disconnect();
+        observer = null;
+        if (reapplyTimeout) clearTimeout(reapplyTimeout);
     },
 
     flux: {
         CONNECTION_OPEN() {
             applyAllToDiscord();
+        },
+        STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
+            if (key === "enabled" && value !== settings.store.streamerEnabled) {
+                if (reapplyTimeout) clearTimeout(reapplyTimeout);
+                reapplyTimeout = setTimeout(() => applyAllToDiscord(), 300);
+            }
         },
     },
 });
