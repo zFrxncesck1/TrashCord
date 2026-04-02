@@ -97,6 +97,8 @@ let bioTimer: ReturnType<typeof setTimeout> | null = null;
 let pronounsTimer: ReturnType<typeof setTimeout> | null = null;
 let globalNickTimer: ReturnType<typeof setTimeout> | null = null;
 let globalSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let lastGlobalNickApply = 0;
+const GLOBAL_NICK_MIN_MS = 429000;
 let pluginActive = false;
 let onCloseHandler: (() => void) | null = null;
 let voiceCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -210,7 +212,7 @@ function scheduleNickTick(g: GuildEntry, ms: number) {
                 nickTimers.set(g.id, setTimeout(() => {
                     if (pluginActive && g.enabled && nickTimers.has(g.id))
                         scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
-                }, retry * 1000 + 300));
+                }, retry * 1000 + 429));
                 return;
             }
         }
@@ -248,18 +250,16 @@ function pronounsForGuild(g: GuildEntry): string[] {
 function scheduleGuildPronounsTick(g: GuildEntry, ms: number) {
     const tid = setTimeout(async () => {
         if (guildPronounsTimers.get(g.id) !== tid) return;
-        if (!pluginActive || !g.guildPronounsEnabled || !settings.store.serverPronounsEnabled) {
-            guildPronounsTimers.delete(g.id); return;
-        }
+        guildPronounsTimers.delete(g.id);
+        if (!pluginActive || !g.guildPronounsEnabled || !settings.store.serverPronounsEnabled) return;
         const pool = pronounsForGuild(g);
-        if (!pool.length) { guildPronounsTimers.delete(g.id); return; }
+        if (!pool.length) return;
         const { val: pr, next, lastPicked } = pickItem(pool, g.guildPronounsSeqIdx ?? 0, settings.store.serverPronounsRandomize, g.guildPronounsLastVal);
         g.guildPronounsSeqIdx = next; g.guildPronounsLastVal = lastPicked;
         if (pr) await applyGuildPronoun(g.id, pr);
         saveData();
-        if (pluginActive && g.guildPronounsEnabled && settings.store.serverPronounsEnabled && !settings.store.globalSync && guildPronounsTimers.get(g.id) === tid)
+        if (pluginActive && g.guildPronounsEnabled && settings.store.serverPronounsEnabled && !settings.store.globalSync && !guildPronounsTimers.has(g.id))
             scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
-        else guildPronounsTimers.delete(g.id);
     }, ms) as ReturnType<typeof setTimeout>;
     guildPronounsTimers.set(g.id, tid);
 }
@@ -341,7 +341,9 @@ async function applyStatus(entry: StatusEntry, retries = 3): Promise<void> {
             if (entry.status && entry.status !== "auto" && PresenceSetting) await PresenceSetting.updateSetting(entry.status);
             if (settings.store.enableLogs) console.log(`[RS/Status] -> "${entry.text}" [${entry.status ?? "auto"}]`);
             return;
-        } catch (e) {
+        } catch (e: any) {
+            const st = e?.status ?? e?.response?.status ?? 0;
+            if (st === 429) return;
             if (settings.store.enableLogs) console.warn("[RS/Status] UserSetting fallback RestAPI:", e);
         }
     }
@@ -434,7 +436,7 @@ async function applyClan(id: string, retries = 4): Promise<void> {
                 if (settings.store.enableLogs) console.log(`[RS/Clan] -> ${id} attempt=${attempt + 1}`);
                 return;
             }
-            if (res.status === 429) {
+            if (res.status === 300) {
                 const json = await res.json().catch(() => ({}));
                 const ra = Math.max((json?.retry_after ?? 3), 1);
                 await new Promise(r => setTimeout(r, ra * 1000 + 300));
@@ -477,6 +479,7 @@ async function patchProfile(body: Record<string, string>) {
 
 async function applyGlobalNick(displayName: string, retries = 3): Promise<void> {
     for (let attempt = 0; attempt < retries; attempt++) {
+        if (!pluginActive) return;
         try {
             await RestAPI.patch({ url: "/users/@me", body: { global_name: displayName } });
             if (settings.store.enableLogs) console.log(`[RS/GlobalNick] -> "${displayName}"`);
@@ -496,10 +499,27 @@ async function applyGlobalNick(displayName: string, retries = 3): Promise<void> 
 }
 
 async function applyGuildPronoun(guildId: string, pronouns: string): Promise<void> {
-    try {
-        await RestAPI.patch({ url: `/users/@me/guilds/${guildId}/profile`, body: { pronouns } });
-        if (settings.store.enableLogs) console.log(`[RS/GuildPronouns] [${guildId}] -> "${pronouns}"`);
-    } catch (e: any) { if (settings.store.enableLogs) console.error("[RS/GuildPronouns]:", e); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            await RestAPI.patch({ url: `/users/@me/guilds/${guildId}/profile`, body: { pronouns } });
+            if (settings.store.enableLogs) console.log(`[RS/GuildPronouns] [${guildId}] -> "${pronouns}"`);
+            return;
+        } catch (e: any) {
+            const st = e?.status ?? e?.response?.status ?? 0;
+            if (st === 300) {
+                const ra = Math.max(parseFloat(e?.body?.retry_after ?? e?.retry_after ?? "5") || 5, 1);
+                if (settings.store.enableLogs) console.warn(`[RS/GuildPronouns] 429 [${guildId}] retry ${ra}s`);
+                await new Promise(r => setTimeout(r, ra * 1000 + 300));
+                continue;
+            }
+            if (st === 403 || st === 404) {
+                if (settings.store.enableLogs) console.warn(`[RS/GuildPronouns] [${guildId}] HTTP ${st} - server pronouns not supported for this server`);
+                return;
+            }
+            if (settings.store.enableLogs) console.error("[RS/GuildPronouns]:", e);
+            return;
+        }
+    }
 }
 
 function tickBio() {
@@ -540,13 +560,16 @@ function stopPronounsTimer() { if (pronounsTimer) { clearTimeout(pronounsTimer);
 
 function tickGlobalNick() {
     if (!settings.store.globalNickEnabled || !globalNickEntries.length) return;
+    const now = Date.now();
+    if (now - lastGlobalNickApply < GLOBAL_NICK_MIN_MS) return;
+    lastGlobalNickApply = now;
     const { val, next, lastPicked } = pickItem(globalNickEntries, globalNickSeqIdx, settings.store.globalNickRandomize, globalNickLastVal);
     globalNickSeqIdx = next; globalNickLastVal = lastPicked;
     if (val) applyGlobalNick(val);
 }
 function scheduleGlobalNickLoop() {
     if (globalNickTimer !== null) return;
-    const ms = Math.max(300000, getMs(settings.store.globalNickIntervalSeconds));
+    const ms = Math.max(429000, getMs(settings.store.globalNickIntervalSeconds));
     globalNickTimer = setTimeout(() => {
         globalNickTimer = null;
         if (!pluginActive || settings.store.globalSync) return;
@@ -681,7 +704,7 @@ const settings = definePluginSettings({
     },
     _sSyncGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Master Sync" color={C.data} /> },
     globalSync: { type: OptionType.BOOLEAN, default: false, description: "Master Sync (configure in Data tab).", onChange: () => { if (pluginActive) startAllRotators(); } },
-    globalSyncSeconds: { type: OptionType.STRING, default: "360", description: "Master Sync interval seconds (configure in Data tab)." },
+    globalSyncSeconds: { type: OptionType.STRING, default: "500", description: "Master Sync interval seconds (configure in Data tab)." },
     noDuplicateRandom: { type: OptionType.BOOLEAN, default: true, description: "No-Duplicate Random (configure in Data tab)." },
     _sStatusGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Status" color={C.status} /> },
     statusEnabled: { type: OptionType.BOOLEAN, default: false, description: "Status rotator enabled (configure in Status tab)." },
@@ -706,7 +729,7 @@ const settings = definePluginSettings({
     _sProfileGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Profile" color={C.bio} /> },
     globalNickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Global display name rotation enabled (Profile tab)." },
     globalNickRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize global display name rotation order (Profile tab)." },
-    globalNickIntervalSeconds: { type: OptionType.STRING, default: "300", description: "Seconds between display name changes. Discord rate-limits /users/@me - minimum enforced at 300s." },
+    globalNickIntervalSeconds: { type: OptionType.STRING, default: "429", description: "Seconds between display name changes. Discord rate-limits /users/@me - minimum enforced at 429." },
     profilePronounsEnabled: { type: OptionType.BOOLEAN, default: false, description: "Global pronouns rotation enabled (Profile tab)." },
     pronounsRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize global pronouns rotation order (Profile tab)." },
     pronounsIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between global pronoun changes (Profile tab)." },
@@ -1615,11 +1638,11 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                     rndValue={settings.store.globalNickRandomize} onToggleRnd={v => { settings.store.globalNickRandomize = v; forceUpdate(); }}
                     enableColor={C.nick}
                 />
-                <PanelInterval label="Display Name Interval" description="Seconds between display name changes. Min enforced: 300s. Uses /users/@me global_name - separate endpoint from bio/pronouns."
+                <PanelInterval label="Display Name Interval" description="Seconds between display name changes. Min enforced: 429s. Uses /users/@me global_name - separate endpoint from bio/pronouns."
                     storeKey="globalNickIntervalSeconds" disabled={settings.store.globalSync}
                     onApply={() => { if (pluginActive && settings.store.globalNickEnabled && !settings.store.globalSync) { stopGlobalNickTimer(); scheduleGlobalNickLoop(); } }} />
                 <div className="rs-hint" style={{ margin: "4px 0 6px" }}>
-                    Changes your <b style={{ color: C.nick }}>global display name</b> via <b style={{ color: C.hint }}>/users/@me</b> (global_name). Max 32 chars. Minimum interval: 300s.
+                    Changes your <b style={{ color: C.nick }}>global display name</b> via <b style={{ color: C.hint }}>/users/@me</b> (global_name). Max 32 chars. Minimum interval: 429s.
                 </div>
                 <div className="rs-divider" style={{ margin: "5px 0 6px" }} />
                 {confirmGn && <ConfirmBox msg="Delete all display name entries?" onConfirm={() => { globalNickEntries = []; globalNickSeqIdx = 0; globalNickLastVal = null; saveData(); forceUpdate(); setConfirmGn(false); }} onCancel={() => setConfirmGn(false)} />}
@@ -1821,6 +1844,9 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     storeKey="serverPronounsIntervalSeconds" disabled={settings.store.globalSync}
                     onApply={() => { if (pluginActive && settings.store.serverPronounsEnabled && !settings.store.globalSync) { stopAllGuildPronouns(); for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0)) startGuildPronouns(g); } }} />
                 <div className="rs-hint" style={{ marginTop: 5 }}>Each server can have its own pronoun list. Servers with no local entries fall back to the <b style={{ color: C.pronoun }}>Global Pronoun Pool</b>.</div>
+                <div className="rs-warn-box" style={{ marginTop: 6 }}>
+                    ⚠️ Server pronouns use <b>/users/@me/guilds/&#123;id&#125;/profile</b> — Discord may return 403/404 on servers where this is restricted. 429 errors in console during cycles are expected and handled automatically.
+                </div>
             </div>
 
             <div className="rs-card" style={{ marginBottom: 8, border: "1.5px solid rgba(121,134,203,.3)", background: "rgba(10,10,40,.5)" }}>
@@ -1994,10 +2020,10 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         title="Cycle: Custom → Global → Both" onClick={() => cycleMode(g)}>{NM_LABEL[mode]}
                                     </button>
                                     <button
-                                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${running ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`, background: running ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)", color: running ? NM_COLOR[mode] : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
-                                        onClick={() => toggleNickActive(g)}>
+                                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${running ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`, background: running ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)", color: running ? NM_COLOR[mode] : "#5a4a7a", cursor: settings.store.nickEnabled ? "pointer" : "not-allowed", fontSize: 10, fontWeight: 800, flexShrink: 0, opacity: settings.store.nickEnabled ? 1 : 0.4 }}
+                                        onClick={() => { if (settings.store.nickEnabled) toggleNickActive(g); }}>
                                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: running ? NM_COLOR[mode] : "#3a2a5a", display: "inline-block" }} />
-                                        {running ? "Active" : "Inactive"}
+                                        {settings.store.nickEnabled ? (running ? "Active" : "Inactive") : "Disabled"}
                                     </button>
                                 </div>
                                 <div className="rs-hint" style={{ marginBottom: 5, color: NM_COLOR[mode] }}>
@@ -2058,10 +2084,18 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                             {NM_LABEL[g.guildPronounsMode ?? "custom"]}
                                         </button>
                                         <button
-                                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${g.guildPronounsEnabled ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`, background: g.guildPronounsEnabled ? `${C.pronoun}20` : "rgba(15,5,35,.55)", color: g.guildPronounsEnabled ? C.pronoun : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
-                                            onClick={() => { g.guildPronounsEnabled = !g.guildPronounsEnabled; if (pluginActive) { if (g.guildPronounsEnabled) startGuildPronouns(g); else stopGuildPronouns(g.id); } saveData(); forceUpdate(); }}>
+                                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${g.guildPronounsEnabled ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`, background: g.guildPronounsEnabled ? `${C.pronoun}20` : "rgba(15,5,35,.55)", color: g.guildPronounsEnabled ? C.pronoun : "#5a4a7a", cursor: settings.store.serverPronounsEnabled ? "pointer" : "not-allowed", fontSize: 10, fontWeight: 800, flexShrink: 0, opacity: settings.store.serverPronounsEnabled ? 1 : 0.4 }}
+                                            onClick={() => {
+                                                if (!settings.store.serverPronounsEnabled) return;
+                                                g.guildPronounsEnabled = !g.guildPronounsEnabled;
+                                                if (pluginActive) {
+                                                    if (g.guildPronounsEnabled) startGuildPronouns(g);
+                                                    else stopGuildPronouns(g.id);
+                                                }
+                                                saveData(); forceUpdate();
+                                            }}>
                                             <span style={{ width: 6, height: 6, borderRadius: "50%", background: g.guildPronounsEnabled ? C.pronoun : "#3a2a5a", display: "inline-block" }} />
-                                            {g.guildPronounsEnabled ? "Active" : "Inactive"}
+                                            {settings.store.serverPronounsEnabled ? (g.guildPronounsEnabled ? "Active" : "Inactive") : "Disabled"}
                                         </button>
                                     </div>
                                     {(g.guildPronounsMode ?? "custom") === "custom" && gPrList.length === 0 && effectivePrList.length > 0 && (
@@ -2226,6 +2260,11 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <PanelInterval label="Master Sync Interval" description="Unified interval in seconds (only used when Master Sync is ON)"
                     storeKey="globalSyncSeconds" disabled={!isGlobalSync}
                     onApply={() => { if (pluginActive && isGlobalSync) startAllRotators(); }} />
+                {isGlobalSync && settings.store.globalNickEnabled && parseFloat(settings.store.globalSyncSeconds) < 429 && (
+                    <div className="rs-warn-box" style={{ marginTop: 5 }}>
+                        ⚠️ Master Sync interval ({settings.store.globalSyncSeconds}s) is below 429s while Display Name rotation is enabled. Display name changes are automatically throttled to 1 per 429s to avoid rate limits — but going below 429s here is not recommended and may cause repeated 429 errors on /users/@me.
+                    </div>
+                )}
                 <div className="rs-divider" style={{ margin: "8px 0" }} />
                 <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".7px", color: "#ab47bc", marginBottom: 5 }}>Random Behavior</div>
                 <PanelToggle label="No-Duplicate Random" description="Never pick the same entry twice in a row (applies to all rotators)" value={settings.store.noDuplicateRandom}
@@ -2491,6 +2530,7 @@ export default definePlugin({
 
     stop() {
         pluginActive = false;
+        lastGlobalNickApply = 0;
         cachedToken = null; cachedGuildStore = null; cachedVoiceStateStore = null; cachedChannelStore = null;
         stopAllRotators();
         if (onCloseHandler) { window.removeEventListener("beforeunload", onCloseHandler); onCloseHandler = null; }
