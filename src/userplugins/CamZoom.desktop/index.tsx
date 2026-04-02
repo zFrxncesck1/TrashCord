@@ -184,8 +184,8 @@ function initTile(tile: HTMLElement) {
 
     const s: ZoomState = { scale: 1, panX: 0, panY: 0, dragging: false, lastX: 0, lastY: 0 };
     const max = settings.store.maxZoom;
-    const mmW = mobile ? Math.round(settings.store.minimapWidth * 9 / 16) : settings.store.minimapWidth;
-    const mmH = mobile ? settings.store.minimapWidth : Math.round(settings.store.minimapWidth * 9 / 16);
+    const mmW = mobile ? Math.round(settings.store.minimapWidth * 9 / 16 * 0.65) : settings.store.minimapWidth;
+    const mmH = mobile ? Math.round(settings.store.minimapWidth * 0.65) : Math.round(settings.store.minimapWidth * 9 / 16);
 
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let panelVisible = false;
@@ -318,7 +318,13 @@ function initTile(tile: HTMLElement) {
     panel.addEventListener("pointerenter", cancelHide);
     panel.addEventListener("pointerleave", showPanel);
 
-    wrapper.appendChild(panel);
+    const callRoot         = tile.closest<HTMLElement>('[class*="root_bfe55a"]');
+    const overlayContainer = tile.querySelector<HTMLElement>('[class*="overlayContainer"]');
+    const tileChild        = tile.querySelector<HTMLElement>('[class*="tileChild"]');
+    if (callRoot)              callRoot.appendChild(panel);
+    else if (overlayContainer) overlayContainer.appendChild(panel);
+    else if (tileChild)        tileChild.appendChild(panel);
+    else                       tile.appendChild(panel);
 
     const updateSlider = (v: number) => {
         const pct = Math.round(((v - 1) / (max - 1)) * 1000) / 10;
@@ -533,8 +539,18 @@ function initTile(tile: HTMLElement) {
 
 function cleanupTile(tile: HTMLElement) { tiles.get(tile)?.kill(); }
 
+function isInPiP(tile: HTMLElement): boolean {
+    return !!tile.closest('[class*="pictureInPictureWindow"], [class*="container__2aff1"]');
+}
+
+function isInHiddenPanel(tile: HTMLElement): boolean {
+    const p = tile.closest<HTMLElement>('[class*="participantsWrapperAnimated"]');
+    return !!p && p.style.visibility === "hidden";
+}
+
 function scanAllTiles() {
     document.querySelectorAll<HTMLElement>("[data-selenium-video-tile]").forEach(tile => {
+        if (isInPiP(tile) || isInHiddenPanel(tile)) return;
         if (tile.dataset[MARK]) {
             const entry = tiles.get(tile);
             const mobileNow = isMobileCam(tile, entry?.src);
@@ -566,7 +582,7 @@ const CSS = `
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    z-index: 25;
+    z-index: 9999;
 }
 
 .${P}-minimap {
