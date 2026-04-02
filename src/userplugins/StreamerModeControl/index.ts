@@ -6,21 +6,11 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
+import { findByProps } from "@webpack";
 import { FluxDispatcher } from "@webpack/common";
 
-const DISCORD_KEYS = [
-    "enabled",
-    "autoEnable",
-    "hidePersonalInformation",
-    "hideInviteLinks",
-    "disableSounds",
-    "disableNotifications",
-    "hideWindowFromScreenCapture",
-] as const;
-
-const SETTING_TO_DISCORD: Record<string, string> = {
+const STORE_KEY_MAP: Record<string, string> = {
     streamerEnabled: "enabled",
-    autoEnable: "autoEnable",
     hidePersonalInformation: "hidePersonalInformation",
     hideInviteLinks: "hideInviteLinks",
     disableSounds: "disableSounds",
@@ -28,30 +18,23 @@ const SETTING_TO_DISCORD: Record<string, string> = {
     hideWindowFromScreenCapture: "hideWindowFromScreenCapture",
 };
 
-const DISCORD_TO_SETTING: Record<string, string> = Object.fromEntries(
-    Object.entries(SETTING_TO_DISCORD).map(([k, v]) => [v, k])
+const REVERSE_MAP: Record<string, string> = Object.fromEntries(
+    Object.entries(STORE_KEY_MAP).map(([k, v]) => [v, k])
 );
 
-function dispatch(discordKey: string, value: boolean) {
-    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key: discordKey, value });
+function applyToDiscord(storeKey: string, value: boolean) {
+    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key: storeKey, value });
 }
 
-function getStreamerModeStore(): Record<string, unknown> | null {
-    try {
-        const graph = (FluxDispatcher as any)._actionHandlers?._dependencyGraph;
-        const nodes: Map<string, any> | Record<string, any> = graph?.nodes;
-        if (!nodes) return null;
-        const iter = typeof (nodes as any).values === "function"
-            ? (nodes as Map<string, any>).values()
-            : Object.values(nodes);
-        for (const node of iter) {
-            const store = node?.store ?? node;
-            if (typeof store?.getName === "function" && store.getName() === "StreamerModeStore") {
-                return store as Record<string, unknown>;
-            }
+function syncFromStore() {
+    const store = findByProps("hidePersonalInformation") as any;
+    if (!store) return;
+    for (const [settingKey, storeKey] of Object.entries(STORE_KEY_MAP)) {
+        const val = store[storeKey];
+        if (typeof val === "boolean") {
+            (settings.store as any)[settingKey] = val;
         }
-    } catch { }
-    return null;
+    }
 }
 
 const settings = definePluginSettings({
@@ -59,43 +42,37 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Enable Streamer Mode",
         default: false,
-        onChange: (v: boolean) => dispatch("enabled", v),
-    },
-    autoEnable: {
-        type: OptionType.BOOLEAN,
-        description: "Auto-enable when OBS or XSplit is running",
-        default: false,
-        onChange: (v: boolean) => dispatch("autoEnable", v),
+        onChange: (v: boolean) => applyToDiscord("enabled", v),
     },
     hidePersonalInformation: {
         type: OptionType.BOOLEAN,
         description: "Hide personal info (email, accounts, notes, DM previews)",
         default: true,
-        onChange: (v: boolean) => dispatch("hidePersonalInformation", v),
+        onChange: (v: boolean) => applyToDiscord("hidePersonalInformation", v),
     },
     hideInviteLinks: {
         type: OptionType.BOOLEAN,
         description: "Hide Discord server invite links",
         default: true,
-        onChange: (v: boolean) => dispatch("hideInviteLinks", v),
+        onChange: (v: boolean) => applyToDiscord("hideInviteLinks", v),
     },
     disableSounds: {
         type: OptionType.BOOLEAN,
         description: "Disable all sound effects",
         default: true,
-        onChange: (v: boolean) => dispatch("disableSounds", v),
+        onChange: (v: boolean) => applyToDiscord("disableSounds", v),
     },
     disableNotifications: {
         type: OptionType.BOOLEAN,
         description: "Disable notifications",
         default: true,
-        onChange: (v: boolean) => dispatch("disableNotifications", v),
+        onChange: (v: boolean) => applyToDiscord("disableNotifications", v),
     },
     hideWindowFromScreenCapture: {
         type: OptionType.BOOLEAN,
         description: "Hide Discord window from screen capture tools",
         default: false,
-        onChange: (v: boolean) => dispatch("hideWindowFromScreenCapture", v),
+        onChange: (v: boolean) => applyToDiscord("hideWindowFromScreenCapture", v),
     },
 });
 
@@ -106,21 +83,16 @@ export default definePlugin({
     settings,
 
     start() {
-        const store = getStreamerModeStore();
-        if (!store) return;
-        for (const discordKey of DISCORD_KEYS) {
-            const val = store[discordKey] ?? (store as any).getState?.()?.[discordKey];
-            const settingKey = DISCORD_TO_SETTING[discordKey];
-            if (settingKey && typeof val === "boolean") {
-                (settings.store as any)[settingKey] = val;
-            }
-        }
+        syncFromStore();
     },
 
     flux: {
         STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
-            const settingKey = DISCORD_TO_SETTING[key];
+            const settingKey = REVERSE_MAP[key];
             if (settingKey) (settings.store as any)[settingKey] = value;
+        },
+        CONNECTION_OPEN() {
+            syncFromStore();
         },
     },
 });
