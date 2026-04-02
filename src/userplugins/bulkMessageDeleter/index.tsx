@@ -348,9 +348,9 @@ function BackgroundStopButton({ progress, total }: { progress: number; total: nu
     );
 }
 
-const ChatBarRender: ChatBarButtonFactory = ({ isMainChat, channel }) => {
+const ChatBarRender: ChatBarButtonFactory = ({ isAnyChat, channel }) => {
     const s = useStore();
-    if (!isMainChat) return null;
+    if (!isAnyChat) return null;
     if (s.active && s.channelId === channel.id) return <Toolbar channelId={channel.id} />;
     if (s.background) return <BackgroundStopButton progress={s.progress} total={s.total} />;
     return (
