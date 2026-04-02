@@ -5,7 +5,7 @@
  */
 
 import { ApplicationCommandInputType, sendBotMessage } from "@api/Commands";
-import { ChatBarButton } from "@api/ChatButtons";
+import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
@@ -1081,6 +1081,31 @@ const StopIcon: React.FC<{ className?: string; }> = ({ className }) => (
     <svg width="20" height="20" viewBox="0 0 24 24" className={className}><path fill="currentColor" d="M6 6h12v12H6z" /></svg>
 );
 
+const AMRChatBarRender: ChatBarButtonFactory = ({ isAnyChat }) => {
+    const [running, setRunning] = React.useState(isRepeating);
+
+    React.useEffect(() => {
+        _openModalFn = buildRepeaterModal;
+        return () => { _openModalFn = null; };
+    }, []);
+
+    React.useEffect(() => {
+        const iv = setInterval(() => { if (running !== isRepeating) setRunning(isRepeating); }, 100);
+        return () => clearInterval(iv);
+    }, [running]);
+
+    if (!isAnyChat) return null;
+
+    return (
+        <ChatBarButton
+            tooltip={running ? "Ferma Auto Ripetitore" : "Configura e avvia il ripetitore"}
+            onClick={() => { if (running) { stopRepeating(); setRunning(false); } else buildRepeaterModal(); }}
+        >
+            {running ? <StopIcon /> : <StartIcon />}
+        </ChatBarButton>
+    );
+};
+
 export default definePlugin({
     name: "AutoMessageRepeater",
     description: "Repeat messages with smart word-list mixing, gender mode, channel-aware pools, jitter, output separator, and export/import",
@@ -1169,29 +1194,7 @@ export default definePlugin({
         },
     }],
 
-    renderChatBarButton: ({ isMainChat }) => {
-        if (!isMainChat) return null;
-        const [running, setRunning] = React.useState(isRepeating);
-
-        React.useEffect(() => {
-            _openModalFn = buildRepeaterModal;
-            return () => { _openModalFn = null; };
-        }, []);
-
-        React.useEffect(() => {
-            const iv = setInterval(() => { if (running !== isRepeating) setRunning(isRepeating); }, 100);
-            return () => clearInterval(iv);
-        }, [running]);
-
-        return (
-            <ChatBarButton
-                tooltip={running ? "Stop Auto Repeating" : "Configure & Start Repeating"}
-                onClick={() => { if (running) { stopRepeating(); setRunning(false); } else buildRepeaterModal(); }}
-            >
-                {running ? <StopIcon /> : <StartIcon />}
-            </ChatBarButton>
-        );
-    },
+    chatBarButton: { icon: StartIcon, render: AMRChatBarRender },
 
     async start() {
         injectCSS();
