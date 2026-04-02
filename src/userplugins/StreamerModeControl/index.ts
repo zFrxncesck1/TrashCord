@@ -1,4 +1,3 @@
-
 /*
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
@@ -7,7 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByStoreName } from "@webpack";
+import { find } from "@webpack";
 import { FluxDispatcher } from "@webpack/common";
 
 const KEYS = [
@@ -78,14 +77,16 @@ export default definePlugin({
     settings,
 
     start() {
-        const store = findByStoreName("StreamerModeStore") as Record<string, unknown> | null;
-        if (!store) return;
-        for (const key of KEYS) {
-            const val = store[key];
-            if (typeof val === "boolean") {
-                settings.store[key] = val;
+        try {
+            const store = find((m: any) => m?.getName?.() === "StreamerModeStore") as Record<string, unknown> | null;
+            if (!store) return;
+            for (const key of KEYS) {
+                const val = store[key];
+                if (typeof val === "boolean") {
+                    settings.store[key] = val;
+                }
             }
-        }
+        } catch { }
     },
 
     flux: {
