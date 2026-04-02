@@ -6,35 +6,19 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByProps } from "@webpack";
 import { FluxDispatcher } from "@webpack/common";
 
-const STORE_KEY_MAP: Record<string, string> = {
-    streamerEnabled: "enabled",
-    hidePersonalInformation: "hidePersonalInformation",
-    hideInviteLinks: "hideInviteLinks",
-    disableSounds: "disableSounds",
-    disableNotifications: "disableNotifications",
-    hideWindowFromScreenCapture: "hideWindowFromScreenCapture",
-};
-
-const REVERSE_MAP: Record<string, string> = Object.fromEntries(
-    Object.entries(STORE_KEY_MAP).map(([k, v]) => [v, k])
-);
-
-function applyToDiscord(storeKey: string, value: boolean) {
-    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key: storeKey, value });
+function applyToDiscord(key: string, value: boolean) {
+    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key, value });
 }
 
-function syncFromStore() {
-    const store = findByProps("hidePersonalInformation") as any;
-    if (!store) return;
-    for (const [settingKey, storeKey] of Object.entries(STORE_KEY_MAP)) {
-        const val = store[storeKey];
-        if (typeof val === "boolean") {
-            (settings.store as any)[settingKey] = val;
-        }
-    }
+function applyAllToDiscord() {
+    applyToDiscord("enabled", settings.store.streamerEnabled);
+    applyToDiscord("hidePersonalInformation", settings.store.hidePersonalInformation);
+    applyToDiscord("hideInviteLinks", settings.store.hideInviteLinks);
+    applyToDiscord("disableSounds", settings.store.disableSounds);
+    applyToDiscord("disableNotifications", settings.store.disableNotifications);
+    applyToDiscord("hideWindowFromScreenCapture", settings.store.hideWindowFromScreenCapture);
 }
 
 const settings = definePluginSettings({
@@ -59,13 +43,13 @@ const settings = definePluginSettings({
     disableSounds: {
         type: OptionType.BOOLEAN,
         description: "Disable all sound effects",
-        default: true,
+        default: false,
         onChange: (v: boolean) => applyToDiscord("disableSounds", v),
     },
     disableNotifications: {
         type: OptionType.BOOLEAN,
         description: "Disable notifications",
-        default: true,
+        default: false,
         onChange: (v: boolean) => applyToDiscord("disableNotifications", v),
     },
     hideWindowFromScreenCapture: {
@@ -83,16 +67,12 @@ export default definePlugin({
     settings,
 
     start() {
-        syncFromStore();
+        applyAllToDiscord();
     },
 
     flux: {
-        STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
-            const settingKey = REVERSE_MAP[key];
-            if (settingKey) (settings.store as any)[settingKey] = value;
-        },
         CONNECTION_OPEN() {
-            syncFromStore();
+            applyAllToDiscord();
         },
     },
 });
