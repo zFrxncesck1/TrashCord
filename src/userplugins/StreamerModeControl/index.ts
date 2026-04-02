@@ -8,8 +8,50 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { FluxDispatcher } from "@webpack/common";
 
-function dispatch(key: string, value: boolean) {
-    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key, value });
+const DISCORD_KEYS = [
+    "enabled",
+    "autoEnable",
+    "hidePersonalInformation",
+    "hideInviteLinks",
+    "disableSounds",
+    "disableNotifications",
+    "hideWindowFromScreenCapture",
+] as const;
+
+const SETTING_TO_DISCORD: Record<string, string> = {
+    streamerEnabled: "enabled",
+    autoEnable: "autoEnable",
+    hidePersonalInformation: "hidePersonalInformation",
+    hideInviteLinks: "hideInviteLinks",
+    disableSounds: "disableSounds",
+    disableNotifications: "disableNotifications",
+    hideWindowFromScreenCapture: "hideWindowFromScreenCapture",
+};
+
+const DISCORD_TO_SETTING: Record<string, string> = Object.fromEntries(
+    Object.entries(SETTING_TO_DISCORD).map(([k, v]) => [v, k])
+);
+
+function dispatch(discordKey: string, value: boolean) {
+    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key: discordKey, value });
+}
+
+function getStreamerModeStore(): Record<string, unknown> | null {
+    try {
+        const graph = (FluxDispatcher as any)._actionHandlers?._dependencyGraph;
+        const nodes: Map<string, any> | Record<string, any> = graph?.nodes;
+        if (!nodes) return null;
+        const iter = typeof (nodes as any).values === "function"
+            ? (nodes as Map<string, any>).values()
+            : Object.values(nodes);
+        for (const node of iter) {
+            const store = node?.store ?? node;
+            if (typeof store?.getName === "function" && store.getName() === "StreamerModeStore") {
+                return store as Record<string, unknown>;
+            }
+        }
+    } catch { }
+    return null;
 }
 
 const settings = definePluginSettings({
@@ -63,18 +105,22 @@ export default definePlugin({
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
 
+    start() {
+        const store = getStreamerModeStore();
+        if (!store) return;
+        for (const discordKey of DISCORD_KEYS) {
+            const val = store[discordKey] ?? (store as any).getState?.()?.[discordKey];
+            const settingKey = DISCORD_TO_SETTING[discordKey];
+            if (settingKey && typeof val === "boolean") {
+                (settings.store as any)[settingKey] = val;
+            }
+        }
+    },
+
     flux: {
         STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
-            const map: Record<string, keyof typeof settings.store> = {
-                enabled: "streamerEnabled",
-                autoEnable: "autoEnable",
-                hidePersonalInformation: "hidePersonalInformation",
-                hideInviteLinks: "hideInviteLinks",
-                disableSounds: "disableSounds",
-                disableNotifications: "disableNotifications",
-                hideWindowFromScreenCapture: "hideWindowFromScreenCapture",
-            };
-            if (map[key]) settings.store[map[key]] = value;
+            const settingKey = DISCORD_TO_SETTING[key];
+            if (settingKey) (settings.store as any)[settingKey] = value;
         },
     },
 });
