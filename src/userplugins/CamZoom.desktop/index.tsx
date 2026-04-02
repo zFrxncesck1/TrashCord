@@ -136,29 +136,10 @@ function findWrapper(tile: HTMLElement): HTMLElement | null {
     return tile.querySelector<HTMLElement>('[class*="videoWrapper"]');
 }
 
-function isMobileCam(tile: HTMLElement, src?: HTMLVideoElement): boolean {
+function isMobileCam(_tile: HTMLElement, src?: HTMLVideoElement): boolean {
     if (!settings.store.autoMobileCamView) return false;
-
     if (src && src.videoWidth > 0 && src.videoHeight > 0)
         return src.videoHeight > src.videoWidth;
-
-    const sizer = tile.closest<HTMLElement>('[class*="videoSizer"]');
-    if (sizer) {
-        const ar = sizer.style.aspectRatio || sizer.style.getPropertyValue("aspect-ratio");
-        if (ar && ar.trim() !== "") {
-            const parts = ar.split("/");
-            const w = parseFloat(parts[0].trim());
-            const h = parseFloat((parts[1] ?? "1").trim());
-            if (!isNaN(w) && !isNaN(h) && h > 0) return (w / h) < 1;
-        }
-        if (sizer.offsetWidth > 0 && sizer.offsetHeight > 0)
-            return sizer.offsetHeight > sizer.offsetWidth;
-    }
-
-    const vwrap = tile.closest<HTMLElement>('[class*="videoWrapper__"]');
-    if (vwrap && vwrap.offsetWidth > 0 && vwrap.offsetHeight > 0)
-        return vwrap.offsetHeight > vwrap.offsetWidth;
-
     return false;
 }
 
@@ -184,8 +165,8 @@ function initTile(tile: HTMLElement) {
 
     const s: ZoomState = { scale: 1, panX: 0, panY: 0, dragging: false, lastX: 0, lastY: 0 };
     const max = settings.store.maxZoom;
-    const mmW = mobile ? Math.round(settings.store.minimapWidth * 9 / 16 * 0.65) : settings.store.minimapWidth;
-    const mmH = mobile ? Math.round(settings.store.minimapWidth * 0.65) : Math.round(settings.store.minimapWidth * 9 / 16);
+    const mmW = mobile ? Math.round(settings.store.minimapWidth * 9 / 16) : settings.store.minimapWidth;
+    const mmH = mobile ? Math.round(settings.store.minimapWidth) : Math.round(settings.store.minimapWidth * 9 / 16);
 
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let panelVisible = false;
@@ -318,13 +299,20 @@ function initTile(tile: HTMLElement) {
     panel.addEventListener("pointerenter", cancelHide);
     panel.addEventListener("pointerleave", showPanel);
 
-    const callRoot         = tile.closest<HTMLElement>('[class*="root_bfe55a"]');
-    const overlayContainer = tile.querySelector<HTMLElement>('[class*="overlayContainer"]');
-    const tileChild        = tile.querySelector<HTMLElement>('[class*="tileChild"]');
-    if (callRoot)              callRoot.appendChild(panel);
-    else if (overlayContainer) overlayContainer.appendChild(panel);
-    else if (tileChild)        tileChild.appendChild(panel);
-    else                       tile.appendChild(panel);
+    tile.style.position = "relative";
+    tile.appendChild(panel);
+
+    const adjustPanelBottom = () => {
+        const callRoot = tile.closest<HTMLElement>('[class*="root_bfe55a"]');
+        const bc = callRoot?.querySelector<HTMLElement>('[class*="bottomControls"]');
+        if (!bc) { panel.style.bottom = "10px"; return; }
+        const bcT = bc.getBoundingClientRect().top;
+        const wrB = wrapper.getBoundingClientRect().bottom;
+        const overlap = wrB - bcT;
+        panel.style.bottom = (overlap > 4 ? Math.round(overlap) + 10 : 10) + "px";
+    };
+    adjustPanelBottom();
+    const adjustTimer = setInterval(adjustPanelBottom, 300);
 
     const updateSlider = (v: number) => {
         const pct = Math.round(((v - 1) / (max - 1)) * 1000) / 10;
@@ -503,7 +491,7 @@ function initTile(tile: HTMLElement) {
         applyTransform(vid, wrapper, s, entry);
     };
 
-    const onMouseMove = () => { if (panelVisible) showPanel(); };
+    const onMouseMove = () => { adjustPanelBottom(); if (panelVisible) showPanel(); };
 
     wrapper.addEventListener("wheel",         onWheel,        { passive: false });
     wrapper.addEventListener("pointerdown",   onPointerDown);
@@ -528,7 +516,9 @@ function initTile(tile: HTMLElement) {
         wrapper.removeEventListener("click",         onPointerClick, true);
         wrapper.removeEventListener("dblclick",      onDblClick);
         tile.removeEventListener("mousemove",        onMouseMove);
+        clearInterval(adjustTimer);
         panel.remove();
+        tile.style.position = "";
         wrapper.classList.remove(`${P}-host`, `${P}-zoomed`, `${P}-dragging`);
         vid.style.transform = vid.style.transition = vid.style.transformOrigin = "";
         wrapper.style.overflow = "";
