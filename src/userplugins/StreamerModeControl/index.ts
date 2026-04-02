@@ -6,65 +6,72 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { find } from "@webpack";
+import { findByProps } from "@webpack";
 import { FluxDispatcher } from "@webpack/common";
 
-const KEYS = [
-    "enabled",
-    "autoEnable",
-    "hidePersonalInformation",
-    "hideInviteLinks",
-    "disableSounds",
-    "disableNotifications",
-    "hideWindowFromScreenCapture",
-] as const;
+type SMKey =
+    | "streamerEnabled"
+    | "autoEnable"
+    | "hidePersonalInformation"
+    | "hideInviteLinks"
+    | "disableSounds"
+    | "disableNotifications"
+    | "hideWindowFromScreenCapture";
 
-type SMKey = typeof KEYS[number];
+const KEY_MAP: Record<SMKey, string> = {
+    streamerEnabled: "enabled",
+    autoEnable: "autoEnable",
+    hidePersonalInformation: "hidePersonalInformation",
+    hideInviteLinks: "hideInviteLinks",
+    disableSounds: "disableSounds",
+    disableNotifications: "disableNotifications",
+    hideWindowFromScreenCapture: "hideWindowFromScreenCapture",
+};
 
-function sm(key: SMKey, value: boolean) {
-    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key, value });
+function sm(settingKey: SMKey, value: boolean) {
+    FluxDispatcher.dispatch({ type: "STREAMER_MODE_UPDATE", key: KEY_MAP[settingKey], value });
 }
 
 const settings = definePluginSettings({
-    enabled: {
+    streamerEnabled: {
         type: OptionType.BOOLEAN,
-        description: "Enable Streamer Mode",
+        description: "Attiva la Modalità Streamer",
         default: false,
-        onChange: (v: boolean) => sm("enabled", v),
+        onChange: (v: boolean) => sm("streamerEnabled", v),
     },
     autoEnable: {
         type: OptionType.BOOLEAN,
-        description: "Automatically enable if OBS or XSplit is running",
+        description: "Attiva automaticamente se OBS o XSplit sono in esecuzione",
         default: false,
         onChange: (v: boolean) => sm("autoEnable", v),
     },
     hidePersonalInformation: {
         type: OptionType.BOOLEAN,
-        description: "Hide personal information (email, connected accounts, notes, MD previews)",
+        description: "Nascondi le informazioni personali (e-mail, account, note, anteprime MD)",
         default: true,
         onChange: (v: boolean) => sm("hidePersonalInformation", v),
     },
     hideInviteLinks: {
         type: OptionType.BOOLEAN,
-        description: "Hide Discord server invite links",
+        description: "Nascondi i link di invito ai server Discord",
         default: true,
         onChange: (v: boolean) => sm("hideInviteLinks", v),
     },
     disableSounds: {
         type: OptionType.BOOLEAN,
-        description: "Disable all sound effects",
+        description: "Disattiva tutti gli effetti sonori",
         default: true,
         onChange: (v: boolean) => sm("disableSounds", v),
     },
     disableNotifications: {
         type: OptionType.BOOLEAN,
-        description: "Disable notifications",
+        description: "Disattiva le notifiche",
         default: true,
         onChange: (v: boolean) => sm("disableNotifications", v),
     },
     hideWindowFromScreenCapture: {
         type: OptionType.BOOLEAN,
-        description: "Hide Discord window from the Capture Tool",
+        description: "Nascondi la finestra di Discord dallo Strumento di cattura",
         default: false,
         onChange: (v: boolean) => sm("hideWindowFromScreenCapture", v),
     },
@@ -72,18 +79,19 @@ const settings = definePluginSettings({
 
 export default definePlugin({
     name: "StreamerModeControl",
-    description: "Control all Streamer Mode options from plugin settings, synced with Discord",
+    description: "Controlla tutte le opzioni della Modalità Streamer dai settings del plugin, sincronizzate con Discord",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
 
     start() {
         try {
-            const store = find((m: any) => m?.getName?.() === "StreamerModeStore") as Record<string, unknown> | null;
+            const store = findByProps("hidePersonalInformation", "hideInviteLinks", "disableSounds") as Record<string, unknown> | null;
             if (!store) return;
-            for (const key of KEYS) {
-                const val = store[key];
+            const map: [SMKey, string][] = Object.entries(KEY_MAP) as [SMKey, string][];
+            for (const [settingKey, storeKey] of map) {
+                const val = store[storeKey];
                 if (typeof val === "boolean") {
-                    settings.store[key] = val;
+                    settings.store[settingKey] = val;
                 }
             }
         } catch { }
@@ -91,9 +99,8 @@ export default definePlugin({
 
     flux: {
         STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
-            if ((KEYS as readonly string[]).includes(key)) {
-                settings.store[key as SMKey] = value;
-            }
+            const entry = (Object.entries(KEY_MAP) as [SMKey, string][]).find(([, sk]) => sk === key);
+            if (entry) settings.store[entry[0]] = value;
         },
     },
 });
