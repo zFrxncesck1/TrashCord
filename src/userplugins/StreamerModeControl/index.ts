@@ -26,18 +26,21 @@ function dismissBanner() {
     (document.querySelector("[class*='colorStreamerMode'] button") as HTMLElement | null)?.click();
 }
 
-let observer: MutationObserver | null = null;
-let bannerTimeout: ReturnType<typeof setTimeout> | null = null;
-let reapplyTimeout: ReturnType<typeof setTimeout> | null = null;
+function hasBanner(node: Node): boolean {
+    return node instanceof Element &&
+        !!(node.matches("[class*='colorStreamerMode']") || node.querySelector("[class*='colorStreamerMode']"));
+}
 
 function onMutation(mutations: MutationRecord[]) {
-    if (bannerTimeout) return;
-    if (!mutations.some(m => m.addedNodes.length > 0)) return;
-    bannerTimeout = setTimeout(() => {
-        bannerTimeout = null;
-        dismissBanner();
-    }, 200);
+    for (const m of mutations) {
+        for (const node of m.addedNodes) {
+            if (hasBanner(node)) { dismissBanner(); return; }
+        }
+    }
 }
+
+let observer: MutationObserver | null = null;
+let reapplyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const settings = definePluginSettings({
     streamerEnabled: {
@@ -86,14 +89,14 @@ export default definePlugin({
 
     start() {
         applyAll();
+        const root = document.getElementById("app-mount") ?? document.body;
         observer = new MutationObserver(onMutation);
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(root, { childList: true, subtree: true });
     },
 
     stop() {
         observer?.disconnect();
         observer = null;
-        if (bannerTimeout) clearTimeout(bannerTimeout);
         if (reapplyTimeout) clearTimeout(reapplyTimeout);
     },
 
