@@ -90,7 +90,7 @@ export default definePlugin({
         STREAMER_MODE_UPDATE({ key, value }: { key: string; value: boolean; }) {
             if (key === "enabled" && value !== settings.store.streamerEnabled) {
                 if (reapplyTimeout) clearTimeout(reapplyTimeout);
-                reapplyTimeout = setTimeout(() => applyAllToDiscord(), 300);
+                reapplyTimeout = setTimeout(() => applyAllToDiscord(), 429);
             }
         },
     },
