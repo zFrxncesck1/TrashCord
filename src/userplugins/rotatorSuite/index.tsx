@@ -49,6 +49,8 @@ interface GuildEntry {
     guildPronouns: string[]; guildPronounsEnabled: boolean;
     guildPronounsSeqIdx: number; guildPronounsLastVal: string | null;
     guildPronounsMode: NickMode; voiceActivated: boolean;
+    nickVoiceEnabled: boolean;
+    pronounsVoiceEnabled: boolean;
 }
 interface StatusEntry {
     emojiName: string | null; emojiId: string | null; text: string;
@@ -169,7 +171,7 @@ function getDiscordGuilds(): { id: string; name: string }[] {
 function syncGuildsFromDiscord() {
     for (const { id, name } of getDiscordGuilds())
         if (!guilds.find(g => g.id === id))
-            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false });
+            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
 }
 
 function nickModeOf(g: GuildEntry): NickMode { return g.nickMode ?? ((g as any).useGlobal ? "global" : "custom"); }
@@ -618,8 +620,9 @@ function onVoiceJoin(guildId: string | null) {
     if (!guildId || guildId === "DM") return;
     const g = guilds.find(x => x.id === guildId && x.voiceActivated);
     if (!g) return;
-    if (settings.store.nickEnabled && g.enabled && !nickTimers.has(g.id)) scheduleNickTick(g, 300);
-    if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0 && settings.store.serverPronounsEnabled && !guildPronounsTimers.has(g.id))
+    if (settings.store.nickEnabled && g.enabled && g.nickVoiceEnabled && !nickTimers.has(g.id))
+        scheduleNickTick(g, 300);
+    if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0 && settings.store.serverPronounsEnabled && g.pronounsVoiceEnabled && !guildPronounsTimers.has(g.id))
         scheduleGuildPronounsTick(g, 300);
 }
 
@@ -1787,15 +1790,52 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
         saveData(); forceUpdate();
     }
     function toggleNickActive(g: GuildEntry) {
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            g.nickVoiceEnabled = !g.nickVoiceEnabled;
+            saveData();
+            if (pluginActive) {
+                const inVoice = getMyVoiceGuildId() === g.id;
+                if (g.nickVoiceEnabled && inVoice && settings.store.nickEnabled && !nickTimers.has(g.id)) {
+                    scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+                } else if (!g.nickVoiceEnabled && nickTimers.has(g.id)) {
+                    stopNickGuild(g.id);
+                }
+            }
+            forceUpdate();
+            return;
+        }
         if (nickTimers.has(g.id)) stopNickGuild(g.id);
         else if (settings.store.nickEnabled && !settings.store.globalSync) scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
         forceUpdate();
+    }
+    function toggleGuildPronounsActive(g: GuildEntry) {
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            g.pronounsVoiceEnabled = !g.pronounsVoiceEnabled;
+            saveData();
+            if (pluginActive) {
+                const inVoice = getMyVoiceGuildId() === g.id;
+                if (g.pronounsVoiceEnabled && inVoice && settings.store.serverPronounsEnabled && !guildPronounsTimers.has(g.id)) {
+                    scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
+                } else if (!g.pronounsVoiceEnabled && guildPronounsTimers.has(g.id)) {
+                    stopGuildPronouns(g.id);
+                }
+            }
+            forceUpdate();
+            return;
+        }
+        if (!settings.store.serverPronounsEnabled) return;
+        g.guildPronounsEnabled = !g.guildPronounsEnabled;
+        if (pluginActive) {
+            if (g.guildPronounsEnabled) startGuildPronouns(g);
+            else stopGuildPronouns(g.id);
+        }
+        saveData(); forceUpdate();
     }
     function cycleMode(g: GuildEntry) { g.nickMode = NM_NEXT[nickModeOf(g)]; g.seqIndex = 0; g.lastNickVal = null; saveData(); forceUpdate(); }
     function addManual() {
         const id = manualId.trim(); const name = manualName.trim() || id;
         if (!id || !/^\d{17,20}$/.test(id) || guilds.find(g => g.id === id)) return;
-        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false });
+        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
         saveData(); setManualId(""); setManualName(""); forceUpdate();
     }
     function removeGuild(g: GuildEntry) { stopNickGuild(g.id); guilds = guilds.filter(x => x.id !== g.id); saveData(); forceUpdate(); }
@@ -1976,6 +2016,13 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                 const es = nickEdit[g.id] ?? null;
                 const gPrList = g.guildPronouns ?? [];
                 const effectivePrList = pronounsForGuild(g);
+                // Determine if nick should be considered "active" for styling
+                const isNickActive = g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal
+                    ? g.nickVoiceEnabled
+                    : running;
+                const isPronounsActive = g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal
+                    ? g.pronounsVoiceEnabled
+                    : g.guildPronounsEnabled;
                 return (
                     <div key={g.id} className="rs-card" style={{ borderColor: (g.enabled && settings.store.nickEnabled) ? `${color}60` : "rgba(124,77,255,.2)" }}>
                         <div className="rs-card-header">
@@ -2020,10 +2067,18 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         title="Cycle: Custom → Global → Both" onClick={() => cycleMode(g)}>{NM_LABEL[mode]}
                                     </button>
                                     <button
-                                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${running ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`, background: running ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)", color: running ? NM_COLOR[mode] : "#5a4a7a", cursor: settings.store.nickEnabled ? "pointer" : "not-allowed", fontSize: 10, fontWeight: 800, flexShrink: 0, opacity: settings.store.nickEnabled ? 1 : 0.4 }}
+                                        style={{
+                                            display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6,
+                                            border: `1px solid ${isNickActive ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`,
+                                            background: isNickActive ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)",
+                                            color: isNickActive ? NM_COLOR[mode] : "#5a4a7a",
+                                            cursor: settings.store.nickEnabled ? "pointer" : "not-allowed",
+                                            fontSize: 10, fontWeight: 800, flexShrink: 0,
+                                            opacity: settings.store.nickEnabled ? 1 : 0.4
+                                        }}
                                         onClick={() => { if (settings.store.nickEnabled) toggleNickActive(g); }}>
-                                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: running ? NM_COLOR[mode] : "#3a2a5a", display: "inline-block" }} />
-                                        {settings.store.nickEnabled ? (running ? "Active" : "Inactive") : "Disabled"}
+                                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: isNickActive ? NM_COLOR[mode] : "#3a2a5a", display: "inline-block" }} />
+                                        {settings.store.nickEnabled ? (isNickActive ? "Active" : "Inactive") : "Disabled"}
                                     </button>
                                 </div>
                                 <div className="rs-hint" style={{ marginBottom: 5, color: NM_COLOR[mode] }}>
@@ -2084,18 +2139,18 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                             {NM_LABEL[g.guildPronounsMode ?? "custom"]}
                                         </button>
                                         <button
-                                            style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: `1px solid ${g.guildPronounsEnabled ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`, background: g.guildPronounsEnabled ? `${C.pronoun}20` : "rgba(15,5,35,.55)", color: g.guildPronounsEnabled ? C.pronoun : "#5a4a7a", cursor: settings.store.serverPronounsEnabled ? "pointer" : "not-allowed", fontSize: 10, fontWeight: 800, flexShrink: 0, opacity: settings.store.serverPronounsEnabled ? 1 : 0.4 }}
-                                            onClick={() => {
-                                                if (!settings.store.serverPronounsEnabled) return;
-                                                g.guildPronounsEnabled = !g.guildPronounsEnabled;
-                                                if (pluginActive) {
-                                                    if (g.guildPronounsEnabled) startGuildPronouns(g);
-                                                    else stopGuildPronouns(g.id);
-                                                }
-                                                saveData(); forceUpdate();
-                                            }}>
-                                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: g.guildPronounsEnabled ? C.pronoun : "#3a2a5a", display: "inline-block" }} />
-                                            {settings.store.serverPronounsEnabled ? (g.guildPronounsEnabled ? "Active" : "Inactive") : "Disabled"}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6,
+                                                border: `1px solid ${isPronounsActive ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`,
+                                                background: isPronounsActive ? `${C.pronoun}20` : "rgba(15,5,35,.55)",
+                                                color: isPronounsActive ? C.pronoun : "#5a4a7a",
+                                                cursor: settings.store.serverPronounsEnabled ? "pointer" : "not-allowed",
+                                                fontSize: 10, fontWeight: 800, flexShrink: 0,
+                                                opacity: settings.store.serverPronounsEnabled ? 1 : 0.4
+                                            }}
+                                            onClick={() => { if (settings.store.serverPronounsEnabled) toggleGuildPronounsActive(g); }}>
+                                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: isPronounsActive ? C.pronoun : "#3a2a5a", display: "inline-block" }} />
+                                            {settings.store.serverPronounsEnabled ? (isPronounsActive ? "Active" : "Inactive") : "Disabled"}
                                         </button>
                                     </div>
                                     {(g.guildPronounsMode ?? "custom") === "custom" && gPrList.length === 0 && effectivePrList.length > 0 && (
@@ -2199,7 +2254,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
             try {
                 const p = JSON.parse(await file.text());
                 if (Array.isArray(p.globalNicks)) globalNicks = p.globalNicks;
-                if (Array.isArray(p.guilds)) guilds = p.guilds.map((g: any) => ({ ...g, nickMode: g.nickMode ?? (g.useGlobal ? "global" : "custom"), lastNickVal: null }));
+                if (Array.isArray(p.guilds)) guilds = p.guilds.map((g: any) => ({ ...g, nickMode: g.nickMode ?? (g.useGlobal ? "global" : "custom"), lastNickVal: null, nickVoiceEnabled: g.nickVoiceEnabled ?? g.enabled, pronounsVoiceEnabled: g.pronounsVoiceEnabled ?? g.guildPronounsEnabled }));
                 if (Array.isArray(p.bioEntries)) bioEntries = p.bioEntries;
                 if (typeof p.pronounsList === "string") pronounsList = p.pronounsList;
                 if (Array.isArray(p.statusEntries)) statusEntries = p.statusEntries;
@@ -2492,6 +2547,8 @@ export default definePlugin({
             guildPronounsLastVal: g.guildPronounsLastVal ?? null,
             guildPronounsMode: g.guildPronounsMode ?? "custom" as NickMode,
             voiceActivated: g.voiceActivated ?? false,
+            nickVoiceEnabled: g.nickVoiceEnabled ?? g.enabled,
+            pronounsVoiceEnabled: g.pronounsVoiceEnabled ?? g.guildPronounsEnabled,
         }));
         bioEntries   = stored.bioEntries   ?? [];
         pronounsList = stored.pronounsList ?? "";
