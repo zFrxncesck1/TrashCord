@@ -1,320 +1,260 @@
-import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
-import { definePluginSettings } from "@api/Settings";
-import definePlugin, { OptionType, PluginDef } from "@utils/types";
-import { Menu, Toasts, UserStore, MessageStore, RestAPI, ChannelStore } from "@webpack/common";
-import { findByProps } from "@webpack";
-import { getCurrentChannel, openUserProfile } from "@utils/discord";
-import { Notifications } from "@api/index";
-import { Message } from "discord-types/general";
-import { MessageCreatePayload, MessageUpdatePayload, MessageDeletePayload, TypingStartPayload, UserUpdatePayload, ThreadCreatePayload } from "./types";
-import { addToWhitelist, isInWhitelist, logger, removeFromWhitelist, convertSnakeCaseToCamelCase } from "./utils";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2024 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
-async function importLoggedMessages() {
-    let module;
-    try {
-        // @ts-ignore
-        module = await import("plugins/vc-message-logger-enhanced/LoggedMessageManager");
-    } catch {
-        try {
-            // @ts-ignore
-            module = await import("userplugins/vc-message-logger-enhanced/LoggedMessageManager");
-        } catch {
-            console.error("Failed to load loggedMessages from both 'plugins' and 'userplugins' directories.");
-        }
-    }
-    return module ? module.loggedMessages : null;
+import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { definePluginSettings } from "@api/Settings";
+import { Logger } from "@utils/Logger";
+import definePlugin, { OptionType, PluginNative } from "@utils/types";
+import { ChannelStore, GuildStore, Menu, UserStore } from "@webpack/common";
+import { UserContextProps } from "plugins/biggerStreamPreview";
+
+import * as status from "./status";
+import * as voice from "./voice";
+
+const Native = VencordNative.pluginHelpers.Stalker as PluginNative<typeof import("./index.native")>;
+
+if (!Native) {
+    console.warn("Stalker native module not available");
 }
 
+export interface StalkerLogEntry {
+    timestamp: string;
+    userId: string;
+    username: string;
+    action: "status_change" | "voice_join" | "voice_leave" | "message_send";
+    details: string;
+    channelName?: string;
+    guildName?: string;
+}
 
-const settings = definePluginSettings({
-    whitelistedIds: {
-        default: "",
-        type: OptionType.STRING,
-        description: "Whitelisted user IDs to stalk"
-    },
-    trackUserProfileChanges: {
-        default: true,
-        type: OptionType.BOOLEAN,
-        description: "Show notification for 'user profile changed'"
-    },
-    trackStartedTyping: {
-        default: true,
-        type: OptionType.BOOLEAN,
-        description: "Show notification for 'user started typing'"
-    },
-    trackSentMessage: {
-        default: true,
-        type: OptionType.BOOLEAN,
-        description: "Show notification for 'user sent a message'"
-    },
-    showMessageBody: {
-        default: false,
-        type: OptionType.BOOLEAN,
-        description: "Include message contents in notification"
-    },
-    charLimit: {
-        default: 100,
-        type: OptionType.NUMBER,
-        description: "Character limit for notifications. Set to 0 for no limit. Default=100"
+export const logger = new Logger("Stalker");
+
+// Cache separata per ogni utente: userId -> { logs, date }
+// La "date" serve a invalidare la cache quando cambia il giorno
+interface UserLogCache {
+    logs: StalkerLogEntry[];
+    date: string; // formato YYYY-MM-DD
+}
+
+const cachedLogsPerUser = new Map<string, UserLogCache>();
+
+// Coda di scrittura per evitare race conditions: userId -> Promise
+const writeLocks = new Map<string, Promise<void>>();
+
+function getTodayDate(): string {
+    return new Date().toISOString().slice(0, 10);
+}
+
+async function getLogsFromFile(userId: string, username: string): Promise<StalkerLogEntry[]> {
+    if (!Native?.readStalkerLog) return [];
+
+    try {
+        const fileContents = await Native.readStalkerLog(userId, username);
+        const parsed = JSON.parse(fileContents);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        // Se il JSON è corrotto, logga l'errore e parti da zero invece di perdere silenziosamente i dati
+        logger.error(`Failed to parse stalker log for user ${userId}, starting fresh:`, error);
+        return [];
     }
+}
+
+function getCacheForUser(userId: string): UserLogCache | undefined {
+    const cache = cachedLogsPerUser.get(userId);
+    // Invalida la cache se il giorno è cambiato
+    if (cache && cache.date !== getTodayDate()) {
+        cachedLogsPerUser.delete(userId);
+        return undefined;
+    }
+    return cache;
+}
+
+export async function logStalkerEvent(entry: StalkerLogEntry) {
+    if (!settings.store.enableLogging) return;
+    if (!Native?.writeStalkerLog) return;
+
+    // Serializza le scritture per questo utente per evitare race conditions
+    const previousLock = writeLocks.get(entry.userId) ?? Promise.resolve();
+
+    const newLock = previousLock.then(async () => {
+        try {
+            let cache = getCacheForUser(entry.userId);
+
+            if (!cache) {
+                const logs = await getLogsFromFile(entry.userId, entry.username);
+                cache = { logs, date: getTodayDate() };
+                cachedLogsPerUser.set(entry.userId, cache);
+            }
+
+            cache.logs.push(entry);
+
+            await Native.writeStalkerLog(JSON.stringify(cache.logs, null, 2), entry.userId, entry.username);
+        } catch (error) {
+            logger.error("Failed to write stalker log:", error);
+        }
+    });
+
+    writeLocks.set(entry.userId, newLock);
+    await newLock;
+}
+
+export let targets: string[] = [];
+
+const parseTargets = (parse: string): string[] => {
+    const regex = /\s*(,?)\s*([0-9]+)/g;
+    const matches = [...parse.matchAll(regex)].map(match => match.at(match.length - 1) as string);
+    targets = matches;
+    return matches;
+};
+
+export const settings = definePluginSettings({
+    stalkContext: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Adds an option on the user context menu that enables stalking for users."
+    },
+
+    notifyCallJoin: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user joins a voice channel.",
+    },
+
+    notifyCallLeave: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user leaves a voice channel.",
+    },
+
+    notifyOffline: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user goes offline."
+    },
+
+    notifyOnline: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user goes online.",
+    },
+
+    notifyDnd: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user goes on Do Not Disturb.",
+    },
+
+    notifyIdle: {
+        type: OptionType.BOOLEAN,
+        default: false,
+        description: "Send a notification when a user goes idle.",
+    },
+
+    notifyGoOnline: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Send a notification when a user logs onto Discord or leaves invisible, regardless of the 4 above options."
+    },
+
+    enableLogging: {
+        type: OptionType.BOOLEAN,
+        default: false,
+        description: "Enable logging of stalker events to a local file."
+    },
+
+    logMessages: {
+        type: OptionType.BOOLEAN,
+        default: false,
+        description: "Log when a user sends a message in any channel."
+    },
+
+    targets: {
+        type: OptionType.STRING,
+        placeholder: "1234,5678",
+        description: "List of user IDs to stalk, separate with a comma.",
+        default: "",
+        onChange: parseTargets,
+    },
 });
 
+const patchUserContext: NavContextMenuPatchCallback = (children, { user }: UserContextProps) => {
+    if (!settings.store.stalkContext || !user) return;
 
-const switchToMsg = (gid: string, cid?: string, mid?: string) => {
-    if (gid) findByProps("transitionToGuildSync").transitionToGuildSync(gid);
-    if (cid) findByProps("selectChannel").selectChannel({
-        guildId: gid ?? "@me",
-        channelId: cid,
-        messageId: mid
-    });
-};
+    const stalked = settings.store.targets.includes(user.id);
+    const group = findGroupChildrenByChildId("apps", children) ?? children;
+    let id = group.findLastIndex(child => child?.props?.id && child.props.id === "ignore");
+    if (id < 0) id = group.length - 1;
 
-// Takes a payload and returns the correct message string based on settings
-function getMessageBody(settings: any, payload: MessageCreatePayload | MessageUpdatePayload): string {
-    if (!settings.store.showMessageBody) return "Click to jump to the message";
-
-    const { charLimit } = settings.store;
-    const { content, attachments } = payload.message;
-    const baseContent = content || attachments?.[0]?.filename || "Click to jump to the message";
-
-    return (charLimit > 0 && baseContent.length > charLimit)
-        ? `${baseContent.substring(0, charLimit)}...`
-        : baseContent;
-}
-
-let oldUsers: {
-    [id: string]: UserUpdatePayload;
-} = {};
-let loggedMessages: Record<string, Message> = {};
-
-const _plugin: PluginDef & Record<string, any> = {
-    name: "Stalker",
-    description: "This plugin allows you to stalk users, made for delusional people like myself.",
-    authors: [
-        {
-            id: 253302259696271360n,
-            name: "zastix",
-        },
-    ],
-    dependencies: ["MessageLoggerEnhanced"],
-    settings,
-    flux: {
-        MESSAGE_CREATE: (payload: MessageCreatePayload) => {
-            if (!payload.message || !payload.message.author || !payload.message.channel_id || !settings.store.trackSentMessage) return;
-
-            const authorId = payload.message.author?.id;
-            if (!isInWhitelist(authorId) || getCurrentChannel()?.id === payload.channelId) return;
-            const author = UserStore.getUser(authorId);
-
-            if (payload.message.type === 7) {
-                Notifications.showNotification({
-                    // @ts-ignore outdated types lib doesnt have .globalName
-                    title: `${author.globalName || author.username} Joined a server`,
-                    body: "Click to jump to the message.",
-                    onClick: () => switchToMsg(payload.guildId, payload.channelId, payload.message.id),
-                    icon: author.getAvatarURL(undefined, undefined, false)
-                });
-                return;
-            }
-            Notifications.showNotification({
-                // @ts-ignore outdated types lib doesnt have .globalName
-                title: `${author.globalName || author.username} Sent a message`,
-                body: getMessageBody(settings, payload),
-                onClick: () => switchToMsg(payload.guildId, payload.channelId, payload.message.id),
-                icon: author.getAvatarURL(undefined, undefined, false)
-            });
-        },
-        MESSAGE_UPDATE: (payload: MessageUpdatePayload) => {
-            if (!payload.message || !payload.message.author || !payload.message.channel_id) return;
-
-            const authorId = payload.message.author?.id;
-            if (!isInWhitelist(authorId) || getCurrentChannel()?.id === payload.message.channel_id) return;
-            const author = UserStore.getUser(authorId);
-
-            Notifications.showNotification({
-                // @ts-ignore outdated types lib doesnt have .globalName
-                title: `${author.globalName || author.username} Edited a message`,
-                body: getMessageBody(settings, payload),
-                onClick: () => switchToMsg(payload.guildId, payload.message.channel_id, payload.message.id),
-                icon: author.getAvatarURL(undefined, undefined, false)
-            });
-        },
-        MESSAGE_DELETE: async (payload: MessageDeletePayload) => {
-            if (!payload || !payload?.channelId || !payload?.id || !payload?.guildId) return;
-            let message: Message | null;
-            if (loggedMessages[payload.id]) {
-                message = MessageStore.getMessage(payload.channelId, payload.id) ?? loggedMessages[payload.id];
-            } else {
-                loggedMessages = await importLoggedMessages();
-                message = MessageStore.getMessage(payload.channelId, payload.id) ?? loggedMessages[payload.id];
-            }
-            if (!message) return logger.error("Received a MESSAGE_DELETE event but the message was not found in the MessageStore, try enabling \"Cache Messages From Servers\" setting in MessageLoggerEnhanced.");
-
-            const { author } = message;
-            if (!isInWhitelist(author?.id) || getCurrentChannel()?.id === message.channel_id) return;
-
-            Notifications.showNotification({
-                // @ts-ignore outdated types lib doesnt have .globalName
-                title: `${author.globalName || author.username} Deleted a message!`,
-                body: `"${message.content.length > 100 ? message.content.substring(0, 100).concat("...") : message.content}"`,
-                onClick: () => {
-                    findByProps("selectChannel").selectChannel({
-                        guildId: payload.guildId,
-                        channelId: message.channel_id,
-                        messageId: message.id,
-                    });
-                },
-                icon: author.getAvatarURL(undefined, undefined, false)
-            });
-        },
-        TYPING_START: (payload: TypingStartPayload) => {
-            if (!payload || !payload.channelId || !payload.userId || !settings.store.trackStartedTyping) return;
-
-            const author = UserStore.getUser(payload.userId);
-            if (!isInWhitelist(author?.id) || getCurrentChannel()?.id === payload.channelId) return;
-
-            Notifications.showNotification({
-                // @ts-ignore outdated types lib doesnt have .globalName
-                title: `${author.globalName || author.username} Started typing...`,
-                body: "Click to jump to the channel.",
-                icon: author.getAvatarURL(undefined, undefined, false),
-                onClick: () => switchToMsg(ChannelStore.getChannel(payload.channelId).guild_id, payload.channelId)
-            });
-
-        },
-        USER_PROFILE_FETCH_SUCCESS: async (payload: UserUpdatePayload) => {
-            if (!payload || !payload.user || !payload.user.id || !isInWhitelist(payload.user.id) || !settings.store.trackUserProfileChanges) return;
-
-            // Normalize incoming data
-            payload = convertSnakeCaseToCamelCase(payload);
-
-            // Cache user information if we have not seen them before
-            const oldUser = oldUsers[payload.user.id] ? convertSnakeCaseToCamelCase(oldUsers[payload.user.id]) : null;
-
-            if (!oldUser) {
-                oldUsers[payload.user.id] = payload;
-                return;
-            }
-
-            // Determine which properties have changed
-            const changedKeys = (() => {
-                const keysToCompare = ["username", "globalName", "avatar", "discriminator", "clan", "flags", "banner", "banner_color", "accent_color", "bio"];
-                let changedKeys: string[] = [];
-
-                keysToCompare.forEach(key => {
-                    const newValue = payload.user[key];
-                    const oldValue = oldUser.user[key];
-                    if (newValue !== oldValue) changedKeys.push(key);
-                });
-
-                return changedKeys;
-            })();
-
-            // If no properties have changed, nothing further to do
-            if (changedKeys.length === 0) return;
-
-            // Send a notification showing what has changed
-            const notificationTitle = payload.user.globalName || payload.user.username;
-            const changedPropertiesList = changedKeys.join(', ');
-            const notificationBody = `Updated properties: ${changedPropertiesList}.`;
-            const avatarURL = UserStore.getUser(payload.user.id).getAvatarURL(undefined, undefined, false);
-
-            Notifications.showNotification({
-                title: `${notificationTitle} updated their profile!`,
-                body: notificationBody,
-                onClick: () => openUserProfile(payload.user.id),
-                icon: avatarURL
-            });
-
-            // Update cached user for next time
-            oldUsers[payload.user.id] = payload;
-        },
-
-        THREAD_CREATE: (payload: ThreadCreatePayload) => {
-            if (!payload || !payload.channel || !payload.channel.id || !payload.channel.ownerId || !isInWhitelist(payload.channel.ownerId)) return;
-
-            if (payload.isNewlyCreated) {
-                Notifications.showNotification({
-                    // @ts-ignore outdated types lib doesnt have .globalName
-                    title: `New thread created by ${UserStore.getUser(payload.channel.ownerId).globalName || UserStore.getUser(payload.channel.ownerId).username}`,
-                    body: `Click to view the thread.`,
-                    onClick: () => switchToMsg(payload.channel.guild_id, payload.channel.parent_id),
-                    icon: UserStore.getUser(payload.channel.ownerId).getAvatarURL(undefined, undefined, false)
-                });
-            }
-        },
-    },
-    async start() {
-        if (!Vencord.Plugins.plugins["MessageLoggerEnhanced"]) {
-            Notifications.showNotification({
-                title: "Stalker plugin requires MessageLoggerEnhanced to be enabled",
-                body: "Click to download it.",
-                onClick: () => open("https://github.com/Syncxv/vc-message-logger-enhanced/")
-            });
-        }
-        for (const id of settings.store.whitelistedIds.split(",")) {
-            // is .getUser not a async function?
-            const { body } = await RestAPI.get({
-                url: `/users/${id}/profile`,
-                query: {
-                    with_mutual_guilds: true,
-                    with_mutual_friends_count: true,
+    group.splice(id, 0,
+        <Menu.MenuItem
+            id="vc-st-stalk"
+            label={stalked ? "Unstalk" : "Stalk"}
+            action={() => {
+                if (stalked) {
+                    settings.store.targets = settings.store.targets.replace(new RegExp(`(,?)(\\s*)(${user.id})`), "");
+                    cachedLogsPerUser.delete(user.id);
+                    writeLocks.delete(user.id);
+                } else {
+                    settings.store.targets += `,${user.id}`;
+                    if (settings.store.targets.startsWith(",")) settings.store.targets = settings.store.targets.slice(1);
                 }
-            });
-            oldUsers[id] = body;
-            logger.info(`Cached user ${id} with name ${oldUsers[id].user.globalName || oldUsers[id].user.username} for further usage.`);
-        }
-        addContextMenuPatch("user-context", contextMenuPatch);
 
-        this.loggedMessages = await importLoggedMessages();
+                parseTargets(settings.store.targets);
+            }}
+        />
+    );
+};
+
+export default definePlugin({
+    name: "Stalker",
+    description: "Notifies you whenever a person does something.",
+    authors: [
+        { name: "Reycko", id: 1123725368004726794n },
+        { name: "irritably", id: 928787166916640838n }
+    ],
+
+    contextMenus: {
+        "user-context": patchUserContext,
     },
+
+    start() {
+        parseTargets(settings.store.targets);
+        status.init();
+        voice.init();
+    },
+
     stop() {
-        removeContextMenuPatch("user-context", contextMenuPatch);
+        status.deinit();
+        voice.deinit();
+        cachedLogsPerUser.clear();
+        writeLocks.clear();
     },
-    async stalkUser(id: string) {
-        Toasts.show({
-            type: Toasts.Type.SUCCESS,
-            // @ts-ignore outdated types lib doesnt have .globalName
-            message: `Stalking ${UserStore.getUser(id).globalName || UserStore.getUser(id).username}`,
-            id: Toasts.genId()
-        });
-        addToWhitelist(id);
-        const { body } = await RestAPI.get({
-            url: `/users/${id}/profile`,
-            query: {
-                with_mutual_guilds: true,
-                with_mutual_friends_count: true,
-            }
-        });
-        oldUsers[id] = convertSnakeCaseToCamelCase(body);
-        logger.info(`Cached user ${id} with name ${oldUsers[id].user.globalName || oldUsers[id].user.username} for further usage.`);
+
+    flux: {
+        MESSAGE_CREATE({ message }: { message: any; }) {
+            if (!settings.store.logMessages) return;
+            if (!targets.includes(message.author.id)) return;
+
+            const channel = ChannelStore.getChannel(message.channel_id);
+            const guild = channel.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
+            const preview = message.content.length > 100
+                ? `${message.content.substring(0, 100)}...`
+                : message.content;
+
+            logStalkerEvent({
+                timestamp: new Date().toISOString(),
+                userId: message.author.id,
+                username: message.author.username,
+                action: "message_send",
+                details: `Sent message: ${preview}`,
+                channelName: channel.name,
+                guildName: guild?.name
+            });
+        },
     },
-    unStalkuser(id: string) {
-        Toasts.show({
-            type: Toasts.Type.SUCCESS,
-            // @ts-ignore outdated types lib doesnt have .globalName
-            message: `Stopped stalking ${UserStore.getUser(id).globalName || UserStore.getUser(id).username}`,
-            id: Toasts.genId()
-        });
-        removeFromWhitelist(id);
-        delete oldUsers[id];
-    }
-};
 
-const contextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
-    if (!props || props?.user?.id === UserStore.getCurrentUser().id) return;
-
-    if (!children.some(child => child?.props?.id === "stalker-v1")) {
-        children.push(
-            <Menu.MenuSeparator />,
-
-            <Menu.MenuItem
-                id="stalker-v1"
-                label={isInWhitelist(props.user.id) ? "Stop Stalking User" : "Stalk User"}
-                action={() => isInWhitelist(props.user.id) ? _plugin.unStalkuser(props.user.id) : _plugin.stalkUser(props.user.id)} />
-        );
-    }
-};
-
-export default definePlugin(_plugin);
-export { settings };
+    settings,
+});
