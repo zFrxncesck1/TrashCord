@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+/*
+ * Fixxed by zFrxncesck1 
+ */
+
+import style from "./components/styles.css?managed";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
@@ -15,6 +20,14 @@ export default definePlugin({
     name: "Boo",
     description: "A cute ghost will appear if you don't answer their DMs",
     authors: [Devs.x2b],
+
+     start() {
+         style.enable();
+     },
+     stop() {
+         style.disable();
+     },
+
     patches: [
         {
             find: "interactiveSelected]",
@@ -33,8 +46,3 @@ export default definePlugin({
         );
     }
 });
-
-
-
-
-
