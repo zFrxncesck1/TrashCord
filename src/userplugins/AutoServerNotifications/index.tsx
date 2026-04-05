@@ -189,7 +189,7 @@ const makeContextMenuPatch: (withIcon: boolean) => NavContextMenuPatchCallback =
         const menuItem = (
             <Menu.MenuItem
                 id="asn-apply"
-                label="Apply notification settings"
+                label="Apply AutoNotification Settings"
                 icon={withIcon ? CogWheel : void 0}
                 action={() => {
                     applyToGuild(guild.id)
