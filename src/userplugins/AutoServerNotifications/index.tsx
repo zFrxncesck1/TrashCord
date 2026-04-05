@@ -4,11 +4,15 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import {
+    findGroupChildrenByChildId,
+    NavContextMenuPatchCallback,
+} from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
+import { CogWheel } from "@components/Icons";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, Forms, Toasts, useState, useEffect } from "@webpack/common";
 import { findByProps } from "@webpack";
-import { GuildStore } from "@webpack/common";
+import { Button, Forms, GuildStore, Menu, Toasts, UserStore, useEffect, useState } from "@webpack/common";
 
 type MessageNotifications = 0 | 1 | 2;
 
@@ -27,7 +31,7 @@ function useIsRunning() {
     const [val, setVal] = useState(isRunning);
     useEffect(() => {
         runningListeners.add(setVal);
-        return () => { runningListeners.delete(setVal); };
+        return () => void runningListeners.delete(setVal);
     }, []);
     return val;
 }
@@ -50,6 +54,7 @@ const settings = definePluginSettings({
             { label: "All messages", value: 0 },
             { label: "Only @mentions", value: 1, default: true },
             { label: "Nothing", value: 2 },
+            { label: "Server default", value: 3 },
         ],
     },
     suppressEveryone: {
@@ -84,56 +89,43 @@ const settings = definePluginSettings({
     },
 });
 
-// flags bitfield:
-// bit 12 (4096) = hide opt-in channels (NOT show all channels)
-function buildFlags(showAllChannels: boolean): number {
-    return showAllChannels ? 0 : (1 << 12);
-}
-
-// Build the guild settings payload using the real Discord bulk endpoint format.
-// Discovered via network inspection: PATCH /users/@me/guilds/settings
-// with body: { "guilds": { "GUILD_ID": { ...fields } } }
-// notify_highlights: 1 = disabled, 2 = enabled
-function getGuildPayload(guildId: string) {
+function buildGuildFields(): Record<string, unknown> {
     const s = settings.store;
     const fields: Record<string, unknown> = {
-        message_notifications: s.messageNotifications as MessageNotifications,
         suppress_everyone: s.suppressEveryone,
         suppress_roles: s.suppressRoles,
         notify_highlights: s.suppressHighlights ? 1 : 2,
         mute_scheduled_events: s.muteScheduledEvents,
         mobile_push: s.mobilePush,
-        flags: buildFlags(s.showAllChannels),
+        flags: s.showAllChannels ? 0 : (1 << 12),
         muted: s.muteServer,
-        mute_config: s.muteServer
-            ? { selected_time_window: -1, end_time: null }
-            : null,
+        mute_config: s.muteServer ? { selected_time_window: -1, end_time: null } : null,
     };
-    return { guilds: { [guildId]: fields } };
+    if (s.messageNotifications !== 3) {
+        fields.message_notifications = s.messageNotifications as MessageNotifications;
+    }
+    return fields;
 }
 
 function getToken(): string {
     return findByProps("getToken")?.getToken?.() ?? "";
 }
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-async function applyToGuild(guildId: string): Promise<void> {
+async function patchGuildsSettings(guildsPayload: Record<string, unknown>): Promise<void> {
     const token = getToken();
     if (!token) throw new Error("No token");
 
     while (true) {
-        const res = await fetch(
-            "https://discord.com/api/v9/users/@me/guilds/settings",
-            {
-                method: "PATCH",
-                headers: {
-                    "Authorization": token,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(getGuildPayload(guildId)),
-            }
-        );
+        const res = await fetch("https://discord.com/api/v9/users/@me/guilds/settings", {
+            method: "PATCH",
+            headers: {
+                "Authorization": token,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ guilds: guildsPayload }),
+        });
 
         if (res.ok) return;
 
@@ -142,7 +134,7 @@ async function applyToGuild(guildId: string): Promise<void> {
             try {
                 const body = await res.clone().json();
                 if (body.retry_after) waitMs = Math.ceil(body.retry_after * 1000) + 500;
-            } catch { /* ignore */ }
+            } catch { }
             await sleep(waitMs);
             continue;
         }
@@ -151,25 +143,36 @@ async function applyToGuild(guildId: string): Promise<void> {
     }
 }
 
-async function applyToAll() {
+async function applyToGuild(guildId: string): Promise<void> {
+    if (!guildId || guildId === "@me" || guildId === "null") return;
+    await patchGuildsSettings({ [guildId]: buildGuildFields() });
+}
+
+async function applyToAll(): Promise<void> {
     if (isRunning) return;
     setRunning(true);
 
     const ids = Object.keys(GuildStore.getGuilds());
+    const fields = buildGuildFields();
+    const CHUNK = 100;
     let ok = 0, fail = 0;
 
-    for (const id of ids) {
+    for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const payload: Record<string, unknown> = {};
+        for (const id of chunk) payload[id] = fields;
+
         try {
-            await applyToGuild(id);
-            ok++;
-            await sleep(500); // min: 429
-        } catch (e) {
-            fail++;
+            await patchGuildsSettings(payload);
+            ok += chunk.length;
+        } catch {
+            fail += chunk.length;
         }
+
+        if (i + CHUNK < ids.length) await sleep(500);
     }
 
     setRunning(false);
-
     Toasts.show({
         message: fail === 0
             ? `Applied to ${ok} servers.`
@@ -179,21 +182,73 @@ async function applyToAll() {
     });
 }
 
+const makeContextMenuPatch: (withIcon: boolean) => NavContextMenuPatchCallback =
+    (withIcon) => (children, { guild }: any) => {
+        if (!guild) return;
+
+        const menuItem = (
+            <Menu.MenuItem
+                id="asn-apply"
+                label="Apply notification settings"
+                icon={withIcon ? CogWheel : void 0}
+                action={() => {
+                    applyToGuild(guild.id)
+                        .then(() => Toasts.show({
+                            message: "Notification settings applied.",
+                            type: Toasts.Type.SUCCESS,
+                            id: Toasts.genId(),
+                        }))
+                        .catch(() => Toasts.show({
+                            message: "Failed to apply settings.",
+                            type: Toasts.Type.FAILURE,
+                            id: Toasts.genId(),
+                        }));
+                }}
+            />
+        );
+
+        const group = findGroupChildrenByChildId("privacy", children);
+        if (group) {
+            group.push(menuItem);
+        } else {
+            children.push(menuItem);
+        }
+    };
+
 export default definePlugin({
     name: "AutoServerNotifications",
-    description: "Apply custom notification settings to all servers, with optional auto-apply on join.",
-    authors: [
-        {
-            name: "zFrxncesck1",
-            id: 456195985404592149n,
-        }
-    ],
+    description: "Apply custom notification settings to all servers, with auto-apply on join and a right-click context menu.",
+    authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["mute", "notifications", "server", "auto"],
     settings,
 
+    patches: [
+        {
+            find: ",acceptInvite(",
+            replacement: {
+                match: /INVITE_ACCEPT_SUCCESS.+?,(\i)=\i\?\.guild_id.+?;/,
+                replace: (m: string, guildId: string) => `${m}$self.applyToGuild(${guildId});`,
+            },
+        },
+        {
+            find: "{joinGuild:",
+            replacement: {
+                match: /guildId:(\i),lurker:(\i).{0,20}}\)\);/,
+                replace: (m: string, guildId: string, lurker: string) =>
+                    `${m}if(!${lurker})$self.applyToGuild(${guildId});`,
+            },
+        },
+    ],
+
+    contextMenus: {
+        "guild-context": makeContextMenuPatch(false),
+        "guild-header-popout": makeContextMenuPatch(true),
+    },
+
+    applyToGuild,
+
     start() {
-        for (const id of Object.keys(GuildStore.getGuilds())) {
-            knownGuilds.add(id);
-        }
+        for (const id of Object.keys(GuildStore.getGuilds())) knownGuilds.add(id);
         setTimeout(() => { startupDone = true; }, 5000);
     },
 
@@ -205,12 +260,10 @@ export default definePlugin({
     flux: {
         GUILD_CREATE(event: { guild: { id: string; }; }) {
             if (!settings.store.applyToNew) return;
-
             if (!startupDone || knownGuilds.has(event.guild.id)) {
                 knownGuilds.add(event.guild.id);
                 return;
             }
-
             knownGuilds.add(event.guild.id);
             sleep(3000)
                 .then(() => applyToGuild(event.guild.id))
@@ -219,19 +272,24 @@ export default definePlugin({
                     type: Toasts.Type.SUCCESS,
                     id: Toasts.genId(),
                 }))
-                .catch(() => { /* silent */ });
+                .catch(() => { });
+        },
+
+        GUILD_JOIN_REQUEST_UPDATE({ guildId, request, status }: any) {
+            if (status === "APPROVED" && request.user_id === UserStore.getCurrentUser().id) {
+                sleep(3000).then(() => applyToGuild(guildId)).catch(() => { });
+            }
         },
     },
 
     settingsAboutComponent() {
         const running = useIsRunning();
-
         return (
             <Forms.FormSection>
                 <Forms.FormText style={{ marginBottom: 8 }}>
                     {running
-                        ? "Applying settings to all servers, please wait..."
-                        : "Apply the settings above to all your current servers."
+                        ? "Applying settings to all servers, please wait…"
+                        : "Apply the settings above to all your current servers at once."
                     }
                 </Forms.FormText>
                 <Button
@@ -240,7 +298,7 @@ export default definePlugin({
                     disabled={running}
                     onClick={applyToAll}
                 >
-                    {running ? "Applying..." : "Apply to all servers"}
+                    {running ? "Applying…" : "Apply to all servers"}
                 </Button>
             </Forms.FormSection>
         );
