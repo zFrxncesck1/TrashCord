@@ -1,4 +1,4 @@
-name: Sync fork con upstream
+name: Sync fork with upstream (Equicord)
 
 on:
   schedule:
