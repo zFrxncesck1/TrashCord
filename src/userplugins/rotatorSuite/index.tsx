@@ -9,6 +9,38 @@ import { findByProps } from "@webpack";
 import { Button, Forms, React, RestAPI, TextInput, Toasts, UserStore } from "@webpack/common";
 
 const SK = "RS_v1";
+const AR_SK = "AvatarRotator_v6";
+const AR_DEFAULT_S = 300;
+const AR_WARN_S = 60;
+const AR_CIRC_R = 115;
+const AR_CIRC_D = AR_CIRC_R * 2;
+const AR_CONT_H = 300;
+const AR_EXP_S = 512;
+const AR_ACCEPT = ".jpg,.jpeg,.jfif,.png,.gif,.webp,.avif";
+const AR_ALL_EXTS = ["png", "jpg", "jpeg", "jfif", "gif", "webp", "avif"] as const;
+type ArExt = typeof AR_ALL_EXTS[number];
+const AR = {
+    bg1: "var(--background-tertiary)",
+    bg2: "rgba(156,103,255,.09)",
+    line: "rgba(255,255,255,.07)",
+    accent: "#9c67ff",
+    aD: "rgba(156,103,255,.18)",
+    green: "#3ba55c",
+    red: "#ed4245",
+    text: "#e0d8ff",
+    sub: "var(--text-muted)",
+    warn: "#faa61a",
+};
+const AR_EXT_COLORS: Record<string, string> = {
+    png: "#5865f2", jpg: "#43b581", jpeg: "#43b581", jfif: "#4a9e70",
+    gif: "#faa61a", webp: "#9c67ff", avif: "#00b0f4",
+};
+interface AvatarEntry { id: string; label: string; data: string; }
+interface ArStoreData { avatars: AvatarEntry[]; seqIndex: number; shuffleQueue: number[]; }
+let arAvatars: AvatarEntry[] = [];
+let arSeqIndex = 0;
+let arShuffleQueue: number[] = [];
+let arRotatorTimer: ReturnType<typeof setTimeout> | null = null;
 const PALETTE = ["#7c4dff","#9c67ff","#b24df7","#6a1fff","#a855f7","#8b5cf6","#7e22ce","#c084fc","#d946ef","#a21caf","#6d28d9","#4c1d95"];
 const UNICODE_EMOJI_RE = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s*/u;
 const CUSTOM_EMOJI_RE  = /^:([^:]+):(\d{17,20}):\s*/;
@@ -42,6 +74,8 @@ const C = {
     nick: "#4dd0e1", data: "#ffa726", enabled: "#66bb6a", text: "#f0eaff",
     hint: "#9e9e9e", muted: "#5a4a7a", del: "#ef9a9a",
 };
+const ACT = "#43a047";
+const INACT = "#e53935";
 
 interface GuildEntry {
     id: string; name: string; nicks: string[]; enabled: boolean; seqIndex: number;
@@ -171,7 +205,7 @@ function getDiscordGuilds(): { id: string; name: string }[] {
 function syncGuildsFromDiscord() {
     for (const { id, name } of getDiscordGuilds())
         if (!guilds.find(g => g.id === id))
-            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
+            guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: false, nickMode: "both", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "both", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
 }
 
 function nickModeOf(g: GuildEntry): NickMode { return g.nickMode ?? ((g as any).useGlobal ? "global" : "custom"); }
@@ -202,6 +236,9 @@ async function applyNick(guildId: string, nick: string): Promise<number | null> 
 function scheduleNickTick(g: GuildEntry, ms: number) {
     nickTimers.set(g.id, setTimeout(async () => {
         if (!pluginActive || !g.enabled || !settings.store.nickEnabled || !nickTimers.has(g.id)) return;
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            if (getMyVoiceGuildId() !== g.id) { nickTimers.delete(g.id); return; }
+        }
         const nks = nicksForGuild(g);
         if (!nks.length) { nickTimers.delete(g.id); return; }
         if (g.seqIndex < 0 || g.seqIndex > nks.length * 2) g.seqIndex = 0;
@@ -231,7 +268,12 @@ function stopNickGuild(id: string) { const t = nickTimers.get(id); if (t) { clea
 function stopAllNicks() { [...nickTimers.keys()].forEach(stopNickGuild); }
 function tickAllNicks() {
     if (!settings.store.nickEnabled) return;
+    const vcGuildId = (settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal)
+        ? getMyVoiceGuildId() : null;
     for (const g of guilds.filter(x => x.enabled)) {
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            if (vcGuildId !== g.id) continue;
+        }
         const nks = nicksForGuild(g);
         if (!nks.length) continue;
         if (g.seqIndex < 0 || g.seqIndex > nks.length * 2) g.seqIndex = 0;
@@ -254,6 +296,9 @@ function scheduleGuildPronounsTick(g: GuildEntry, ms: number) {
         if (guildPronounsTimers.get(g.id) !== tid) return;
         guildPronounsTimers.delete(g.id);
         if (!pluginActive || !g.guildPronounsEnabled || !settings.store.serverPronounsEnabled) return;
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            if (getMyVoiceGuildId() !== g.id) return;
+        }
         const pool = pronounsForGuild(g);
         if (!pool.length) return;
         const { val: pr, next, lastPicked } = pickItem(pool, g.guildPronounsSeqIdx ?? 0, settings.store.serverPronounsRandomize, g.guildPronounsLastVal);
@@ -273,7 +318,12 @@ function stopGuildPronouns(id: string) { const t = guildPronounsTimers.get(id); 
 function stopAllGuildPronouns() { [...guildPronounsTimers.keys()].forEach(stopGuildPronouns); }
 function tickAllGuildPronouns() {
     if (!settings.store.serverPronounsEnabled) return;
+    const vcGuildId = (settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal)
+        ? getMyVoiceGuildId() : null;
     for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0)) {
+        if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+            if (vcGuildId !== g.id) continue;
+        }
         const pool = pronounsForGuild(g);
         const { val: pr, next, lastPicked } = pickItem(pool, g.guildPronounsSeqIdx ?? 0, settings.store.serverPronounsRandomize, g.guildPronounsLastVal);
         g.guildPronounsSeqIdx = next; g.guildPronounsLastVal = lastPicked;
@@ -637,6 +687,7 @@ function onVoiceLeave(prevGuildId: string | null) {
 function startVoiceWatcher() {
     if (voiceCheckInterval !== null) return;
     lastVoiceGuildId = getMyVoiceGuildId();
+    if (lastVoiceGuildId) onVoiceJoin(lastVoiceGuildId);
     voiceCheckInterval = setInterval(() => {
         if (!pluginActive) return;
         const curr = getMyVoiceGuildId();
@@ -727,7 +778,7 @@ const settings = definePluginSettings({
     clanEnabled: { type: OptionType.BOOLEAN, default: false, description: "Clan switcher enabled (configure in Clan tab)." },
     clanIntervalSeconds: { type: OptionType.STRING, default: "5", description: "Clan interval seconds (configure in Clan tab)." },
     clanAutoDetect: { type: OptionType.BOOLEAN, default: false, description: "Clan auto-detect (configure in Clan tab)." },
-    clanAutoDetectRefreshSeconds: { type: OptionType.STRING, default: "400", description: "Clan auto-detect refresh seconds (configure in Clan tab)." },
+    clanAutoDetectRefreshSeconds: { type: OptionType.STRING, default: "429", description: "Clan auto-detect refresh seconds (configure in Clan tab)." },
     clanRandomize: { type: OptionType.BOOLEAN, default: true, description: "Clan randomize (configure in Clan tab)." },
     _sProfileGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Profile" color={C.bio} /> },
     globalNickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Global display name rotation enabled (Profile tab)." },
@@ -739,6 +790,12 @@ const settings = definePluginSettings({
     profileBioEnabled: { type: OptionType.BOOLEAN, default: false, description: "Bio rotation enabled (Profile tab)." },
     bioRandomize: { type: OptionType.BOOLEAN, default: true, description: "Randomize bio rotation order (Profile tab)." },
     bioIntervalSeconds: { type: OptionType.STRING, default: "60", description: "Seconds between bio changes (Profile tab)." },
+    _sAvatarGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Avatar" color="#9c67ff" /> },
+    avatarEnabled: { type: OptionType.BOOLEAN, default: false, description: "Avatar rotator enabled (configure in Avatar tab)." },
+    avatarIntervalSeconds: { type: OptionType.NUMBER, default: AR_DEFAULT_S, description: "Seconds between avatar changes (min 60 recommended - Discord rate-limits)." },
+    avatarRandom: { type: OptionType.BOOLEAN, default: true, description: "Random avatar order - no repeats until all shown once." },
+    avatarShowToast: { type: OptionType.BOOLEAN, default: true, description: "Show toast notifications for avatar changes." },
+    avatarExcludedExtensions: { type: OptionType.STRING, default: "", description: "Comma-separated extensions to skip during avatar rotation (e.g. gif,avif)." },
     _sServerProfilesGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Server Profiles" color={C.nick} /> },
     nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch - when OFF, no nick timers run even if servers are toggled on." },
     nickIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server nickname changes (Server Profiles tab)." },
@@ -890,11 +947,24 @@ function injectCSS() {
 .rs-no-preset-label{font-size:10px;color:#5a4a7a;font-style:italic;padding:3px 0}
 .rs-add-preset-row{display:flex;gap:5px;margin-top:5px}
 .rs-preset-pill-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px}
+.ar-card{border-radius:10px;overflow:hidden;margin-bottom:14px;background:var(--background-tertiary);border:1px solid rgba(255,255,255,.07)}
+.ar-card-row{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ar-card-row:last-child{border-bottom:none}
+.ar-toggle{width:34px;height:18px;border-radius:9px;flex-shrink:0;cursor:pointer;position:relative;user-select:none}
+.ar-toggle-knob{position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.ar-ext-btn{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;outline:none;user-select:none}
+.ar-avatar-card{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;margin-bottom:4px;border:1px solid rgba(255,255,255,.07);user-select:none}
+.ar-avatar-card:hover{background:rgba(156,103,255,.06)}
+.ar-avatar-card.ar-drag-over{background:rgba(156,103,255,.09);border-color:#9c67ff}
+.ar-avatar-card.ar-dragging{opacity:.3}
+.ar-icon-btn{width:26px;height:26px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;outline:none}
+.ar-upload-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px 8px;border-radius:10px;cursor:pointer;user-select:none}
+.ar-import-zone{width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px 8px;border-radius:10px;cursor:pointer;user-select:none}
 `;
     document.head.appendChild(s);
 }
 
-type TabId = "status" | "clan" | "profile" | "servers" | "data";
+type TabId = "status" | "clan" | "profile" | "avatar" | "servers" | "data";
 type SortMode = "name" | "enabled" | "nicks" | "running" | "pronouns";
 
 function useDrag(onReorder: (from: number, to: number) => void) {
@@ -1469,6 +1539,8 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [editIdx, setEditIdx] = React.useState<number | null>(null);
     const [editVal, setEditVal] = React.useState("");
     const [confirm, setConfirm] = React.useState(false);
+    const [showBrowser, setShowBrowser] = React.useState(false);
+    const [browserFilter, setBrowserFilter] = React.useState("");
     const autoDetect = settings.store.clanAutoDetect;
     const detected = autoDetect ? getDiscordGuilds() : [];
     const { props: dProps, cls } = useDrag((f, t) => {
@@ -1482,6 +1554,32 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
         const v = editVal.trim(); if (!v || !/^\d{17,20}$/.test(v)) { setEditIdx(null); return; }
         const n = [...clanIds]; n[i] = v; clanIds = n; saveData(); setEditIdx(null); forceUpdate();
     }
+
+    const clanGuilds = React.useMemo(() => {
+        try {
+            const raw = Object.values(getGuildStore()?.getGuilds?.() ?? {}) as any[];
+            return raw
+                .map((g: any) => ({
+                    id: g.id as string,
+                    name: g.name as string,
+                    tag: (g.clan?.tag ?? g.clanTag ?? null) as string | null,
+                }))
+                .filter(g => {
+                    const store = getGuildStore()?.getGuild?.(g.id) ?? {};
+                    const feat = store.features ?? (getGuildStore()?.getGuilds?.() ?? {})[g.id]?.features;
+                    const hasFeat = feat
+                        ? (Array.isArray(feat) ? feat.includes("CLAN") : feat.has?.("CLAN"))
+                        : false;
+                    return g.tag || hasFeat;
+                });
+        } catch { return []; }
+    }, [showBrowser, autoDetect]);
+
+    const browserGuilds = React.useMemo(() => {
+        if (!browserFilter.trim()) return clanGuilds;
+        const f = browserFilter.toLowerCase();
+        return clanGuilds.filter(g => g.name.toLowerCase().includes(f) || g.id.includes(f));
+    }, [clanGuilds, browserFilter]);
 
     return (
         <div>
@@ -1517,14 +1615,21 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
             {confirm && <ConfirmBox msg="Delete all clan IDs?" onConfirm={() => { clanIds = []; clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); setConfirm(false); }} onCancel={() => setConfirm(false)} />}
             {autoDetect ? (
                 <div style={{ padding: "8px 10px", border: "1px solid rgba(66,165,245,.2)", borderRadius: 8, marginBottom: 8, background: "rgba(10,20,50,.6)" }}>
-                    <div className="rs-hint" style={{ marginBottom: 5 }}>Cycling <b style={{ color: C.clan }}>{detected.length}</b> joined servers.</div>
-                    {detected.slice(0, 8).map(g => (
-                        <div className="rs-item rs-item-compact" key={g.id}>
-                            <span className="rs-item-text">{g.name}</span>
-                            <span style={{ fontSize: 10, color: "#757575", fontFamily: "monospace" }}>{g.id}</span>
-                        </div>
-                    ))}
-                    {detected.length > 8 && <div className="rs-hint">...and {detected.length - 8} more</div>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <span className="rs-hint" style={{ flex: 1 }}>Cycling <b style={{ color: C.clan }}>{clanGuilds.length}</b> servers with clan tag.</span>
+                        <TextInput placeholder="Filter..." value={browserFilter} onChange={setBrowserFilter} />
+                    </div>
+                    <div style={{ maxHeight: 200, overflowY: "auto" as const }}>
+                        {browserGuilds.length === 0 && <div className="rs-empty">No clan servers found.</div>}
+                        {browserGuilds.map(g => (
+                            <div className="rs-item rs-item-compact" key={g.id} style={{ marginBottom: 2 }}>
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
+                                <span className="rs-item-text" style={{ flex: 1 }}>{g.name}</span>
+                                {g.tag && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>}
+                                <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0 }}>{g.id}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             ) : (
                 <>
@@ -1552,6 +1657,48 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
             <div className="rs-hint" style={{ marginTop: 6 }}>
                 Enabled: <b style={{ color: settings.store.clanEnabled ? C.enabled : "#757575" }}>{settings.store.clanEnabled ? "yes" : "no"}</b> · Interval: <b style={{ color: C.data }}>{settings.store.clanIntervalSeconds}s</b> · Mode: <b style={{ color: "#ab47bc" }}>{settings.store.clanRandomize ? "random" : "seq"}</b>
             </div>
+
+            {!autoDetect && (
+                <div style={{ marginTop: 10 }}>
+                    <button
+                        onClick={() => { setShowBrowser(!showBrowser); setBrowserFilter(""); }}
+                        style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 12px", borderRadius: 8, border: `1px solid ${showBrowser ? C.clan + "55" : "rgba(66,165,245,.2)"}`, background: showBrowser ? `${C.clan}14` : "rgba(10,20,50,.5)", color: showBrowser ? C.clan : "#5a7a9a", cursor: "pointer", fontSize: 11, fontWeight: 800, textAlign: "left" as const }}>
+                        <span style={{ fontSize: 13 }}>{showBrowser ? "▾" : "▸"}</span>
+                        Browse Clan Servers
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: `${C.clan}22`, color: C.clan, marginLeft: 4 }}>{clanGuilds.length} with tag</span>
+                        {!showBrowser && <span style={{ fontSize: 9, color: "#5a7a9a", fontWeight: 600, marginLeft: "auto" }}>hidden by default</span>}
+                    </button>
+
+                    {showBrowser && (
+                        <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.clan}33`, background: "rgba(5,15,40,.7)" }}>
+                            <div className="rs-hint" style={{ marginBottom: 6 }}>
+                                Only servers with a clan tag. <b style={{ color: C.clan }}>+</b> to add · <b style={{ color: ACT }}>✕</b> to remove
+                            </div>
+                            <TextInput placeholder="Filter by name or ID..." value={browserFilter} onChange={setBrowserFilter} />
+                            <div style={{ marginTop: 6, maxHeight: 220, overflowY: "auto" as const }}>
+                                {browserGuilds.length === 0 && <div className="rs-empty">No clan servers found.</div>}
+                                {browserGuilds.map(g => {
+                                    const inList = clanIds.includes(g.id);
+                                    return (
+                                        <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 6px", borderRadius: 6, marginBottom: 2, background: inList ? `${ACT}0e` : "rgba(255,255,255,.02)", border: `1px solid ${inList ? ACT + "33" : "transparent"}` }}>
+                                            <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
+                                            <span style={{ flex: 1, fontSize: 11, color: inList ? ACT : C.text, fontWeight: inList ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{g.name}</span>
+                                            {g.tag && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>}
+                                            <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0 }}>{g.id}</span>
+                                            {inList
+                                                ? <button onClick={() => { clanIds = clanIds.filter(c => c !== g.id); clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); }}
+                                                    style={{ padding: "2px 8px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}18`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>✕</button>
+                                                : <button onClick={() => { clanIds = [...clanIds, g.id]; saveData(); forceUpdate(); }}
+                                                    style={{ padding: "2px 8px", borderRadius: 5, border: `1px solid ${C.clan}44`, background: `${C.clan}18`, color: C.clan, cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>+</button>
+                                            }
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -1751,6 +1898,702 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
     );
 }
 
+const arSaveData = (): Promise<void> => DataStore.set(AR_SK, { avatars: arAvatars, seqIndex: arSeqIndex, shuffleQueue: arShuffleQueue } as ArStoreData);
+
+function arGetExcluded(): string[] {
+    return settings.store.avatarExcludedExtensions.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+}
+function arSetExcluded(arr: string[]) { settings.store.avatarExcludedExtensions = arr.join(","); }
+
+function arSfShuffle(len: number): number[] {
+    const a = Array.from({ length: len }, (_, i) => i);
+    for (let i = len - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+}
+
+function arToast(msg: string, type: Toasts.Type = Toasts.Type.SUCCESS) {
+    if (!settings.store.avatarShowToast) return;
+    Toasts.show({ message: msg, type, id: Toasts.genId() });
+}
+
+function arGetExt(data: string): string {
+    const m = data.match(/^data:image\/([a-z0-9]+);/i);
+    if (!m) return "?";
+    return m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+}
+
+function arIsGif(data: string) { return /^data:image\/gif;/i.test(data); }
+
+function arFmtSec(s: number): string {
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60), r = s % 60;
+    if (s < 3600) return r === 0 ? `${m}m` : `${m}m ${r}s`;
+    const h = Math.floor(s / 3600), mr = Math.floor((s % 3600) / 60);
+    return mr === 0 ? `${h}h` : `${h}h ${mr}m`;
+}
+
+function arFmtPreset(s: number) {
+    if (s % 3600 === 0) return `${s / 3600}h`;
+    if (s % 60 === 0) return `${s / 60}m`;
+    return `${s}s`;
+}
+
+function arUid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+function arReorderArr<T>(arr: T[], from: number, to: number): T[] { const r = [...arr]; const [x] = r.splice(from, 1); r.splice(to, 0, x); return r; }
+
+async function arBlobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(blob); });
+}
+
+async function arPrepareForDiscord(data: string): Promise<string> {
+    const ext = arGetExt(data);
+    const okExts = ["png", "jpg", "jpeg", "gif", "webp"];
+    const bytes = (data.split(",")[1]?.length ?? 0) * 0.75;
+    if (okExts.includes(ext) && bytes < 8_000_000) return data;
+    return new Promise<string>((res, rej) => {
+        const img = new Image();
+        img.onload = () => {
+            let w = img.naturalWidth, h = img.naturalHeight;
+            const MAX = 1024;
+            if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+            const c = document.createElement("canvas"); c.width = w; c.height = h;
+            c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+            res(c.toDataURL("image/png"));
+        };
+        img.onerror = rej; img.src = data;
+    });
+}
+
+async function arApplyAvatar(entry: AvatarEntry): Promise<void> {
+    try {
+        const data = await arPrepareForDiscord(entry.data);
+        if (!data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Image data is invalid or too small");
+        await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
+        arToast(`Avatar - ${entry.label}`);
+    } catch (e: any) {
+        const msg = e?.body?.errors?.avatar?._errors?.[0]?.message ?? e?.body?.message ?? e?.message ?? "Unknown";
+        arToast(`Failed: ${msg}`, Toasts.Type.FAILURE);
+    }
+}
+
+function arGetActive(): AvatarEntry[] {
+    const excl = arGetExcluded();
+    return excl.length ? arAvatars.filter(a => !excl.includes(arGetExt(a.data))) : [...arAvatars];
+}
+
+async function arRotateNext(): Promise<void> {
+    if (!pluginActive) return;
+    const active = arGetActive();
+    if (!active.length) { arSchedule(); return; }
+    let idx: number;
+    if (settings.store.avatarRandom) { if (!arShuffleQueue.length) arShuffleQueue = arSfShuffle(active.length); idx = arShuffleQueue.shift()!; }
+    else { idx = arSeqIndex % active.length; arSeqIndex = (arSeqIndex + 1) % active.length; }
+    if (idx >= active.length) idx = 0;
+    await arApplyAvatar(active[idx]);
+    await arSaveData();
+    arSchedule();
+}
+
+function arSchedule() {
+    if (arRotatorTimer) clearTimeout(arRotatorTimer);
+    if (!settings.store.avatarEnabled || !pluginActive || !arGetActive().length) return;
+    arRotatorTimer = setTimeout(arRotateNext, Math.max(1, settings.store.avatarIntervalSeconds || AR_DEFAULT_S) * 1000);
+}
+
+function arStartRotator(immediate = false) {
+    if (!pluginActive) return;
+    if (arRotatorTimer) clearTimeout(arRotatorTimer);
+    const active = arGetActive();
+    if (settings.store.avatarRandom) arShuffleQueue = arSfShuffle(active.length);
+    if (immediate && active.length) arRotateNext(); else arSchedule();
+    arToast("Avatar Rotator started");
+}
+
+function arStopRotator() {
+    if (arRotatorTimer) { clearTimeout(arRotatorTimer); arRotatorTimer = null; }
+}
+
+function arExportJSON() {
+    const a = Object.assign(document.createElement("a"), {
+        href: "data:application/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ version: 6, avatars: arAvatars.map(({ label, data }) => ({ label, data })) }, null, 2)),
+        download: "avatar-rotator.json",
+    });
+    a.click(); arToast("Exported");
+}
+
+async function arImportJSON(file: File): Promise<AvatarEntry[]> {
+    const obj = JSON.parse(await file.text());
+    const raw = Array.isArray(obj) ? obj : (obj.avatars ?? []);
+    return raw.filter((x: any) => typeof x.data === "string" && typeof x.label === "string").map((x: any) => ({ id: arUid(), label: x.label, data: x.data }));
+}
+
+function ArExtBadge({ ext, excluded }: { ext: string; excluded?: boolean }) {
+    const color = excluded ? "#6b7280" : (AR_EXT_COLORS[ext] ?? "#6b7280");
+    return (
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, padding: "1px 5px", borderRadius: 4, background: color + "28", color, border: `1px solid ${color}55`, textTransform: "uppercase" as const, flexShrink: 0, textDecoration: excluded ? "line-through" : "none" }}>
+            {ext}
+        </span>
+    );
+}
+
+function ArExtFilterChips({ excluded, onChange }: { excluded: string[]; onChange: (e: string[]) => void }) {
+    return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {AR_ALL_EXTS.map(ext => {
+                const isEx = excluded.includes(ext);
+                const color = isEx ? "#6b7280" : (AR_EXT_COLORS[ext] ?? "#6b7280");
+                return (
+                    <button key={ext} onClick={() => onChange(isEx ? excluded.filter(e => e !== ext) : [...excluded, ext])}
+                        style={{ padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none", border: `1px solid ${color}55`, background: color + "22", color, textDecoration: isEx ? "line-through" : "none", userSelect: "none" as const }}>
+                        {ext.toUpperCase()}{isEx ? " ✕" : ""}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+function ArExtFilterSection({ excluded, onChange }: { excluded: string[]; onChange: (e: string[]) => void }) {
+    return (
+        <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div>
+                    <div style={{ fontSize: 13, color: AR.text, fontWeight: 600 }}>Skip Extensions During Rotation</div>
+                    <div style={{ fontSize: 11, color: AR.sub, marginTop: 2 }}>Tagged avatars stay in list but are skipped when cycling</div>
+                </div>
+                {excluded.length > 0 && (
+                    <button onClick={() => onChange([])} style={{ fontSize: 11, color: AR.red, background: "none", border: "none", cursor: "pointer", outline: "none" }}>Clear all</button>
+                )}
+            </div>
+            <ArExtFilterChips excluded={excluded} onChange={onChange} />
+        </div>
+    );
+}
+
+function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply: (d: string) => void; onSkip: () => void; modalProps: any; }) {
+    const [loaded, setLoaded] = React.useState(false);
+    const [imgNat, setImgNat] = React.useState({ w: 1, h: 1 });
+    const [minZoom, setMinZoom] = React.useState(1);
+    const [zoom, setZoomS] = React.useState(1);
+    const [rotation, setRotS] = React.useState(0);
+    const [flipH, setFlipH] = React.useState(false);
+    const [flipV, setFlipV] = React.useState(false);
+    const [offset, setOffS] = React.useState({ x: 0, y: 0 });
+    const zoomR = React.useRef(1);
+    const rotR = React.useRef(0);
+    const offR = React.useRef({ x: 0, y: 0 });
+    const natR = React.useRef({ w: 1, h: 1 });
+    const minZR = React.useRef(1);
+    const drag = React.useRef(false);
+    const lastP = React.useRef({ x: 0, y: 0 });
+    const maskId = React.useRef("cm-" + arUid());
+    const gif = arIsGif(src);
+
+    const sync = (o: { x: number; y: number }, z: number, r: number) => {
+        const rad = r * Math.PI / 180;
+        const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+        const { w, h } = natR.current;
+        const bbW = (w * cos + h * sin) * z;
+        const bbH = (w * sin + h * cos) * z;
+        const mx = Math.max(0, bbW / 2 - AR_CIRC_R);
+        const my = Math.max(0, bbH / 2 - AR_CIRC_R);
+        return { x: Math.max(-mx, Math.min(mx, o.x)), y: Math.max(-my, Math.min(my, o.y)) };
+    };
+
+    const setAll = (o: { x: number; y: number }, z: number, r: number, fH = flipH, fV = flipV) => {
+        const clamped = sync(o, z, r);
+        zoomR.current = z; rotR.current = r; offR.current = clamped;
+        setZoomS(z); setRotS(r); setOffS(clamped); setFlipH(fH); setFlipV(fV);
+    };
+
+    React.useEffect(() => {
+        const img = new Image();
+        img.onload = () => {
+            const w = img.naturalWidth, h = img.naturalHeight;
+            const mz = Math.max(AR_CIRC_D / w, AR_CIRC_D / h);
+            natR.current = { w, h }; minZR.current = mz;
+            setImgNat({ w, h }); setMinZoom(mz);
+            setAll({ x: 0, y: 0 }, mz, 0, false, false);
+            setLoaded(true);
+        };
+        img.src = src;
+    }, []);
+
+    const doApply = async () => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        await new Promise<void>(r => { img.onload = () => r(); img.src = src; });
+        const canvas = document.createElement("canvas");
+        canvas.width = AR_EXP_S; canvas.height = AR_EXP_S;
+        const ctx = canvas.getContext("2d")!;
+        const ratio = AR_EXP_S / AR_CIRC_D;
+        ctx.save();
+        ctx.translate(AR_EXP_S / 2 + offR.current.x * ratio, AR_EXP_S / 2 + offR.current.y * ratio);
+        ctx.rotate(rotR.current * Math.PI / 180);
+        ctx.scale((flipH ? -1 : 1) * zoomR.current * ratio, (flipV ? -1 : 1) * zoomR.current * ratio);
+        ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+        ctx.restore();
+        onApply(canvas.toDataURL("image/png"));
+        modalProps.onClose();
+    };
+
+    const iStyle: React.CSSProperties = { flex: 1, background: "rgba(0,0,0,.38)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 6, color: AR.text, fontSize: 13, padding: "6px 10px", outline: "none", minWidth: 0 };
+
+    return (
+        <ModalRoot {...modalProps} size="medium">
+            <ModalHeader separator={false}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: AR.aD, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="9" stroke={AR.accent} strokeWidth="2"/>
+                            <circle cx="12" cy="12" r="4" fill={AR.accent}/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: AR.text }}>Edit Avatar</div>
+                        <div style={{ fontSize: 11, color: AR.sub }}>Drag to move - Zoom - Rotate - Flip{gif ? " - GIF animates here" : ""}</div>
+                    </div>
+                </div>
+            </ModalHeader>
+            <ModalContent style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ width: "100%", height: AR_CONT_H, background: "#0b0b0e", position: "relative", cursor: loaded ? "grab" : "default", userSelect: "none", overflow: "hidden" }}
+                    onPointerDown={e => {
+                        if (!loaded) return;
+                        drag.current = true;
+                        lastP.current = { x: e.clientX, y: e.clientY };
+                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        e.preventDefault();
+                    }}
+                    onPointerMove={e => {
+                        if (!drag.current) return;
+                        const dx = e.clientX - lastP.current.x;
+                        const dy = e.clientY - lastP.current.y;
+                        lastP.current = { x: e.clientX, y: e.clientY };
+                        const newOff = sync({ x: offR.current.x + dx, y: offR.current.y + dy }, zoomR.current, rotR.current);
+                        offR.current = newOff;
+                        setOffS({ ...newOff });
+                    }}
+                    onPointerUp={() => { drag.current = false; }}
+                    onPointerCancel={() => { drag.current = false; }}
+                >
+                    {loaded && (
+                        <div style={{ position: "absolute", left: "50%", top: "50%", width: 0, height: 0, transform: `translate(${offset.x}px, ${offset.y}px)` }}>
+                            <img src={src} draggable={false} style={{ position: "absolute", left: 0, top: 0, width: imgNat.w, height: imgNat.h, maxWidth: "none", transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${flipH ? -zoom : zoom}, ${flipV ? -zoom : zoom})`, transformOrigin: "center center", pointerEvents: "none", userSelect: "none", imageRendering: "auto" }} />
+                        </div>
+                    )}
+                    {!loaded && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: AR.sub, fontSize: 13 }}>Loading…</div>}
+                    <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+                        <defs><mask id={maskId.current}><rect width="100%" height="100%" fill="white"/><circle cx="50%" cy="50%" r={AR_CIRC_R} fill="black"/></mask></defs>
+                        <rect width="100%" height="100%" fill="rgba(0,0,0,.72)" mask={`url(#${maskId.current})`}/>
+                        <circle cx="50%" cy="50%" r={AR_CIRC_R} fill="none" stroke="rgba(255,255,255,.85)" strokeWidth="2.5"/>
+                    </svg>
+                </div>
+                <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill={AR.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
+                        <input type="range" min={minZoom} max={minZoom * 4} step={0.0005} value={zoom} disabled={!loaded}
+                            onChange={e => {
+                                const z = Math.max(minZR.current, parseFloat(e.target.value));
+                                const c = sync(offR.current, z, rotR.current);
+                                zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c });
+                            }}
+                            style={{ flex: 1, accentColor: AR.accent, cursor: loaded ? "pointer" : "default" } as React.CSSProperties} />
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill={AR.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                        <button disabled={!loaded} onClick={() => { const nr = (rotR.current + 90) % 360; rotR.current = nr; const c = sync(offR.current, zoomR.current, nr); offR.current = c; setRotS(nr); setOffS({ ...c }); }}
+                            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${AR.accent}44`, background: AR.aD, color: AR.accent, opacity: loaded ? 1 : 0.45 }}>
+                            ↻ 90°
+                        </button>
+                        <button disabled={!loaded} onClick={() => setFlipH(f => !f)}
+                            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${flipH ? AR.accent : AR.sub}44`, background: flipH ? AR.aD : "transparent", color: flipH ? AR.accent : AR.sub, opacity: loaded ? 1 : 0.45 }}>
+                            ↔ Flip H
+                        </button>
+                        <button disabled={!loaded} onClick={() => setFlipV(f => !f)}
+                            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${flipV ? AR.accent : AR.sub}44`, background: flipV ? AR.aD : "transparent", color: flipV ? AR.accent : AR.sub, opacity: loaded ? 1 : 0.45 }}>
+                            ↕ Flip V
+                        </button>
+                    </div>
+                    {gif && (
+                        <div style={{ padding: "8px 11px", borderRadius: 7, background: `${AR.warn}12`, border: `1px solid ${AR.warn}33`, fontSize: 11, color: AR.warn, lineHeight: 1.5 }}>
+                            🎞 <b>GIF animates above.</b> <b>Apply</b> exports the current frame as static PNG. <b>Skip</b> keeps the original GIF.
+                        </div>
+                    )}
+                </div>
+            </ModalContent>
+            <ModalFooter separator={false}>
+                <div style={{ display: "flex", width: "100%", alignItems: "center" }}>
+                    <button disabled={!loaded} onClick={() => setAll({ x: 0, y: 0 }, minZR.current, 0, false, false)}
+                        style={{ background: "none", border: "none", color: loaded ? AR.text : AR.sub, cursor: loaded ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 500, padding: "0 4px", outline: "none" }}>
+                        Reset
+                    </button>
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                        <button onClick={() => { onSkip(); modalProps.onClose(); }}
+                            style={{ padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 500, background: "transparent", border: `1px solid ${AR.line}`, color: AR.sub, cursor: "pointer", outline: "none" }}>
+                            Skip
+                        </button>
+                        <button disabled={!loaded} onClick={doApply}
+                            style={{ padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 600, border: "none", cursor: loaded ? "pointer" : "not-allowed", background: loaded ? AR.accent : "rgba(156,103,255,.3)", color: "#fff", outline: "none", opacity: loaded ? 1 : 0.45 }}>
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            </ModalFooter>
+        </ModalRoot>
+    );
+}
+
+function arOpenCropFor(data: string, onDone: (d: string) => void) {
+    openModal(p => <ArCropModal src={data} onApply={onDone} onSkip={() => onDone(data)} modalProps={p} />);
+}
+
+function ArAvatarCard({
+    entry, isDragged, isDragOver, isExcluded,
+    onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
+    onRemove, onApplyNow, onCrop, onRename,
+}: {
+    entry: AvatarEntry; isDragged: boolean; isDragOver: boolean; isExcluded: boolean;
+    onDragStart: (e: React.DragEvent) => void; onDragOver: (e: React.DragEvent) => void;
+    onDragLeave: () => void; onDrop: (e: React.DragEvent) => void; onDragEnd: () => void;
+    onRemove: () => void; onApplyNow: () => void; onCrop: () => void;
+    onRename: (l: string) => void;
+}) {
+    const [editing, setEditing] = React.useState(false);
+    const [editText, setEditText] = React.useState(entry.label);
+    const ext = arGetExt(entry.data);
+
+    React.useEffect(() => { setEditText(entry.label); }, [entry.label]);
+
+    const commit = () => {
+        const t = editText.trim();
+        if (t && t !== entry.label) onRename(t); else setEditText(entry.label);
+        setEditing(false);
+    };
+
+    const iStyle: React.CSSProperties = { flex: 1, background: "rgba(0,0,0,.38)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 6, color: AR.text, fontSize: 12, padding: "2px 6px", outline: "none", minWidth: 0 };
+
+    return (
+        <div draggable={!editing} onDragStart={editing ? undefined : onDragStart}
+            onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} onDragEnd={onDragEnd}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 8, marginBottom: 4, background: isDragOver ? AR.bg2 : AR.bg1, border: `1px solid ${isDragOver ? AR.accent : AR.line}`, opacity: isDragged ? 0.3 : isExcluded ? 0.5 : 1, cursor: editing ? "default" : "grab", userSelect: "none" as const }}>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="var(--text-muted)" style={{ flexShrink: 0 }}>
+                <rect y="1" width="12" height="1.8" rx="0.9"/>
+                <rect y="5" width="12" height="1.8" rx="0.9"/>
+                <rect y="9" width="12" height="1.8" rx="0.9"/>
+            </svg>
+            <div style={{ position: "relative", flexShrink: 0 }}>
+                <img src={entry.data} alt="" draggable={false} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? AR.warn : AR.accent}`, display: "block" }} />
+                {isExcluded && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: 14 }}>⛔</span></div>}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                {editing
+                    ? <input autoFocus value={editText} onChange={e => setEditText(e.target.value)} onBlur={commit}
+                        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setEditText(entry.label); setEditing(false); } e.stopPropagation(); }}
+                        onClick={e => e.stopPropagation()} style={iStyle} />
+                    : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <span title="Double-click to rename" onDoubleClick={e => { e.stopPropagation(); setEditing(true); setEditText(entry.label); }}
+                                style={{ fontSize: 13, color: isExcluded ? AR.sub : AR.text, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
+                                {entry.label}
+                            </span>
+                            <ArExtBadge ext={ext} excluded={isExcluded} />
+                            {ext === "gif" && !isExcluded && <span style={{ fontSize: 10, color: AR.warn, flexShrink: 0 }}>⚠ Nitro</span>}
+                            {isExcluded && <span style={{ fontSize: 10, color: AR.sub, flexShrink: 0 }}>skipped</span>}
+                        </div>
+                    )}
+            </div>
+            <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                {[
+                    { color: AR.accent, title: "Use now", onClick: onApplyNow, icon: <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/> },
+                    { color: "#00b0f4", title: "Edit/Crop", onClick: onCrop, icon: <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/> },
+                    { color: AR.red, title: "Remove", onClick: onRemove, icon: <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/> },
+                ].map(({ color, title, onClick, icon }) => (
+                    <button key={title} onClick={e => { e.stopPropagation(); onClick(); }} title={title}
+                        style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0, border: `1px solid ${color}33`, background: `${color}18`, color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", padding: 0 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">{icon}</svg>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
+    const [list, setList] = React.useState<AvatarEntry[]>([...arAvatars]);
+    const [urlInput, setUrlInput] = React.useState("");
+    const [labelInput, setLabelInput] = React.useState("");
+    const [loading, setLoading] = React.useState(false);
+    const [running, setRunning] = React.useState(() => arRotatorTimer !== null);
+    const [lSecStr, setLSecStr] = React.useState(() => String(settings.store.avatarIntervalSeconds ?? AR_DEFAULT_S));
+    const [lRandom, setLRandom] = React.useState(() => settings.store.avatarRandom ?? true);
+    const [lToast, setLToast] = React.useState(() => settings.store.avatarShowToast ?? true);
+    const [excluded, setExcludedS] = React.useState(() => arGetExcluded());
+    const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
+    const [dragOverIdx, setDragOverIdx] = React.useState<number | null>(null);
+
+    const sec = parseInt(lSecStr) || AR_DEFAULT_S;
+    const activeCount = list.filter(a => !excluded.includes(arGetExt(a.data))).length;
+    const warnSec = sec > 0 && sec < AR_WARN_S;
+    const hasGifs = list.some(e => arIsGif(e.data) && !excluded.includes("gif"));
+
+    const commit = (next: AvatarEntry[]) => { arAvatars = next; setList([...next]); void arSaveData(); };
+
+    const setExcl = (arr: string[]) => {
+        setExcludedS(arr); arSetExcluded(arr);
+        if (arRotatorTimer) { clearTimeout(arRotatorTimer); arRotatorTimer = null; arSchedule(); }
+    };
+
+    const applyInterval = (s: number) => {
+        settings.store.avatarIntervalSeconds = s;
+        if (arRotatorTimer) { clearTimeout(arRotatorTimer); arRotatorTimer = null; arSchedule(); }
+    };
+
+    const validateApply = () => {
+        const s = Math.max(1, parseInt(lSecStr) || AR_DEFAULT_S);
+        setLSecStr(String(s)); applyInterval(s);
+    };
+
+    const setPreset = (s: number) => { setLSecStr(String(s)); applyInterval(s); };
+
+    const toggleEnabled = () => {
+        const next = !running;
+        settings.store.avatarEnabled = next;
+        if (next && activeCount > 0) { arStartRotator(false); setRunning(true); }
+        else { arStopRotator(); setRunning(false); }
+        forceUpdate();
+    };
+
+    const toggleRandom = () => {
+        const n = !lRandom; setLRandom(n); settings.store.avatarRandom = n;
+        if (n) arShuffleQueue = arSfShuffle(activeCount);
+    };
+
+    const toggleToast = () => {
+        const n = !lToast; setLToast(n); settings.store.avatarShowToast = n;
+    };
+
+    const handleAddUrl = async () => {
+        const url = urlInput.trim();
+        if (!url) { arToast("Please enter a URL", Toasts.Type.FAILURE); return; }
+        let parsed: URL;
+        try { parsed = new URL(url); if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(); }
+        catch { arToast("Invalid URL - must start with http:// or https://", Toasts.Type.FAILURE); return; }
+        const label = labelInput.trim() || parsed.pathname.split("/").pop()?.replace(/\.[^.]+$/, "") || "Avatar";
+        setLoading(true);
+        arToast("Fetching image…", Toasts.Type.MESSAGE);
+        try {
+            const ctrl = new AbortController();
+            const timeout = setTimeout(() => ctrl.abort(), 15000);
+            const res = await fetch(url, { signal: ctrl.signal });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+            const ct = res.headers.get("content-type") ?? "";
+            if (ct && !ct.startsWith("image/") && !ct.startsWith("application/octet")) throw new Error(`Not an image (${ct})`);
+            const blob = await res.blob();
+            if (!blob.size) throw new Error("Empty response");
+            if (blob.size > 50_000_000) throw new Error("Image too large (>50 MB)");
+            const data = await arBlobToDataUrl(blob);
+            if (!data.startsWith("data:image/")) throw new Error("Could not read image data");
+            arToast("Image loaded", Toasts.Type.SUCCESS);
+            setLoading(false);
+            arOpenCropFor(data, cropped => { commit([...arAvatars, { id: arUid(), label, data: cropped }]); setUrlInput(""); setLabelInput(""); arToast(`Added "${label}"`); });
+        } catch (e: any) {
+            arToast(e?.name === "AbortError" ? "Request timed out (15s)" : `Failed: ${e.message ?? "Unknown"}`, Toasts.Type.FAILURE);
+            setLoading(false);
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []);
+        if (!files.length) return;
+        setLoading(true);
+        if (files.length === 1) {
+            try {
+                const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(files[0]); });
+                setLoading(false);
+                arOpenCropFor(data, cropped => { commit([...arAvatars, { id: arUid(), label: files[0].name.replace(/\.[^.]+$/, ""), data: cropped }]); arToast("Added"); });
+            } catch { arToast("Failed to read file", Toasts.Type.FAILURE); setLoading(false); }
+        } else {
+            const entries: AvatarEntry[] = [];
+            for (const f of files) {
+                try {
+                    const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(f); });
+                    entries.push({ id: arUid(), label: f.name.replace(/\.[^.]+$/, ""), data });
+                } catch {}
+            }
+            if (entries.length) { commit([...arAvatars, ...entries]); arToast(`Added ${entries.length} avatar(s)`); }
+            setLoading(false);
+        }
+        e.target.value = "";
+    };
+
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        setLoading(true);
+        try { const imp = await arImportJSON(f); if (!imp.length) arToast("No valid avatars in file", Toasts.Type.MESSAGE); else { commit([...arAvatars, ...imp]); arToast(`Imported ${imp.length}`); } }
+        catch { arToast("Import failed - invalid JSON", Toasts.Type.FAILURE); }
+        setLoading(false); e.target.value = "";
+    };
+
+    const removeEntry = (id: string) => {
+        const next = arAvatars.filter(a => a.id !== id);
+        arShuffleQueue = next.length ? arSfShuffle(next.filter(a => !excluded.includes(arGetExt(a.data))).length) : [];
+        commit(next);
+        if (!next.filter(a => !excluded.includes(arGetExt(a.data))).length && running) { arStopRotator(); setRunning(false); forceUpdate(); }
+    };
+
+    const moveEntry = (from: number, to: number) => {
+        if (to < 0 || to >= arAvatars.length) return;
+        commit(arReorderArr(arAvatars, from, to));
+    };
+
+    const onDS = (e: React.DragEvent, i: number) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(i)); setDraggedIdx(i); };
+    const onDO = (e: React.DragEvent, i: number) => { e.preventDefault(); e.stopPropagation(); if (draggedIdx !== null && draggedIdx !== i) setDragOverIdx(i); };
+    const onDL = () => setDragOverIdx(null);
+    const onDP = (e: React.DragEvent, to: number) => { e.preventDefault(); e.stopPropagation(); if (draggedIdx !== null && draggedIdx !== to) moveEntry(draggedIdx, to); setDraggedIdx(null); setDragOverIdx(null); };
+    const onDE = () => { setDraggedIdx(null); setDragOverIdx(null); };
+
+    const inputBaseStyle: React.CSSProperties = { flex: 1, background: "rgba(0,0,0,.38)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 6, color: AR.text, fontSize: 13, padding: "6px 10px", outline: "none", minWidth: 0 };
+
+    return (
+        <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, marginBottom: 14, background: running ? `${AR.green}0f` : AR.bg1, border: `1px solid ${running ? AR.green + "2e" : AR.line}` }}>
+                <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: running ? AR.green : AR.text, marginBottom: 2 }}>{running ? "Rotation active" : "Rotation stopped"}</div>
+                    <div style={{ fontSize: 12, color: AR.sub }}>
+                        {running ? `Cycling every ${arFmtSec(sec)} - ${lRandom ? "Random" : "Sequential"} - ${activeCount} active` : activeCount === 0 ? "Add avatars or unexclude extensions to start" : "Press Start to begin cycling"}
+                    </div>
+                </div>
+                <button onClick={toggleEnabled} disabled={!running && !activeCount}
+                    style={{ padding: "9px 22px", borderRadius: 8, fontWeight: 700, fontSize: 14, border: "none", outline: "none", background: running ? AR.red : AR.green, color: "#fff", cursor: (!running && !activeCount) ? "not-allowed" : "pointer", opacity: (!running && !activeCount) ? 0.4 : 1 }}>
+                    {running ? "Stop" : "Start"}
+                </button>
+            </div>
+
+            <div className="ar-card">
+                <div className="ar-card-row">
+                    <div style={{ flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, color: AR.text }}>Interval</div>
+                        <div style={{ fontSize: 10, color: AR.sub, opacity: 0.7 }}>recommended min: 60s</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" as const }}>
+                        <input type="number" min={1} value={lSecStr}
+                            onChange={e => setLSecStr(e.target.value)}
+                            onFocus={e => e.target.select()}
+                            onBlur={validateApply}
+                            onKeyDown={e => { if (e.key === "Enter") { validateApply(); (e.target as HTMLInputElement).blur(); } e.stopPropagation(); }}
+                            style={{ ...inputBaseStyle, flex: "none", width: 72, textAlign: "center", padding: "3px 6px" }} />
+                        <span style={{ fontSize: 12, color: AR.sub }}>sec</span>
+                        <div style={{ display: "flex", gap: 3 }}>
+                            {[60, 120, 300, 600, 900].map(s => (
+                                <button key={s} onClick={() => setPreset(s)}
+                                    style={{ padding: "3px 7px", borderRadius: 5, fontSize: 11, cursor: "pointer", outline: "none", border: `1px solid ${sec === s ? AR.accent : AR.line}`, background: sec === s ? AR.aD : "transparent", color: sec === s ? AR.accent : AR.sub }}>
+                                    {arFmtPreset(s)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {warnSec && (
+                        <div style={{ width: "100%", marginTop: 4, padding: "5px 9px", borderRadius: 6, background: `${AR.warn}14`, border: `1px solid ${AR.warn}33`, fontSize: 11, color: AR.warn }}>
+                            ⚠ Below 60s - Discord rate-limits changes (~2 per 10 min).
+                        </div>
+                    )}
+                </div>
+                <div className="ar-card-row">
+                    <span style={{ fontSize: 13, color: AR.text }}>{lRandom ? "🔀 Random (no repeats)" : "🔁 Sequential"}</span>
+                    <div onClick={toggleRandom} style={{ width: 34, height: 18, borderRadius: 9, flexShrink: 0, cursor: "pointer", background: lRandom ? AR.accent : "rgba(255,255,255,.13)", position: "relative", userSelect: "none" as const }}>
+                        <div style={{ position: "absolute", top: 2, left: lRandom ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff" }} />
+                    </div>
+                </div>
+                <div className="ar-card-row">
+                    <span style={{ fontSize: 13, color: AR.text }}>Toast notifications</span>
+                    <div onClick={toggleToast} style={{ width: 34, height: 18, borderRadius: 9, flexShrink: 0, cursor: "pointer", background: lToast ? AR.accent : "rgba(255,255,255,.13)", position: "relative", userSelect: "none" as const }}>
+                        <div style={{ position: "absolute", top: 2, left: lToast ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff" }} />
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ background: AR.bg1, border: `1px solid ${AR.line}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+                <ArExtFilterSection excluded={excluded} onChange={setExcl} />
+            </div>
+
+            <div style={{ height: 1, background: AR.line, margin: "12px 0" }} />
+
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: AR.sub, textTransform: "uppercase" as const, marginBottom: 6 }}>Add Avatar</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 6, marginBottom: 8, flexWrap: "wrap" as const }}>
+                <input placeholder="https://example.com/avatar.png" value={urlInput} onChange={e => setUrlInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleAddUrl(); }} style={inputBaseStyle} />
+                <input placeholder="Label (optional)" value={labelInput} onChange={e => setLabelInput(e.target.value)} style={{ ...inputBaseStyle, flex: "none", width: 130 }} />
+                <button onClick={handleAddUrl} disabled={loading || !urlInput.trim()}
+                    style={{ padding: "6px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700, background: loading || !urlInput.trim() ? "rgba(156,103,255,.15)" : `linear-gradient(135deg, #7c3aed, ${AR.accent})`, border: `1px solid ${AR.accent}55`, color: loading || !urlInput.trim() ? AR.sub : "#fff", cursor: (loading || !urlInput.trim()) ? "not-allowed" : "pointer", outline: "none", flexShrink: 0 }}>
+                    {loading ? "…" : "Add URL"}
+                </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <label style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "12px 8px", borderRadius: 10, cursor: loading ? "not-allowed" : "pointer", userSelect: "none" as const, background: "linear-gradient(135deg, rgba(88,101,242,.14), rgba(156,103,255,.14))", border: `1.5px dashed ${AR.accent}70` }}>
+                    <input type="file" multiple accept={AR_ACCEPT} style={{ display: "none" }} onChange={handleFileUpload} disabled={loading} />
+                    <span style={{ fontSize: 22 }}>📁</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: AR.accent }}>{loading ? "Loading…" : "Upload Images"}</span>
+                    <span style={{ fontSize: 9, color: AR.sub, textAlign: "center", lineHeight: 1.4 }}>jpg · jpeg · jfif · png · gif · webp · avif</span>
+                </label>
+                <label style={{ width: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, padding: "12px 8px", borderRadius: 10, cursor: loading ? "not-allowed" : "pointer", userSelect: "none" as const, background: "linear-gradient(135deg, rgba(59,165,92,.12), rgba(156,103,255,.10))", border: `1.5px dashed ${AR.green}60` }}>
+                    <input type="file" accept="application/json" style={{ display: "none" }} onChange={handleImport} disabled={loading} />
+                    <span style={{ fontSize: 22 }}>📥</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: AR.green }}>Import JSON</span>
+                </label>
+            </div>
+
+            {hasGifs && (
+                <div style={{ padding: "7px 11px", borderRadius: 8, marginBottom: 8, background: `${AR.warn}12`, border: `1px solid ${AR.warn}33`, fontSize: 12, color: AR.warn }}>
+                    ⚠ GIF avatars require <b>Nitro</b> to animate on Discord.
+                </div>
+            )}
+
+            <div style={{ padding: "7px 11px", borderRadius: 8, marginBottom: 10, background: "rgba(88,101,242,.09)", border: "1px solid rgba(88,101,242,.22)", fontSize: 12, color: "#90caf9" }}>
+                ✏️ Double-click a name to rename - ✏ to edit/crop - Drag ⠿ to reorder
+            </div>
+
+            <div style={{ height: 1, background: AR.line, margin: "12px 0" }} />
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: AR.sub, textTransform: "uppercase" as const }}>Avatar List ({list.length})</span>
+                {list.length > 0 && (
+                    <div style={{ display: "flex", gap: 5 }}>
+                        <button onClick={arExportJSON} style={{ padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: `1px solid ${AR.accent}44`, background: AR.aD, color: AR.accent, outline: "none" }}>📤 Export</button>
+                        <button onClick={() => { commit([]); arSeqIndex = 0; arShuffleQueue = []; if (running) { arStopRotator(); setRunning(false); settings.store.avatarEnabled = false; } forceUpdate(); }}
+                            style={{ padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: `1px solid ${AR.red}44`, background: `${AR.red}18`, color: AR.red, outline: "none" }}>Clear all</button>
+                    </div>
+                )}
+            </div>
+
+            <div style={{ maxHeight: 230, overflowY: "auto", paddingRight: 2 }}>
+                {list.length === 0
+                    ? <div style={{ textAlign: "center", padding: "24px 0", color: AR.sub, fontSize: 13 }}><div style={{ fontSize: 26, marginBottom: 6 }}>🖼️</div>No avatars yet - add some above</div>
+                    : list.map((entry, i) => (
+                        <ArAvatarCard key={entry.id} entry={entry}
+                            isDragged={draggedIdx === i} isDragOver={dragOverIdx === i}
+                            isExcluded={excluded.includes(arGetExt(entry.data))}
+                            onDragStart={e => onDS(e, i)} onDragOver={e => onDO(e, i)}
+                            onDragLeave={onDL} onDrop={e => onDP(e, i)} onDragEnd={onDE}
+                            onRemove={() => removeEntry(entry.id)}
+                            onApplyNow={() => void arApplyAvatar(entry)}
+                            onCrop={() => arOpenCropFor(entry.data, d => { commit(arAvatars.map(a => a.id === entry.id ? { ...a, data: d } : a)); arToast("Updated"); })}
+                            onRename={l => commit(arAvatars.map(a => a.id === entry.id ? { ...a, label: l } : a))}
+                        />
+                    ))
+                }
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: `1px solid ${AR.line}` }}>
+                <button onClick={() => void arRotateNext()} disabled={!activeCount}
+                    style={{ padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 600, background: activeCount ? AR.aD : "rgba(156,103,255,.1)", border: `1px solid ${AR.accent}44`, color: activeCount ? AR.accent : AR.sub, cursor: !activeCount ? "not-allowed" : "pointer", opacity: !activeCount ? 0.5 : 1, outline: "none" }}>
+                    ⏭ Skip
+                </button>
+                <span style={{ fontSize: 11, color: AR.sub }}>{running ? `● Cycling every ${arFmtSec(sec)} - ${activeCount} active` : "○ Not running"}</span>
+            </div>
+        </div>
+    );
+}
 
 function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [filter, setFilter] = React.useState("");
@@ -1759,6 +2602,8 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [nickEdit, setNickEdit] = React.useState<Record<string, { idx: number; val: string } | null>>({});
     const [manualId, setManualId] = React.useState("");
     const [manualName, setManualName] = React.useState("");
+    const [confirmBulk, setConfirmBulk] = React.useState<string | null>(null);
+    const [confirmClear, setConfirmClear] = React.useState<string | null>(null);
 
     const { props: gnDProps, cls: gnCls } = useDrag((f, t) => {
         globalNicks = reorder(globalNicks, f, t); saveData(); forceUpdate();
@@ -1835,13 +2680,70 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
     function addManual() {
         const id = manualId.trim(); const name = manualName.trim() || id;
         if (!id || !/^\d{17,20}$/.test(id) || guilds.find(g => g.id === id)) return;
-        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "custom", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "custom", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
+        guilds.push({ id, name, nicks: [], enabled: false, seqIndex: 0, manual: true, nickMode: "both", guildPronouns: [], guildPronounsEnabled: false, guildPronounsSeqIdx: 0, guildPronounsLastVal: null, guildPronounsMode: "both", voiceActivated: false, nickVoiceEnabled: false, pronounsVoiceEnabled: false });
         saveData(); setManualId(""); setManualName(""); forceUpdate();
     }
     function removeGuild(g: GuildEntry) { stopNickGuild(g.id); guilds = guilds.filter(x => x.id !== g.id); saveData(); forceUpdate(); }
     function enableAll() { guilds.forEach(g => { if (!g.enabled) { g.enabled = true; if (!settings.store.globalSync) { startNickGuild(g); startGuildPronouns(g); } } }); saveData(); forceUpdate(); }
     function disableAll() { guilds.forEach(g => { g.enabled = false; stopNickGuild(g.id); }); saveData(); forceUpdate(); }
     function resetAllNicks() { guilds.forEach(g => { g.nicks = []; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
+    function allActiveNicks() {
+        guilds.forEach(g => {
+            if (!g.enabled) return;
+            if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+                g.nickVoiceEnabled = true;
+                if (pluginActive && getMyVoiceGuildId() === g.id && settings.store.nickEnabled && !nickTimers.has(g.id))
+                    scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+            } else {
+                if (pluginActive && settings.store.nickEnabled && !settings.store.globalSync && !nickTimers.has(g.id))
+                    scheduleNickTick(g, getMs(settings.store.nickIntervalSeconds));
+            }
+        });
+        saveData(); forceUpdate();
+    }
+    function allInactiveNicks() {
+        guilds.forEach(g => { stopNickGuild(g.id); if (g.voiceActivated) g.nickVoiceEnabled = false; });
+        saveData(); forceUpdate();
+    }
+    function allActivePronouns() {
+        guilds.forEach(g => {
+            if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) {
+                g.pronounsVoiceEnabled = true;
+                if (pluginActive && getMyVoiceGuildId() === g.id && settings.store.serverPronounsEnabled && pronounsForGuild(g).length > 0 && !guildPronounsTimers.has(g.id))
+                    scheduleGuildPronounsTick(g, getMs(settings.store.serverPronounsIntervalSeconds));
+            } else {
+                g.guildPronounsEnabled = true;
+                if (pluginActive && settings.store.serverPronounsEnabled && !settings.store.globalSync && pronounsForGuild(g).length > 0 && !guildPronounsTimers.has(g.id))
+                    startGuildPronouns(g);
+            }
+        });
+        saveData(); forceUpdate();
+    }
+    function allInactivePronouns() {
+        guilds.forEach(g => {
+            stopGuildPronouns(g.id);
+            if (g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal) g.pronounsVoiceEnabled = false;
+            else g.guildPronounsEnabled = false;
+        });
+        saveData(); forceUpdate();
+    }
+    function allVCOnly() {
+        guilds.forEach(g => { g.voiceActivated = true; stopNickGuild(g.id); stopGuildPronouns(g.id); });
+        saveData(); forceUpdate();
+    }
+    function allAlways() {
+        guilds.forEach(g => {
+            g.voiceActivated = false;
+            if (pluginActive && g.enabled && !settings.store.globalSync) {
+                if (settings.store.nickEnabled && !nickTimers.has(g.id)) startNickGuild(g);
+                if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0 && !guildPronounsTimers.has(g.id)) startGuildPronouns(g);
+            }
+        });
+        saveData(); forceUpdate();
+    }
+    function allBoth() { guilds.forEach(g => { g.nickMode = "both"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
+    function allCustom() { guilds.forEach(g => { g.nickMode = "custom"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
+    function allGlobal() { guilds.forEach(g => { g.nickMode = "global"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
 
     let sorted = [...guilds];
     if (filter) sorted = sorted.filter(g => g.name.toLowerCase().includes(filter.toLowerCase()) || g.id.includes(filter));
@@ -1853,6 +2755,18 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
 
     const activeCount = nickTimers.size;
     const enabledCount = guilds.filter(g => g.enabled).length;
+
+    const bulkFns: Record<string, () => void> = {
+        "All Active Nicks": allActiveNicks,
+        "All Inactive Nicks": allInactiveNicks,
+        "All Active Pronouns": allActivePronouns,
+        "All Inactive Pronouns": allInactivePronouns,
+        "All Both": allBoth,
+        "All Custom": allCustom,
+        "All Global": allGlobal,
+        "All VC-Only": allVCOnly,
+        "All Always": allAlways,
+    };
 
     return (
         <div>
@@ -1885,7 +2799,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     onApply={() => { if (pluginActive && settings.store.serverPronounsEnabled && !settings.store.globalSync) { stopAllGuildPronouns(); for (const g of guilds.filter(x => x.guildPronounsEnabled && pronounsForGuild(x).length > 0)) startGuildPronouns(g); } }} />
                 <div className="rs-hint" style={{ marginTop: 5 }}>Each server can have its own pronoun list. Servers with no local entries fall back to the <b style={{ color: C.pronoun }}>Global Pronoun Pool</b>.</div>
                 <div className="rs-warn-box" style={{ marginTop: 6 }}>
-                    ⚠️ Server pronouns use <b>/users/@me/guilds/&#123;id&#125;/profile</b> — Discord may return 403/404 on servers where this is restricted. 429 errors in console during cycles are expected and handled automatically.
+                    ⚠️ Server pronouns use <b>/users/@me/guilds/&#123;id&#125;/profile</b> - Discord may return 403/404 on servers where this is restricted. 429 errors in console during cycles are expected and handled automatically.
                 </div>
             </div>
 
@@ -1919,7 +2833,9 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.nick }}>Global Nick Pool</span>
                 <div style={{ flex: 1, height: 1, background: `${C.nick}33` }} />
                 <span className="rs-count">{globalNicks.length}</span>
+                {globalNicks.length > 0 && <button className="rs-clearall" onClick={() => setConfirmClear("global-nicks")}>Clear</button>}
             </div>
+            {confirmClear === "global-nicks" && <ConfirmBox msg="Clear all global nicks?" onConfirm={() => { globalNicks = []; saveData(); forceUpdate(); setConfirmClear(null); }} onCancel={() => setConfirmClear(null)} />}
             <div className="rs-hint" style={{ marginBottom: 5 }}>Shared nicknames for servers in <b style={{ color: NM_COLOR.global }}>Global</b> or <b style={{ color: NM_COLOR.both }}>Both</b> mode. Drag to reorder, click to edit.</div>
             <div className="rs-nick-list">
                 {globalNicks.length === 0 && <span className="rs-empty">No shared nicks yet.</span>}
@@ -1959,7 +2875,9 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.pronoun }}>Global Pronoun Pool</span>
                 <div style={{ flex: 1, height: 1, background: `${C.pronoun}33` }} />
                 <span className="rs-count">{globalGuildPronouns.length}</span>
+                {globalGuildPronouns.length > 0 && <button className="rs-clearall" onClick={() => setConfirmClear("global-pronouns")}>Clear</button>}
             </div>
+            {confirmClear === "global-pronouns" && <ConfirmBox msg="Clear all global pronouns?" onConfirm={() => { globalGuildPronouns = []; saveData(); forceUpdate(); setConfirmClear(null); }} onCancel={() => setConfirmClear(null)} />}
             <div className="rs-hint" style={{ marginBottom: 5 }}>Fallback pool for servers with no local pronouns. Drag to reorder, click to edit.</div>
             <div className="rs-nick-list">
                 {globalGuildPronouns.length === 0 && <span className="rs-empty">No global pronouns yet.</span>}
@@ -1998,6 +2916,38 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
 
             <div className="rs-divider" style={{ margin: "4px 0 8px" }} />
 
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 5, marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(124,77,255,.18)", background: "rgba(10,5,30,.5)" }}>
+                {confirmBulk && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 6, background: "rgba(239,83,80,.1)", border: "1px solid rgba(239,83,80,.3)" }}>
+                        <span style={{ flex: 1, fontSize: 11, color: "#ef9a9a", fontWeight: 700 }}>Apply "{confirmBulk}" to all servers?</span>
+                        <button onClick={() => { const fn = bulkFns[confirmBulk!]; if (fn) fn(); setConfirmBulk(null); }} style={{ padding: "2px 10px", borderRadius: 5, border: `1px solid ${ACT}44`, background: `${ACT}18`, color: ACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>Yes</button>
+                        <button onClick={() => setConfirmBulk(null)} style={{ padding: "2px 10px", borderRadius: 5, border: "1px solid rgba(80,60,110,.4)", background: "rgba(15,5,35,.6)", color: "#9e9e9e", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>No</button>
+                    </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.nick, minWidth: 48 }}>Nicks</span>
+                    <button onClick={() => setConfirmBulk("All Active Nicks")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${ACT}44`, background: `${ACT}18`, color: ACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Active</button>
+                    <button onClick={() => setConfirmBulk("All Inactive Nicks")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}15`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Inactive</button>
+                    <div style={{ width: 1, height: 14, background: "rgba(124,77,255,.25)" }} />
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.pronoun, minWidth: 56 }}>Pronouns</span>
+                    <button onClick={() => setConfirmBulk("All Active Pronouns")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${ACT}44`, background: `${ACT}18`, color: ACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Active</button>
+                    <button onClick={() => setConfirmBulk("All Inactive Pronouns")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}15`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Inactive</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: NM_COLOR.both, minWidth: 48 }}>Mode</span>
+                    <button onClick={() => setConfirmBulk("All Both")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.both}44`, background: `${NM_COLOR.both}18`, color: NM_COLOR.both, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Both</button>
+                    <button onClick={() => setConfirmBulk("All Custom")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.custom}44`, background: `${NM_COLOR.custom}18`, color: NM_COLOR.custom, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Custom</button>
+                    <button onClick={() => setConfirmBulk("All Global")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.global}44`, background: `${NM_COLOR.global}18`, color: NM_COLOR.global, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Global</button>
+                </div>
+                {settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                        <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: "#7986cb", minWidth: 48 }}>Voice</span>
+                        <button onClick={() => setConfirmBulk("All VC-Only")} style={{ padding: "2px 9px", borderRadius: 5, border: "1px solid #7986cb44", background: "#7986cb18", color: "#7986cb", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All VC-Only</button>
+                        <button onClick={() => setConfirmBulk("All Always")} style={{ padding: "2px 9px", borderRadius: 5, border: "1px solid #80cbc444", background: "#80cbc418", color: "#80cbc4", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Always</button>
+                    </div>
+                )}
+            </div>
+
             <div className="rs-toolbar">
                 <TextInput placeholder="Filter servers..." value={filter} onChange={setFilter} />
                 {(["enabled", "name", "nicks", "pronouns", "running"] as SortMode[]).map(m => (
@@ -2016,7 +2966,6 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                 const es = nickEdit[g.id] ?? null;
                 const gPrList = g.guildPronouns ?? [];
                 const effectivePrList = pronounsForGuild(g);
-                // Determine if nick should be considered "active" for styling
                 const isNickActive = g.voiceActivated && settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal
                     ? g.nickVoiceEnabled
                     : running;
@@ -2045,7 +2994,22 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                     <button
                                         style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 8px", borderRadius: 6, border: `1px solid ${g.voiceActivated ? "#7986cb55" : "rgba(80,60,110,.3)"}`, background: g.voiceActivated ? "#7986cb22" : "rgba(15,5,35,.5)", color: g.voiceActivated ? "#7986cb" : "#5a4a7a", cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}
                                         title="Toggle: Voice-only activates nicks+pronouns only when in this server's voice"
-                                        onClick={() => { g.voiceActivated = !g.voiceActivated; saveData(); forceUpdate(); }}>
+                                        onClick={() => {
+                                            g.voiceActivated = !g.voiceActivated;
+                                            saveData();
+                                            if (pluginActive) {
+                                                if (g.voiceActivated) {
+                                                    const inVoice = getMyVoiceGuildId() === g.id;
+                                                    if (!inVoice) { stopNickGuild(g.id); stopGuildPronouns(g.id); }
+                                                } else {
+                                                    if (g.enabled && !settings.store.globalSync) {
+                                                        if (settings.store.nickEnabled && !nickTimers.has(g.id)) startNickGuild(g);
+                                                        if (g.guildPronounsEnabled && pronounsForGuild(g).length > 0 && !guildPronounsTimers.has(g.id)) startGuildPronouns(g);
+                                                    }
+                                                }
+                                            }
+                                            forceUpdate();
+                                        }}>
                                         🔊 {g.voiceActivated ? "VC-only" : "Always"}
                                     </button>
                                 )}
@@ -2069,15 +3033,15 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                     <button
                                         style={{
                                             display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6,
-                                            border: `1px solid ${isNickActive ? NM_COLOR[mode] + "44" : "rgba(80,60,110,.35)"}`,
-                                            background: isNickActive ? `${NM_COLOR[mode]}20` : "rgba(15,5,35,.55)",
-                                            color: isNickActive ? NM_COLOR[mode] : "#5a4a7a",
+                                            border: `1px solid ${isNickActive ? ACT + "55" : INACT + "44"}`,
+                                            background: isNickActive ? `${ACT}20` : `${INACT}15`,
+                                            color: isNickActive ? ACT : INACT,
                                             cursor: settings.store.nickEnabled ? "pointer" : "not-allowed",
                                             fontSize: 10, fontWeight: 800, flexShrink: 0,
                                             opacity: settings.store.nickEnabled ? 1 : 0.4
                                         }}
                                         onClick={() => { if (settings.store.nickEnabled) toggleNickActive(g); }}>
-                                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: isNickActive ? NM_COLOR[mode] : "#3a2a5a", display: "inline-block" }} />
+                                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: isNickActive ? ACT : INACT, display: "inline-block" }} />
                                         {settings.store.nickEnabled ? (isNickActive ? "Active" : "Inactive") : "Disabled"}
                                     </button>
                                 </div>
@@ -2086,6 +3050,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                 </div>
                                 {(mode === "custom" || mode === "both") && (
                                     <>
+                                        {confirmClear === `nicks-${g.id}` && <ConfirmBox msg={`Clear all custom nicks for ${g.name}?`} onConfirm={() => { g.nicks = []; g.seqIndex = 0; g.lastNickVal = null; saveData(); forceUpdate(); setConfirmClear(null); }} onCancel={() => setConfirmClear(null)} />}
                                         <div className="rs-nick-list">
                                             {g.nicks.length === 0
                                                 ? <span className="rs-empty">{mode === "custom" ? `No custom nicks - using global pool (${globalNicks.length}).` : "No custom nicks yet."}</span>
@@ -2118,6 +3083,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                                 placeholder="Add a custom nick for this server..."
                                                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") addNick(g); }} />
                                             <Button size={Button.Sizes.SMALL} color={Button.Colors.BRAND} onClick={() => addNick(g)} className="rs-btn-sm">Add</Button>
+                                            {g.nicks.length > 0 && <button className="rs-clearall" onClick={() => setConfirmClear(`nicks-${g.id}`)}>Clear</button>}
                                         </div>
                                     </>
                                 )}
@@ -2141,15 +3107,15 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         <button
                                             style={{
                                                 display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6,
-                                                border: `1px solid ${isPronounsActive ? C.pronoun + "44" : "rgba(80,60,110,.35)"}`,
-                                                background: isPronounsActive ? `${C.pronoun}20` : "rgba(15,5,35,.55)",
-                                                color: isPronounsActive ? C.pronoun : "#5a4a7a",
+                                                border: `1px solid ${isPronounsActive ? ACT + "55" : INACT + "44"}`,
+                                                background: isPronounsActive ? `${ACT}20` : `${INACT}15`,
+                                                color: isPronounsActive ? ACT : INACT,
                                                 cursor: settings.store.serverPronounsEnabled ? "pointer" : "not-allowed",
                                                 fontSize: 10, fontWeight: 800, flexShrink: 0,
                                                 opacity: settings.store.serverPronounsEnabled ? 1 : 0.4
                                             }}
                                             onClick={() => { if (settings.store.serverPronounsEnabled) toggleGuildPronounsActive(g); }}>
-                                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: isPronounsActive ? C.pronoun : "#3a2a5a", display: "inline-block" }} />
+                                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: isPronounsActive ? ACT : INACT, display: "inline-block" }} />
                                             {settings.store.serverPronounsEnabled ? (isPronounsActive ? "Active" : "Inactive") : "Disabled"}
                                         </button>
                                     </div>
@@ -2165,6 +3131,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                     {effectivePrList.length === 0 && (
                                         <div className="rs-empty" style={{ marginBottom: 4 }}>No pronouns set - add local entries or fill the global pronoun pool above.</div>
                                     )}
+                                    {confirmClear === `pr-${g.id}` && <ConfirmBox msg={`Clear all local pronouns for ${g.name}?`} onConfirm={() => { g.guildPronouns = []; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; saveData(); forceUpdate(); setConfirmClear(null); }} onCancel={() => setConfirmClear(null)} />}
                                     {gPrList.map((pr, pi) => (
                                         <div key={`${g.id}_pr_${pi}`}
                                             draggable
@@ -2201,6 +3168,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                             const v = (nickInputs[`__pr_${g.id}`] ?? "").trim();
                                             if (v && !gPrList.includes(v)) { g.guildPronouns = [...gPrList, v]; saveData(); setNickInputs(p => ({ ...p, [`__pr_${g.id}`]: "" })); forceUpdate(); }
                                         }}>Add</Button>
+                                        {gPrList.length > 0 && <button className="rs-clearall" onClick={() => setConfirmClear(`pr-${g.id}`)}>Clear</button>}
                                     </div>
                                 </div>
                             </div>
@@ -2217,10 +3185,31 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <Button size={Button.Sizes.SMALL} color={Button.Colors.BRAND} className="rs-btn-sm" onClick={addManual}>Add</Button>
                 </div>
             </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                <Button color={Button.Colors.GREEN} onClick={enableAll} className="rs-btn-sm">Enable All</Button>
-                <Button color={Button.Colors.GREY} onClick={disableAll} className="rs-btn-sm">Disable All</Button>
-                <Button color={Button.Colors.RED} onClick={resetAllNicks} className="rs-btn-sm">Reset All Nicks</Button>
+            <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" as const, alignItems: "center" }}>
+                {confirmClear === "__enableAll"
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, background: "rgba(67,160,71,.1)", border: "1px solid rgba(67,160,71,.3)" }}>
+                        <span style={{ fontSize: 11, color: ACT, fontWeight: 700 }}>Enable all servers?</span>
+                        <button onClick={() => { enableAll(); setConfirmClear(null); }} style={{ padding: "1px 8px", borderRadius: 4, border: `1px solid ${ACT}44`, background: `${ACT}18`, color: ACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>Yes</button>
+                        <button onClick={() => setConfirmClear(null)} style={{ padding: "1px 8px", borderRadius: 4, border: "1px solid rgba(80,60,110,.4)", background: "rgba(15,5,35,.6)", color: "#9e9e9e", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>No</button>
+                      </div>
+                    : <Button color={Button.Colors.GREEN} onClick={() => setConfirmClear("__enableAll")} className="rs-btn-sm">Enable All</Button>
+                }
+                {confirmClear === "__disableAll"
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, background: "rgba(120,120,120,.1)", border: "1px solid rgba(120,120,120,.3)" }}>
+                        <span style={{ fontSize: 11, color: "#bdbdbd", fontWeight: 700 }}>Disable all servers?</span>
+                        <button onClick={() => { disableAll(); setConfirmClear(null); }} style={{ padding: "1px 8px", borderRadius: 4, border: "1px solid #bdbdbd44", background: "#bdbdbd18", color: "#bdbdbd", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>Yes</button>
+                        <button onClick={() => setConfirmClear(null)} style={{ padding: "1px 8px", borderRadius: 4, border: "1px solid rgba(80,60,110,.4)", background: "rgba(15,5,35,.6)", color: "#9e9e9e", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>No</button>
+                      </div>
+                    : <Button color={Button.Colors.GREY} onClick={() => setConfirmClear("__disableAll")} className="rs-btn-sm">Disable All</Button>
+                }
+                {confirmClear === "__resetNicks"
+                    ? <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, background: "rgba(239,83,80,.1)", border: "1px solid rgba(239,83,80,.3)" }}>
+                        <span style={{ fontSize: 11, color: INACT, fontWeight: 700 }}>Reset ALL server nick lists?</span>
+                        <button onClick={() => { resetAllNicks(); setConfirmClear(null); }} style={{ padding: "1px 8px", borderRadius: 4, border: `1px solid ${INACT}44`, background: `${INACT}18`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>Yes</button>
+                        <button onClick={() => setConfirmClear(null)} style={{ padding: "1px 8px", borderRadius: 4, border: "1px solid rgba(80,60,110,.4)", background: "rgba(15,5,35,.6)", color: "#9e9e9e", cursor: "pointer", fontSize: 10, fontWeight: 800 }}>No</button>
+                      </div>
+                    : <Button color={Button.Colors.RED} onClick={() => setConfirmClear("__resetNicks")} className="rs-btn-sm">Reset All Nicks</Button>
+                }
             </div>
             <div className="rs-hint" style={{ marginTop: 6 }}>
                 Nicks: <b style={{ color: settings.store.nickEnabled ? C.enabled : "#ef9a9a" }}>{settings.store.nickEnabled ? "on" : "off"}</b> · {activeCount} running · {enabledCount} servers enabled
@@ -2317,7 +3306,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                     onApply={() => { if (pluginActive && isGlobalSync) startAllRotators(); }} />
                 {isGlobalSync && settings.store.globalNickEnabled && parseFloat(settings.store.globalSyncSeconds) < 429 && (
                     <div className="rs-warn-box" style={{ marginTop: 5 }}>
-                        ⚠️ Master Sync interval ({settings.store.globalSyncSeconds}s) is below 429s while Display Name rotation is enabled. Display name changes are automatically throttled to 1 per 429s to avoid rate limits — but going below 429s here is not recommended and may cause repeated 429 errors on /users/@me.
+                        ⚠️ Master Sync interval ({settings.store.globalSyncSeconds}s) is below 429s while Display Name rotation is enabled. Display name changes are automatically throttled to 1 per 429s to avoid rate limits - but going below 429s here is not recommended and may cause repeated 429 errors on /users/@me.
                     </div>
                 )}
                 <div className="rs-divider" style={{ margin: "8px 0" }} />
@@ -2400,12 +3389,13 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
         { id: "status",  label: "Status",          color: C.status },
         { id: "clan",    label: "Clan",             color: C.clan   },
         { id: "profile", label: "Profile",          color: C.bio    },
+        { id: "avatar",  label: "Avatar",           color: "#9c67ff" },
         { id: "servers", label: "Server Profiles",  color: C.nick   },
         { id: "data",    label: "Data",             color: C.data   },
     ];
 
     const isGlobalSync = settings.store.globalSync;
-    const totalActive = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0);
+    const totalActive = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0);
 
     return (
         <ModalRoot {...modalProps} className="rs-modal">
@@ -2446,6 +3436,7 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
                 {tab === "status"  && <StatusTab  forceUpdate={forceUpdate} />}
                 {tab === "clan"    && <ClanTab    forceUpdate={forceUpdate} />}
                 {tab === "profile" && <ProfileTab forceUpdate={forceUpdate} />}
+                {tab === "avatar"  && <AvatarTab  forceUpdate={forceUpdate} />}
                 {tab === "servers" && <NicksTab   forceUpdate={forceUpdate} />}
                 {tab === "data"    && <DataTab    forceUpdate={forceUpdate} />}
             </ModalContent>
@@ -2466,6 +3457,7 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
                                 <span>Bio: <b style={{ color: settings.store.profileBioEnabled ? C.bio : `${C.bio}80` }}>{settings.store.profileBioEnabled ? settings.store.bioIntervalSeconds + "s" : "off"}</b></span>
                                 <span>Nicks: <b style={{ color: settings.store.nickEnabled ? C.nick : `${C.nick}80` }}>{settings.store.nickEnabled ? settings.store.nickIntervalSeconds + "s" : "off"}</b></span>
                                 <span>Pronouns: <b style={{ color: settings.store.serverPronounsEnabled ? C.pronoun : `${C.pronoun}80` }}>{settings.store.serverPronounsEnabled ? settings.store.serverPronounsIntervalSeconds + "s" : "off"}</b></span>
+                                <span>Avatar: <b style={{ color: settings.store.avatarEnabled ? "#9c67ff" : "#9c67ff80" }}>{settings.store.avatarEnabled ? settings.store.avatarIntervalSeconds + "s" : "off"}</b></span>
                             </>
                         }
                     </div>
@@ -2480,7 +3472,7 @@ function RSUserAreaButton() {
     const [active, setActive] = React.useState(false);
     React.useEffect(() => {
         const id = setInterval(() => {
-            const timers = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0);
+            const timers = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0);
             setActive(timers > 0);
         }, 800);
         return () => clearInterval(id);
@@ -2503,7 +3495,7 @@ function RSUserAreaButton() {
 
 export default definePlugin({
     name: "Rotator Suite",
-    description: "All-in-one Discord identity rotator. Cycles status (presence + presets), clan, bio, global pronouns, global display name, server nicknames, and per-server pronouns - each with its own independent timer. Profile has 3 independent cycles (bio/pronouns/display name). Server Profiles has 2 (nicknames/pronouns). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
+    description: "All-in-one Discord identity rotator. Cycles status (presence + presets), clan, bio, global pronouns, global display name, server nicknames, per-server pronouns, and avatar - each with its own independent timer. Profile has 3 independent cycles (bio/pronouns/display name). Server Profiles has 2 (nicknames/pronouns). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
@@ -2575,6 +3567,12 @@ export default definePlugin({
         syncGuildsFromDiscord();
         await saveData();
 
+        const arStored: ArStoreData = (await DataStore.get(AR_SK)) ?? { avatars: [], seqIndex: 0, shuffleQueue: [] };
+        arAvatars      = arStored.avatars      ?? [];
+        arSeqIndex     = arStored.seqIndex     ?? 0;
+        arShuffleQueue = arStored.shuffleQueue ?? [];
+        if (settings.store.avatarEnabled && arGetActive().length) arStartRotator(false);
+
         Vencord.Api.UserArea.addUserAreaButton("rotator-suite", () => <RSUserAreaButton />);
 
         if (settings.store.autoStart) {
@@ -2590,6 +3588,8 @@ export default definePlugin({
         lastGlobalNickApply = 0;
         cachedToken = null; cachedGuildStore = null; cachedVoiceStateStore = null; cachedChannelStore = null;
         stopAllRotators();
+        arStopRotator();
+        arAvatars = []; arSeqIndex = 0; arShuffleQueue = [];
         if (onCloseHandler) { window.removeEventListener("beforeunload", onCloseHandler); onCloseHandler = null; }
         Vencord.Api.UserArea.removeUserAreaButton("rotator-suite");
         document.getElementById("rs-css")?.remove();
