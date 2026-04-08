@@ -3231,6 +3231,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
             globalNicks, guilds, bioEntries, pronounsList, statusEntries, statusPresets, clanIds,
             statusSeqIdx, clanSeqIdx, bioSeqIdx, prSeqIdx,
             globalNickEntries, globalNickSeqIdx, globalGuildPronouns,
+            avatars: arAvatars, avatarSeqIndex: arSeqIndex,
         }, null, 2)], { type: "application/json" });
         const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `rotator-suite-${new Date().toISOString().slice(0, 10)}.json` });
         a.click(); URL.revokeObjectURL(a.href);
@@ -3255,6 +3256,12 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                 if (Array.isArray(p.globalNickEntries)) globalNickEntries = p.globalNickEntries;
                 globalNickSeqIdx = 0; globalNickLastVal = null;
                 if (Array.isArray(p.globalGuildPronouns)) globalGuildPronouns = p.globalGuildPronouns;
+                if (Array.isArray(p.avatars)) {
+                    arAvatars = p.avatars.filter((a: any) => typeof a.id === "string" && typeof a.label === "string" && typeof a.data === "string");
+                    arSeqIndex = typeof p.avatarSeqIndex === "number" ? p.avatarSeqIndex : 0;
+                    arShuffleQueue = [];
+                    await arSaveData();
+                }
                 await saveData(); startAllRotators();
                 const d = p.exportedAt ? new Date(p.exportedAt).toLocaleString() : "unknown";
                 setImportMsg({ ok: true, text: `Imported successfully (exported ${d})` });
@@ -3275,10 +3282,11 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
         statusLastVal = null; clanLastVal = null; bioLastVal = null; prLastVal = null;
         globalNickEntries = []; globalNickSeqIdx = 0; globalNickLastVal = null;
         globalGuildPronouns = [];
+        arAvatars = []; arSeqIndex = 0; arShuffleQueue = []; arStopRotator();
         storeCreatedAt = new Date().toISOString();
         cachedClanGuilds = []; lastClanFetch = 0;
         syncGuildsFromDiscord();
-        saveData(); startAllRotators(); forceUpdate(); setConfirmReset(false);
+        saveData(); arSaveData(); startAllRotators(); forceUpdate(); setConfirmReset(false);
     }
 
     const activeLabels = [
@@ -3334,7 +3342,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
 
             <div className="rs-data-card">
                 <div className="rs-data-title">Import / Export</div>
-                <div className="rs-data-desc">Export everything to JSON. Import to fully restore any config.</div>
+                <div className="rs-data-desc">Export everything to JSON (including avatars). Import to fully restore any config.</div>
                 {storeCreatedAt && <div className="rs-hint" style={{ marginBottom: 8 }}>Data created: <b>{new Date(storeCreatedAt).toLocaleString()}</b></div>}
                 {importMsg && (
                     <div className="rs-import-status" style={{
@@ -3351,7 +3359,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
 
             <div className="rs-data-card" style={{ borderColor: "rgba(239,83,80,.28)" }}>
                 <div className="rs-data-title" style={{ color: "#ef9a9a" }}>Reset All Data</div>
-                <div className="rs-data-desc">Permanently deletes ALL entries: nicks, bio, statuses, clans, pronouns. Servers are re-synced from Discord. Cannot be undone.</div>
+                <div className="rs-data-desc">Permanently deletes ALL entries: nicks, bio, statuses, clans, pronouns, avatars. Servers are re-synced from Discord. Cannot be undone.</div>
                 {confirmReset
                     ? <ConfirmBox msg="Permanently delete ALL data? This cannot be undone." onConfirm={doResetAll} onCancel={() => setConfirmReset(false)} />
                     : <button className="rs-clearall" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => setConfirmReset(true)}>Reset All</button>
@@ -3369,6 +3377,7 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <span>Status entries: <b>{statusEntries.length}</b></span>
                     <span>Clan IDs: <b>{settings.store.clanAutoDetect ? "auto" : clanIds.length}</b></span>
                     <span>Servers w/ guild pronouns: <b>{guilds.filter(g => (g.guildPronouns?.length ?? 0) > 0).length}</b></span>
+                    <span>Avatars: <b>{arAvatars.length}</b></span>
                 </div>
             </div>
         </div>
