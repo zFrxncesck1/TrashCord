@@ -74,7 +74,7 @@ export default definePlugin({
             }
         },
         {
-            find: "#{intl::ACCOUNT_SPEAKING_WHILE_MUTED}",
+            find: ".StreamPreviewIntro",
             replacement: {
                 match: /children:\[(?=\(0,\i\.jsx\)\(\i\.\i,\{"aria-checked")/,
                 replace: "children:[$self.screenshareSettingsButton(),"
