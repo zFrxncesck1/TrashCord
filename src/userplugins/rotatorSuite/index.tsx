@@ -45,6 +45,219 @@ const PALETTE = ["#7c4dff","#9c67ff","#b24df7","#6a1fff","#a855f7","#8b5cf6","#7
 const UNICODE_EMOJI_RE = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s*/u;
 const CUSTOM_EMOJI_RE  = /^:([^:]+):(\d{17,20}):\s*/;
 const DISCORD_EMOJI_RE = /<a?:([^:]+):(\d+)>/;
+
+const BCR_SK = "BannerColorRotator_v3";
+const BCR_DEFAULT_S = 300;
+type BcrCycleMode =
+    | "full_random" | "avatar_hue" | "mono_cycle" | "warm" | "cool" | "pastel"
+    | "dark" | "vivid" | "gradient_walk" | "chromatic" | "rgb_loop" | "complementary"
+    | "triadic" | "analogous" | "earth" | "neon" | "sunset" | "ocean"
+    | "shade_light_dark" | "shade_dark_light" | "shade_oscillate"
+    | "favs_sequential" | "favorites_only" | "favorites_mix" | "favorites_hue" | "favs_shade";
+interface BcrStoreData { favorites: string[]; usedFavs: string[]; wasRunning: boolean; currentColor: string | null; }
+let bcrFavorites: string[] = [];
+let bcrUsedFavs: string[] = [];
+let bcrRandomBatch: string[] = [];
+let bcrSeqBatch: string[] = [];
+let bcrRotatorTimer: ReturnType<typeof setTimeout> | null = null;
+let bcrCachedHue: number | null = null;
+let bcrGradientState: [number, number, number] | null = null;
+let bcrMonoBaseHue: number | null = null;
+let bcrSeqBaseHue = 0;
+let bcrShadeStep = 0;
+let bcrShadeDir = 1;
+let bcrCurrentColor: string | null = null;
+let bcrOnColorApplied: ((hex: string) => void) | null = null;
+
+function bcrIsValidHex(v: string): boolean { return /^#[0-9a-fA-F]{6}$/.test(v); }
+function bcrHsvToHex(h: number, s: number, v: number): string {
+    h = ((h % 360) + 360) % 360; s = Math.max(0, Math.min(1, s)); v = Math.max(0, Math.min(1, v));
+    const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; } else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    const toB = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+    return "#" + toB(r) + toB(g) + toB(b);
+}
+function bcrHexToHsv(hex: string): [number, number, number] {
+    const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d !== 0) {
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) * 60; break;
+            case g: h = ((b - r) / d + 2) * 60; break;
+            case b: h = ((r - g) / d + 4) * 60; break;
+        }
+    }
+    return [h, max === 0 ? 0 : d / max, max];
+}
+function bcrHslToHex(h: number, s: number, l: number): string {
+    s /= 100; l /= 100;
+    const v = l + s * Math.min(l, 1 - l);
+    return bcrHsvToHex(h, v === 0 ? 0 : 2 * (1 - l / v), v);
+}
+function bcrRandomHex(): string { return "#" + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, "0"); }
+function bcrSfShuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+}
+function bcrBuildBatch(size: number, gen: () => string): string[] {
+    const set = new Set<string>(); let tries = 0;
+    while (set.size < size && tries++ < size * 8) set.add(gen());
+    return [...set];
+}
+function bcrPickFromFavs(): string {
+    if (!bcrFavorites.length) return bcrRandomHex();
+    const available = bcrFavorites.filter(c => !bcrUsedFavs.includes(c));
+    if (!available.length) { bcrUsedFavs = []; return bcrPickFromFavs(); }
+    const color = available[Math.floor(Math.random() * available.length)];
+    bcrUsedFavs = [...bcrUsedFavs, color]; return color;
+}
+function bcrGetBaseHsv(): [number, number, number] {
+    const base = settings.store.bannerCustomBaseColor ?? "#c084fc";
+    return bcrIsValidHex(base) ? bcrHexToHsv(base) : [270, 0.48, 0.79];
+}
+async function bcrGetAvatarHue(): Promise<number> {
+    if (bcrCachedHue !== null) return bcrCachedHue;
+    try {
+        const me = await RestAPI.get({ url: "/users/@me" });
+        const { avatar, id } = me?.body ?? {};
+        if (!avatar || !id) return Math.random() * 360;
+        return await new Promise<number>(res => {
+            const img = new Image(); img.crossOrigin = "anonymous";
+            img.onload = () => {
+                const cv = document.createElement("canvas"); cv.width = 8; cv.height = 8;
+                const ctx = cv.getContext("2d")!; ctx.drawImage(img, 0, 0, 8, 8);
+                const d = ctx.getImageData(0, 0, 8, 8).data;
+                let rS = 0, gS = 0, bS = 0, n = 0;
+                for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 128) { rS += d[i]; gS += d[i + 1]; bS += d[i + 2]; n++; } }
+                if (!n) { res(Math.random() * 360); return; }
+                const hex = "#" + [rS, gS, bS].map(x => Math.round(x / n).toString(16).padStart(2, "0")).join("");
+                bcrCachedHue = bcrHexToHsv(hex)[0]; res(bcrCachedHue!);
+            };
+            img.onerror = () => res(Math.random() * 360);
+            img.src = `https://cdn.discordapp.com/avatars/${id}/${avatar}.webp?size=32`;
+        });
+    } catch { return Math.random() * 360; }
+}
+function bcrBuildShadeSequence(lightFirst: boolean): string[] {
+    const [h, s] = bcrGetBaseHsv(); const steps = 20; const seq: string[] = [];
+    for (let i = 0; i < steps; i++) { const t = i / (steps - 1); const l = lightFirst ? 88 - t * 83 : 5 + t * 83; seq.push(bcrHslToHex(h * 360, s * 100, l)); }
+    return seq;
+}
+async function bcrPickNextColor(): Promise<string> {
+    const mode = (settings.store.bannerMode ?? "full_random") as BcrCycleMode;
+    const R = Math.max(1, Math.min(180, settings.store.bannerHueRadius ?? 35));
+    if (mode === "full_random") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, bcrRandomHex)); return bcrRandomBatch.shift()!; }
+    if (mode === "avatar_hue") {
+        if (!bcrRandomBatch.length) { const hue = await bcrGetAvatarHue(); bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(hue + (Math.random() * 2 - 1) * R, 40 + Math.random() * 55, 20 + Math.random() * 50))); }
+        return bcrRandomBatch.shift()!;
+    }
+    if (mode === "mono_cycle") {
+        if (bcrMonoBaseHue === null || !bcrRandomBatch.length) { const [h] = bcrGetBaseHsv(); bcrMonoBaseHue = h * 360; bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(bcrMonoBaseHue!, 25 + Math.random() * 70, 10 + Math.random() * 75))); }
+        return bcrRandomBatch.shift()!;
+    }
+    if (mode === "warm") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(Math.random() * 60, 55 + Math.random() * 45, 20 + Math.random() * 50))); return bcrRandomBatch.shift()!; }
+    if (mode === "cool") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(180 + Math.random() * 120, 50 + Math.random() * 50, 20 + Math.random() * 45))); return bcrRandomBatch.shift()!; }
+    if (mode === "pastel") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(Math.random() * 360, 25 + Math.random() * 35, 70 + Math.random() * 18))); return bcrRandomBatch.shift()!; }
+    if (mode === "dark") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(Math.random() * 360, 40 + Math.random() * 55, 4 + Math.random() * 16))); return bcrRandomBatch.shift()!; }
+    if (mode === "vivid") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(Math.random() * 360, 88 + Math.random() * 12, 38 + Math.random() * 22))); return bcrRandomBatch.shift()!; }
+    if (mode === "gradient_walk") {
+        if (!bcrGradientState) bcrGradientState = [Math.random() * 360, 50 + Math.random() * 40, 25 + Math.random() * 40];
+        bcrGradientState = [(bcrGradientState[0] + 12 + Math.random() * 28) % 360, Math.max(30, Math.min(95, bcrGradientState[1] + (Math.random() - 0.5) * 20)), Math.max(14, Math.min(76, bcrGradientState[2] + (Math.random() - 0.5) * 14))];
+        return bcrHslToHex(...bcrGradientState);
+    }
+    if (mode === "chromatic") {
+        if (!bcrSeqBatch.length) { const STEPS = 24; bcrSeqBatch = Array.from({ length: STEPS }, (_, i) => bcrHslToHex((bcrSeqBaseHue + (360 / STEPS) * i) % 360, 75, 42)); bcrSeqBaseHue = (bcrSeqBaseHue + 15) % 360; }
+        return bcrSeqBatch.shift()!;
+    }
+    if (mode === "rgb_loop") {
+        if (!bcrSeqBatch.length) { const r2: string[] = Array.from({ length: 8 }, (_, i) => bcrHslToHex(0, 55 + i * 5, 20 + i * 7)); const g2: string[] = Array.from({ length: 8 }, (_, i) => bcrHslToHex(120, 55 + i * 5, 20 + i * 7)); const b2: string[] = Array.from({ length: 8 }, (_, i) => bcrHslToHex(240, 55 + i * 5, 20 + i * 7)); bcrSeqBatch = [...r2, ...g2, ...b2]; }
+        return bcrSeqBatch.shift()!;
+    }
+    if (mode === "complementary") {
+        if (!bcrSeqBatch.length) { const h0 = Math.random() * 360; bcrSeqBatch = bcrSfShuffle([...Array.from({ length: 8 }, () => bcrHslToHex(h0 + (Math.random() - 0.5) * 10, 50 + Math.random() * 40, 25 + Math.random() * 40)), ...Array.from({ length: 8 }, () => bcrHslToHex((h0 + 180) % 360 + (Math.random() - 0.5) * 10, 50 + Math.random() * 40, 25 + Math.random() * 40))]); }
+        return bcrSeqBatch.shift()!;
+    }
+    if (mode === "triadic") {
+        if (!bcrSeqBatch.length) { const h0 = Math.random() * 360; bcrSeqBatch = bcrSfShuffle([...Array.from({ length: 6 }, () => bcrHslToHex(h0 + (Math.random() - 0.5) * 8, 55 + Math.random() * 35, 28 + Math.random() * 35)), ...Array.from({ length: 6 }, () => bcrHslToHex((h0 + 120) % 360 + (Math.random() - 0.5) * 8, 55 + Math.random() * 35, 28 + Math.random() * 35)), ...Array.from({ length: 6 }, () => bcrHslToHex((h0 + 240) % 360 + (Math.random() - 0.5) * 8, 55 + Math.random() * 35, 28 + Math.random() * 35))]); }
+        return bcrSeqBatch.shift()!;
+    }
+    if (mode === "analogous") {
+        if (!bcrRandomBatch.length) { const hue = await bcrGetAvatarHue(); bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(24, () => bcrHslToHex(hue + (Math.random() * 2 - 1) * Math.min(R, 60), 45 + Math.random() * 50, 22 + Math.random() * 48))); }
+        return bcrRandomBatch.shift()!;
+    }
+    if (mode === "earth") {
+        if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => { const h = [25, 32, 40, 50, 20, 15][Math.floor(Math.random() * 6)]; return bcrHslToHex(h + (Math.random() - 0.5) * 14, 30 + Math.random() * 40, 18 + Math.random() * 40); }));
+        return bcrRandomBatch.shift()!;
+    }
+    if (mode === "neon") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(Math.random() * 360, 100, 50 + Math.random() * 12))); return bcrRandomBatch.shift()!; }
+    if (mode === "sunset") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => { const h = 0 + Math.random() * 55; return bcrHslToHex(h, 70 + Math.random() * 30, 28 + Math.random() * 38); })); return bcrRandomBatch.shift()!; }
+    if (mode === "ocean") { if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(175 + Math.random() * 50, 50 + Math.random() * 45, 18 + Math.random() * 42))); return bcrRandomBatch.shift()!; }
+    if (mode === "shade_light_dark") { if (!bcrSeqBatch.length) { bcrSeqBatch = bcrBuildShadeSequence(true); bcrShadeStep = 0; } const out1 = bcrSeqBatch[bcrShadeStep % bcrSeqBatch.length]; bcrShadeStep++; if (bcrShadeStep >= bcrSeqBatch.length) bcrSeqBatch = []; return out1; }
+    if (mode === "shade_dark_light") { if (!bcrSeqBatch.length) { bcrSeqBatch = bcrBuildShadeSequence(false); bcrShadeStep = 0; } const out2 = bcrSeqBatch[bcrShadeStep % bcrSeqBatch.length]; bcrShadeStep++; if (bcrShadeStep >= bcrSeqBatch.length) bcrSeqBatch = []; return out2; }
+    if (mode === "shade_oscillate") { if (!bcrSeqBatch.length) { bcrSeqBatch = bcrBuildShadeSequence(true); bcrShadeStep = 0; bcrShadeDir = 1; } const out3 = bcrSeqBatch[Math.max(0, Math.min(bcrSeqBatch.length - 1, bcrShadeStep))]; bcrShadeStep += bcrShadeDir; if (bcrShadeStep >= bcrSeqBatch.length - 1) bcrShadeDir = -1; if (bcrShadeStep <= 0) bcrShadeDir = 1; return out3; }
+    if (mode === "favs_sequential") { if (!bcrFavorites.length) return bcrRandomHex(); if (!bcrSeqBatch.length) bcrSeqBatch = [...bcrFavorites]; return bcrSeqBatch.shift()!; }
+    if (mode === "favorites_only") return bcrPickFromFavs();
+    if (mode === "favorites_mix") { if (bcrFavorites.length && Math.random() < 0.5) return bcrPickFromFavs(); if (!bcrRandomBatch.length) bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, bcrRandomHex)); return bcrRandomBatch.shift()!; }
+    if (mode === "favorites_hue") { if (bcrFavorites.length && Math.random() < 0.5) return bcrPickFromFavs(); if (!bcrRandomBatch.length) { const hue = await bcrGetAvatarHue(); bcrRandomBatch = bcrSfShuffle(bcrBuildBatch(32, () => bcrHslToHex(hue + (Math.random() * 2 - 1) * R, 40 + Math.random() * 55, 20 + Math.random() * 50))); } return bcrRandomBatch.shift()!; }
+    if (mode === "favs_shade") { const base = bcrFavorites.length ? bcrPickFromFavs() : bcrRandomHex(); const [hF, , vF] = bcrHexToHsv(base); const lF = vF * 100; return bcrHslToHex(hF * (180 / Math.PI) || hF, 60 + Math.random() * 35, Math.max(8, Math.min(88, lF + (Math.random() * 2 - 1) * 40))); }
+    return bcrRandomHex();
+}
+async function bcrApplyColor(hex: string): Promise<void> {
+    try {
+        await RestAPI.patch({ url: "/users/@me", body: { banner_color: hex } });
+        bcrCurrentColor = hex; bcrOnColorApplied?.(hex);
+        if (settings.store.bannerShowToast) Toasts.show({ message: `Banner → ${hex}`, type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+        await bcrSaveData();
+    } catch (e: any) {
+        if (settings.store.bannerShowToast) Toasts.show({ message: `Banner failed: ${e?.body?.message ?? "Unknown"}`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
+    }
+}
+async function bcrRotateNext(): Promise<void> { if (!pluginActive) return; await bcrApplyColor(await bcrPickNextColor()); bcrSchedule(); }
+function bcrSchedule() { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); if (!pluginActive) return; bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000); }
+function bcrStartRotator(immediate = false) {
+    if (!pluginActive) return;
+    if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer);
+    bcrRandomBatch = []; bcrSeqBatch = []; bcrUsedFavs = []; bcrGradientState = null; bcrMonoBaseHue = null; bcrSeqBaseHue = 0; bcrShadeStep = 0; bcrShadeDir = 1;
+    bcrRotatorTimer = setTimeout(() => {}, 0);
+    if (immediate) void bcrRotateNext(); else bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000);
+}
+function bcrStopRotator() { if (bcrRotatorTimer) { clearTimeout(bcrRotatorTimer); bcrRotatorTimer = null; } void bcrSaveData(); }
+const bcrSaveData = (): Promise<void> => DataStore.set(BCR_SK, { favorites: bcrFavorites, usedFavs: bcrUsedFavs, wasRunning: bcrRotatorTimer !== null, currentColor: bcrCurrentColor } as BcrStoreData);
+
+const BCR_MODES: { id: BcrCycleMode; emoji: string; label: string; desc: string; needsBase?: boolean; needsHueR?: boolean }[] = [
+    { id: "full_random", emoji: "🎲", label: "Full Random", desc: "Any hex, 32-batch no repeats" },
+    { id: "avatar_hue", emoji: "🖼", label: "Avatar Hue", desc: "Near your avatar color", needsHueR: true },
+    { id: "mono_cycle", emoji: "🔵", label: "Mono Cycle", desc: "All shades of base color", needsBase: true },
+    { id: "warm", emoji: "🔥", label: "Warm", desc: "Reds, oranges, yellows" },
+    { id: "cool", emoji: "❄️", label: "Cool", desc: "Blues, purples, teals" },
+    { id: "pastel", emoji: "🌸", label: "Pastel", desc: "Soft high-lightness tones" },
+    { id: "dark", emoji: "🌑", label: "Dark", desc: "Very dark shades" },
+    { id: "vivid", emoji: "⚡", label: "Vivid", desc: "High saturation" },
+    { id: "gradient_walk", emoji: "🌈", label: "Gradient Walk", desc: "Smooth hue drift" },
+    { id: "chromatic", emoji: "🎡", label: "Chromatic", desc: "Full hue wheel sweep" },
+    { id: "rgb_loop", emoji: "🔴", label: "RGB Loop", desc: "R→G→B shades" },
+    { id: "complementary", emoji: "🔄", label: "Complementary", desc: "Opposite hues 180°" },
+    { id: "triadic", emoji: "△", label: "Triadic", desc: "Three hues 120° apart" },
+    { id: "analogous", emoji: "〰", label: "Analogous", desc: "Near avatar hue", needsHueR: true },
+    { id: "earth", emoji: "🌍", label: "Earth Tones", desc: "Browns, ochres" },
+    { id: "neon", emoji: "💡", label: "Neon", desc: "100% saturation" },
+    { id: "sunset", emoji: "🌅", label: "Sunset", desc: "Warm reds, golds" },
+    { id: "ocean", emoji: "🌊", label: "Ocean", desc: "Deep teals and blues" },
+    { id: "shade_light_dark", emoji: "⬛", label: "Shade L→D", desc: "Base light to dark", needsBase: true },
+    { id: "shade_dark_light", emoji: "⬜", label: "Shade D→L", desc: "Base dark to light", needsBase: true },
+    { id: "shade_oscillate", emoji: "↕️", label: "Shade Oscillate", desc: "Base bouncing L↔D", needsBase: true },
+    { id: "favs_sequential", emoji: "📋", label: "Favs Sequential", desc: "Favorites in order" },
+    { id: "favorites_only", emoji: "⭐", label: "Favs Only", desc: "Favorites shuffled" },
+    { id: "favorites_mix", emoji: "🎨", label: "Favs + Random", desc: "50/50 favs & random" },
+    { id: "favorites_hue", emoji: "🎯", label: "Favs + Hue", desc: "Favs or near-avatar hue", needsHueR: true },
+    { id: "favs_shade", emoji: "🎭", label: "Favs Shade", desc: "Each fav with shade variation" },
+];
+
 function msToLabel(ms: number): string {
     if (!ms) return "";
     const m = Math.round(ms / 60000);
@@ -708,7 +921,7 @@ function stopAllRotators() {
     stopAllNicks(); stopAllGuildPronouns();
     stopStatusTimer(); stopClanTimer();
     stopBioTimer(); stopPronounsTimer(); stopGlobalNickTimer();
-    stopGlobalTimer(); stopVoiceWatcher();
+    stopGlobalTimer(); stopVoiceWatcher(); bcrStopRotator();
 }
 
 function startAllRotators() {
@@ -730,6 +943,7 @@ function startAllRotators() {
         }
     }
     if (settings.store.voiceActivateEnabled) startVoiceWatcher();
+    if (settings.store.bannerEnabled) bcrStartRotator(false);
 }
 
 function SettingsSep({ title, color = "#9c67ff" }: { title: string; color?: string }) {
@@ -796,6 +1010,14 @@ const settings = definePluginSettings({
     avatarRandom: { type: OptionType.BOOLEAN, default: true, description: "Random avatar order - no repeats until all shown once." },
     avatarShowToast: { type: OptionType.BOOLEAN, default: true, description: "Show toast notifications for avatar changes." },
     avatarExcludedExtensions: { type: OptionType.STRING, default: "", description: "Comma-separated extensions to skip during avatar rotation (e.g. gif,avif)." },
+    _sBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Banner Color" color="#c084fc" /> },
+    bannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Banner color rotator enabled (configure in Banner tab)." },
+    bannerIntervalSeconds: { type: OptionType.NUMBER, default: BCR_DEFAULT_S, description: "Seconds between banner color changes." },
+    bannerMode: { type: OptionType.STRING, default: "full_random", description: "Banner color cycle mode (configure in Banner tab)." },
+    bannerHueRadius: { type: OptionType.NUMBER, default: 35, description: "Hue spread for avatar-hue based modes (1-180)." },
+    bannerCustomBaseColor: { type: OptionType.STRING, default: "#c084fc", description: "Base color for shade/mono modes (configure in Banner tab)." },
+    bannerShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast on each banner color change." },
+    bannerShowCurrentColor: { type: OptionType.BOOLEAN, default: false, description: "Show active color hex+swatch in the footer next to ColorBanner (updates live)." },
     _sServerProfilesGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Server Profiles" color={C.nick} /> },
     nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch - when OFF, no nick timers run even if servers are toggled on." },
     nickIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server nickname changes (Server Profiles tab)." },
@@ -960,11 +1182,15 @@ function injectCSS() {
 .ar-icon-btn{width:26px;height:26px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;outline:none}
 .ar-upload-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px 8px;border-radius:10px;cursor:pointer;user-select:none}
 .ar-import-zone{width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:12px 8px;border-radius:10px;cursor:pointer;user-select:none}
+.bcr-sub-tab-bar{display:flex;border-bottom:1px solid rgba(255,255,255,.07);margin:0 -2px 8px}
+.bcr-sub-tab{flex:1;text-align:center;font-size:10px;font-weight:700;padding:5px 0;cursor:pointer;user-select:none;border-bottom:2px solid transparent}
+.bcr-mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:6px}
+.bcr-mode-item{display:flex;align-items:center;gap:5px;padding:5px 7px;border-radius:6px;cursor:pointer;user-select:none;border:1px solid}
 `;
     document.head.appendChild(s);
 }
 
-type TabId = "status" | "clan" | "profile" | "avatar" | "servers" | "data";
+type TabId = "status" | "clan" | "profile" | "avatar" | "colorbanner" | "servers" | "data";
 type SortMode = "name" | "enabled" | "nicks" | "running" | "pronouns";
 
 function useDrag(onReorder: (from: number, to: number) => void) {
@@ -3232,6 +3458,13 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
             statusSeqIdx, clanSeqIdx, bioSeqIdx, prSeqIdx,
             globalNickEntries, globalNickSeqIdx, globalGuildPronouns,
             avatars: arAvatars, avatarSeqIndex: arSeqIndex,
+            bannerFavorites: bcrFavorites,
+            bannerMode: settings.store.bannerMode,
+            bannerIntervalSeconds: settings.store.bannerIntervalSeconds,
+            bannerHueRadius: settings.store.bannerHueRadius,
+            bannerCustomBaseColor: settings.store.bannerCustomBaseColor,
+            bannerShowToast: settings.store.bannerShowToast,
+            bannerShowCurrentColor: settings.store.bannerShowCurrentColor,
         }, null, 2)], { type: "application/json" });
         const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `rotator-suite-${new Date().toISOString().slice(0, 10)}.json` });
         a.click(); URL.revokeObjectURL(a.href);
@@ -3262,6 +3495,16 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                     arShuffleQueue = [];
                     await arSaveData();
                 }
+                if (Array.isArray(p.bannerFavorites)) {
+                    bcrFavorites = p.bannerFavorites.filter((x: any) => typeof x === "string" && bcrIsValidHex(x));
+                    bcrUsedFavs = []; await bcrSaveData();
+                }
+                if (typeof p.bannerMode === "string") (settings.store as any).bannerMode = p.bannerMode;
+                if (typeof p.bannerIntervalSeconds === "number") (settings.store as any).bannerIntervalSeconds = p.bannerIntervalSeconds;
+                if (typeof p.bannerHueRadius === "number") (settings.store as any).bannerHueRadius = p.bannerHueRadius;
+                if (typeof p.bannerCustomBaseColor === "string" && bcrIsValidHex(p.bannerCustomBaseColor)) (settings.store as any).bannerCustomBaseColor = p.bannerCustomBaseColor;
+                if (typeof p.bannerShowToast === "boolean") (settings.store as any).bannerShowToast = p.bannerShowToast;
+                if (typeof p.bannerShowCurrentColor === "boolean") (settings.store as any).bannerShowCurrentColor = p.bannerShowCurrentColor;
                 await saveData(); startAllRotators();
                 const d = p.exportedAt ? new Date(p.exportedAt).toLocaleString() : "unknown";
                 setImportMsg({ ok: true, text: `Imported successfully (exported ${d})` });
@@ -3283,10 +3526,11 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
         globalNickEntries = []; globalNickSeqIdx = 0; globalNickLastVal = null;
         globalGuildPronouns = [];
         arAvatars = []; arSeqIndex = 0; arShuffleQueue = []; arStopRotator();
+        bcrFavorites = []; bcrUsedFavs = []; bcrCurrentColor = null;
         storeCreatedAt = new Date().toISOString();
         cachedClanGuilds = []; lastClanFetch = 0;
         syncGuildsFromDiscord();
-        saveData(); arSaveData(); startAllRotators(); forceUpdate(); setConfirmReset(false);
+        saveData(); arSaveData(); bcrSaveData(); startAllRotators(); forceUpdate(); setConfirmReset(false);
     }
 
     const activeLabels = [
@@ -3378,8 +3622,230 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <span>Clan IDs: <b>{settings.store.clanAutoDetect ? "auto" : clanIds.length}</b></span>
                     <span>Servers w/ guild pronouns: <b>{guilds.filter(g => (g.guildPronouns?.length ?? 0) > 0).length}</b></span>
                     <span>Avatars: <b>{arAvatars.length}</b></span>
+                    <span>Banner favorites: <b>{bcrFavorites.length}</b></span>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function BcrHr() { return <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "7px 0" }} />; }
+function BcrSwatch({ color, size = 22, active, onClick, title: t }: { color: string; size?: number; active?: boolean; onClick?: () => void; title?: string }) {
+    return <div title={t ?? color} onClick={onClick} style={{ width: size, height: size, borderRadius: 5, background: bcrIsValidHex(color) ? color : "#333", flexShrink: 0, cursor: onClick ? "pointer" : "default", border: active ? "2px solid #c084fc" : "1.5px solid rgba(255,255,255,.18)", boxSizing: "border-box" }} />;
+}
+function BcrToggle({ value, onChange }: { value: boolean; onChange: () => void }) {
+    return <div onClick={onChange} style={{ width: 34, height: 18, borderRadius: 9, flexShrink: 0, cursor: "pointer", background: value ? "#c084fc" : "rgba(255,255,255,.13)", position: "relative", userSelect: "none" }}><div style={{ position: "absolute", top: 2, left: value ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff" }} /></div>;
+}
+function BcrHsvPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+    const W = 200, H = 110;
+    const cvRef = React.useRef<HTMLCanvasElement>(null);
+    const hsvR = React.useRef<[number, number, number]>(bcrIsValidHex(value) ? bcrHexToHsv(value) : [270, 0.48, 0.79]);
+    const dragCv = React.useRef(false); const dragHue = React.useRef(false);
+    const [hsv, setHsv] = React.useState<[number, number, number]>(hsvR.current);
+    const [hex, setHex] = React.useState(bcrIsValidHex(value) ? value : "#c084fc");
+    const draw = (hue: number) => { const cv = cvRef.current; if (!cv) return; const ctx = cv.getContext("2d")!; const gH = ctx.createLinearGradient(0, 0, W, 0); gH.addColorStop(0, "#fff"); gH.addColorStop(1, bcrHsvToHex(hue, 1, 1)); ctx.fillStyle = gH; ctx.fillRect(0, 0, W, H); const gV = ctx.createLinearGradient(0, 0, 0, H); gV.addColorStop(0, "rgba(0,0,0,0)"); gV.addColorStop(1, "#000"); ctx.fillStyle = gV; ctx.fillRect(0, 0, W, H); };
+    React.useEffect(() => { draw(hsvR.current[0]); }, []);
+    React.useEffect(() => { if (!bcrIsValidHex(value)) return; const vl = value.toLowerCase(); if (vl !== bcrHsvToHex(...hsvR.current)) { const h = bcrHexToHsv(vl); hsvR.current = h; setHsv([...h]); setHex(vl); draw(h[0]); } }, [value]);
+    const emit = (h: number, s: number, v: number) => { hsvR.current = [h, s, v]; setHsv([h, s, v]); const out = bcrHsvToHex(h, s, v); setHex(out); onChange(out); };
+    const onSvPtr = (e: React.PointerEvent<HTMLCanvasElement>) => { const rect = cvRef.current!.getBoundingClientRect(); emit(hsvR.current[0], Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)), Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height))); };
+    const onHuePtr = (e: React.PointerEvent<HTMLDivElement>) => { const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); const t = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); const h = t * 360; draw(h); emit(h, hsvR.current[1], hsvR.current[2]); };
+    const HUE_GRAD = "linear-gradient(to right,#f00 0%,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,#f00 100%)";
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ position: "relative", width: W, height: H, borderRadius: 5, overflow: "hidden", cursor: "crosshair", flexShrink: 0 }}>
+                <canvas ref={cvRef} width={W} height={H} style={{ display: "block" }}
+                    onPointerDown={e => { dragCv.current = true; (e.target as HTMLElement).setPointerCapture(e.pointerId); onSvPtr(e); }}
+                    onPointerMove={e => { if (dragCv.current) onSvPtr(e); }}
+                    onPointerUp={() => { dragCv.current = false; }} onPointerCancel={() => { dragCv.current = false; }} />
+                <div style={{ position: "absolute", top: Math.max(4, Math.min(H - 4, (1 - hsv[2]) * H)) - 4, left: Math.max(4, Math.min(W - 4, hsv[1] * W)) - 4, width: 8, height: 8, borderRadius: "50%", border: "2px solid #fff", pointerEvents: "none", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ position: "relative", height: 14, borderRadius: 7, background: HUE_GRAD, cursor: "pointer" }}
+                onPointerDown={e => { dragHue.current = true; (e.target as HTMLElement).setPointerCapture(e.pointerId); onHuePtr(e); }}
+                onPointerMove={e => { if (dragHue.current) onHuePtr(e); }}
+                onPointerUp={() => { dragHue.current = false; }} onPointerCancel={() => { dragHue.current = false; }}>
+                <div style={{ position: "absolute", top: 1, left: `${(hsv[0] / 360) * 100}%`, width: 12, height: 12, borderRadius: "50%", background: bcrHsvToHex(hsv[0], 1, 1), border: "2px solid #fff", transform: "translateX(-50%)", pointerEvents: "none", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 4, background: bcrIsValidHex(hex) ? hex : "#333", border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0 }} />
+                <input value={hex} onChange={e => { const v = e.target.value; setHex(v); if (bcrIsValidHex(v)) { const h = bcrHexToHsv(v); hsvR.current = h; setHsv([...h]); draw(h[0]); onChange(v); } }} maxLength={7} style={{ flex: 1, background: "rgba(0,0,0,.4)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 5, color: "#f0e6ff", fontSize: 12, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
+            </div>
+        </div>
+    );
+}
+function BcrHueRadiusSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+    const pct = ((value - 1) / 179) * 100;
+    const dragRef = React.useRef(false);
+    const onPtr = (e: React.PointerEvent<HTMLDivElement>) => { const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); const t = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); onChange(Math.round(1 + t * 179)); };
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#9e9e9e" }}>Hue Radius</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#c084fc", fontFamily: "monospace" }}>{value}°</span>
+            </div>
+            <div style={{ position: "relative", height: 20, cursor: "pointer" }}
+                onPointerDown={e => { dragRef.current = true; (e.target as HTMLElement).setPointerCapture(e.pointerId); onPtr(e); }}
+                onPointerMove={e => { if (dragRef.current) onPtr(e); }}
+                onPointerUp={() => { dragRef.current = false; }} onPointerCancel={() => { dragRef.current = false; }}>
+                <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 4, borderRadius: 2, background: "rgba(255,255,255,.12)", transform: "translateY(-50%)" }} />
+                <div style={{ position: "absolute", top: "50%", left: 0, width: `${pct}%`, height: 4, borderRadius: 2, background: "#c084fc", transform: "translateY(-50%)" }} />
+                <div style={{ position: "absolute", top: "50%", left: `${pct}%`, width: 14, height: 14, borderRadius: "50%", background: "#c084fc", border: "2px solid #fff", transform: "translate(-50%,-50%)", boxShadow: "0 0 4px rgba(0,0,0,.5)" }} />
+            </div>
+        </div>
+    );
+}
+
+function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
+    const [running, setRunning] = React.useState(bcrRotatorTimer !== null);
+    const [subTab, setSubTab] = React.useState<"color" | "cycle" | "favs">("color");
+    const [mode, setMode] = React.useState<BcrCycleMode>((settings.store.bannerMode as BcrCycleMode) ?? "full_random");
+    const [sec, setSec] = React.useState(settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S);
+    const [secStr, setSecStr] = React.useState(String(settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S));
+    const [hueR, setHueR] = React.useState(settings.store.bannerHueRadius ?? 35);
+    const [baseColor, setBase] = React.useState(settings.store.bannerCustomBaseColor ?? "#c084fc");
+    const [favs, setFavs] = React.useState<string[]>([...bcrFavorites]);
+    const [preview, setPreview] = React.useState(bcrCurrentColor ?? "#111214");
+    const [applying, setApplying] = React.useState(false);
+    const [liveColor, setLive] = React.useState<string | null>(bcrCurrentColor);
+
+    React.useEffect(() => { bcrOnColorApplied = hex => setLive(hex); return () => { bcrOnColorApplied = null; }; }, []);
+
+    const PRESET_HEX = ["#111214", "#5865f2", "#3ba55c", "#ed4245", "#faa61a", "#c084fc", "#00b0f4", "#ff6b6b", "#1e3a5f", "#2d1b69", "#701a75", "#065f46"];
+    const PRESET_S = [30, 60, 120, 300, 600, 1800, 3600];
+
+    const commitFavs = async (nf: string[]) => { bcrFavorites = nf; setFavs([...nf]); bcrUsedFavs = bcrUsedFavs.filter(c => nf.includes(c)); await bcrSaveData(); };
+    const handleModeChange = (m: BcrCycleMode) => { setMode(m); (settings.store as any).bannerMode = m; bcrRandomBatch = []; bcrSeqBatch = []; bcrUsedFavs = []; bcrGradientState = null; bcrMonoBaseHue = null; bcrSeqBaseHue = 0; bcrShadeStep = 0; bcrShadeDir = 1; if (running) { bcrStopRotator(); bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000); setRunning(true); } };
+    const handleSecBlur = (raw: string) => { const v = Math.max(5, parseInt(raw) || BCR_DEFAULT_S); setSec(v); setSecStr(String(v)); (settings.store as any).bannerIntervalSeconds = v; if (running) { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); bcrRotatorTimer = setTimeout(bcrRotateNext, v * 1000); } };
+    const handleHueRChange = (v: number) => { setHueR(v); (settings.store as any).bannerHueRadius = v; bcrRandomBatch = []; };
+    const handleBaseChange = (hex: string) => { setBase(hex); (settings.store as any).bannerCustomBaseColor = hex; bcrRandomBatch = []; bcrSeqBatch = []; bcrMonoBaseHue = null; bcrShadeStep = 0; bcrShadeDir = 1; };
+    const handleToggle = () => { if (running) { bcrStopRotator(); (settings.store as any).bannerEnabled = false; setRunning(false); } else { bcrStartRotator(true); (settings.store as any).bannerEnabled = true; setRunning(true); } forceUpdate(); };
+    const applyNow = async () => { if (applying || !bcrIsValidHex(preview)) return; setApplying(true); await bcrApplyColor(preview); setApplying(false); };
+    const skipNow = async () => { const color = await bcrPickNextColor(); setPreview(color); await bcrApplyColor(color); if (running) { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, sec) * 1000); } };
+
+    const prevLower = preview.toLowerCase();
+    const curMode = BCR_MODES.find(m => m.id === mode);
+    const needsBase = curMode?.needsBase;
+    const needsHueR = curMode?.needsHueR;
+    const showLive = settings.store.bannerShowCurrentColor && bcrIsValidHex(liveColor ?? "");
+
+    const fmtS = (s: number) => s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`;
+
+    return (
+        <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, marginBottom: 8, background: "rgba(192,132,252,.07)", border: `1px solid ${running ? "rgba(192,132,252,.4)" : "rgba(192,132,252,.18)"}` }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: running ? "#c084fc" : "#3a2a5a", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: running ? "#f0e6ff" : "#6a5a8a" }}>Color Banner Rotator</span>
+                    <div style={{ fontSize: 10, color: "#9e9e9e", marginTop: 1 }}>{running ? `${fmtS(sec)} · ${curMode?.emoji} ${curMode?.label}` : "Stopped"}</div>
+                </div>
+                <BcrToggle value={running} onChange={handleToggle} />
+            </div>
+
+            <div className="bcr-sub-tab-bar">
+                {([["color", "🎨 Color"], ["cycle", "⚙ Cycle"], ["favs", "⭐ Favs"]] as const).map(([id, label]) => (
+                    <div key={id} className="bcr-sub-tab" onClick={() => setSubTab(id)}
+                        style={{ color: subTab === id ? "#c084fc" : "var(--text-muted)", borderBottomColor: subTab === id ? "#c084fc" : "transparent" }}>
+                        {label}
+                    </div>
+                ))}
+            </div>
+
+            {subTab === "color" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <BcrHsvPicker value={preview} onChange={setPreview} />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                        {PRESET_HEX.map(p => <BcrSwatch key={p} color={p} active={prevLower === p} onClick={() => setPreview(p)} />)}
+                    </div>
+                    <div style={{ display: "flex", gap: 5 }}>
+                        <button onClick={applyNow} disabled={applying || !bcrIsValidHex(preview)}
+                            style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: applying ? "wait" : "pointer", background: "rgba(192,132,252,.18)", border: "1px solid rgba(192,132,252,.44)", color: "#c084fc", outline: "none", opacity: !bcrIsValidHex(preview) ? 0.4 : 1 }}>
+                            {applying ? "Applying…" : "Apply Now"}
+                        </button>
+                        <button onClick={() => { if (bcrIsValidHex(preview) && !favs.includes(prevLower)) void commitFavs([...favs, prevLower]); }}
+                            disabled={!bcrIsValidHex(preview) || favs.includes(prevLower)}
+                            style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", background: "rgba(59,165,92,.13)", border: "1px solid rgba(59,165,92,.38)", color: "#3ba55c", outline: "none", opacity: (!bcrIsValidHex(preview) || favs.includes(prevLower)) ? 0.4 : 1 }}>
+                            {favs.includes(prevLower) ? "✓ Saved" : "★ Save to Favs"}
+                        </button>
+                        <button onClick={() => void skipNow()} style={{ padding: "6px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", background: "rgba(192,132,252,.1)", border: "1px solid rgba(192,132,252,.28)", color: "#c084fc", outline: "none" }}>⏭</button>
+                    </div>
+                    {needsBase && (
+                        <div style={{ padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Base Color for cycle mode</div>
+                            <BcrHsvPicker value={baseColor} onChange={handleBaseChange} />
+                        </div>
+                    )}
+                    <div style={{ padding: "5px 8px", borderRadius: 5, background: "rgba(250,166,26,.09)", border: "1px solid rgba(250,166,26,.22)", fontSize: 10, color: "#faa61a" }}>
+                        ⚠ Banner color is free - no Nitro required
+                    </div>
+                </div>
+            )}
+
+            {subTab === "cycle" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div className="bcr-mode-grid">
+                        {BCR_MODES.map(m => {
+                            const active = mode === m.id;
+                            return (
+                                <div key={m.id} className="bcr-mode-item" onClick={() => handleModeChange(m.id)}
+                                    style={{ background: active ? "rgba(192,132,252,.18)" : "rgba(255,255,255,.03)", borderColor: active ? "rgba(192,132,252,.55)" : "rgba(255,255,255,.07)" }}>
+                                    <span style={{ fontSize: 11, flexShrink: 0 }}>{m.emoji}</span>
+                                    <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: active ? "#f0e6ff" : "var(--text-muted)" }}>{m.label}</div>
+                                        <div style={{ fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.desc}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {needsHueR && (
+                        <>
+                            <BcrHr />
+                            <div style={{ padding: "7px 10px", borderRadius: 6, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)" }}>
+                                <BcrHueRadiusSlider value={hueR} onChange={handleHueRChange} />
+                            </div>
+                        </>
+                    )}
+                    <BcrHr />
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: "var(--text-muted)", textTransform: "uppercase" }}>Interval</div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {PRESET_S.map(p => { const label = p < 60 ? `${p}s` : p < 3600 ? `${p / 60}m` : `${p / 3600}h`; const active = sec === p; return <button key={p} onClick={() => { setSec(p); setSecStr(String(p)); (settings.store as any).bannerIntervalSeconds = p; if (running) { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); bcrRotatorTimer = setTimeout(bcrRotateNext, p * 1000); } }} style={{ padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: "pointer", outline: "none", border: `1px solid ${active ? "rgba(192,132,252,.55)" : "rgba(255,255,255,.07)"}`, background: active ? "rgba(192,132,252,.18)" : "rgba(255,255,255,.03)", color: active ? "#c084fc" : "var(--text-muted)", userSelect: "none" }}>{label}</button>; })}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <input type="number" min={5} value={secStr} onChange={e => setSecStr(e.target.value)} onBlur={e => handleSecBlur(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSecBlur((e.target as HTMLInputElement).value)} style={{ width: 62, background: "rgba(0,0,0,.4)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 5, color: "#f0e6ff", fontSize: 12, padding: "4px 7px", outline: "none" }} />
+                        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>sec = {fmtS(sec)}</span>
+                    </div>
+                    <BcrHr />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {([["bannerShowToast", "Toast on each change"], ["bannerShowCurrentColor", "Show active color in footer (ColorBanner:)"]] as [keyof typeof settings.store, string][]).map(([key, label]) => (
+                            <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <span style={{ fontSize: 11, color: "#f0e6ff" }}>{label}</span>
+                                <BcrToggle value={!!(settings.store as any)[key]} onChange={() => { (settings.store as any)[key] = !(settings.store as any)[key]; void bcrSaveData(); forceUpdate(); }} />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {subTab === "favs" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {favs.length === 0
+                        ? <div style={{ textAlign: "center", padding: "20px 0", color: "var(--text-muted)", fontSize: 11 }}><div style={{ fontSize: 20, marginBottom: 4 }}>🎨</div>No favorites yet - pick a color and save it</div>
+                        : <>
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button onClick={() => void commitFavs([])} style={{ fontSize: 10, color: "#ed4245", background: "none", border: "none", cursor: "pointer", outline: "none" }}>Clear all</button>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+                                {favs.map(hex => (
+                                    <div key={hex} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 5px 2px 3px", borderRadius: 5, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)" }}>
+                                        <BcrSwatch color={hex} size={14} onClick={() => { setPreview(hex); setSubTab("color"); }} title="Edit in Color tab" />
+                                        <span style={{ fontSize: 10, color: "#f0e6ff", fontFamily: "monospace", userSelect: "all" }}>{hex}</span>
+                                        <button onClick={() => void commitFavs(favs.filter(c => c !== hex))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 10, padding: 0, outline: "none", lineHeight: 1 }}>✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    }
+                </div>
+            )}
         </div>
     );
 }
@@ -3398,13 +3864,14 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
         { id: "status",  label: "Status",          color: C.status },
         { id: "clan",    label: "Clan",             color: C.clan   },
         { id: "profile", label: "Profile",          color: C.bio    },
-        { id: "avatar",  label: "Avatar",           color: "#9c67ff" },
+        { id: "avatar",      label: "Avatar",       color: "#9c67ff" },
+        { id: "colorbanner", label: "ColorBanner",  color: "#c084fc" },
         { id: "servers", label: "Server Profiles",  color: C.nick   },
         { id: "data",    label: "Data",             color: C.data   },
     ];
 
     const isGlobalSync = settings.store.globalSync;
-    const totalActive = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0);
+    const totalActive = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0) + (bcrRotatorTimer ? 1 : 0);
 
     return (
         <ModalRoot {...modalProps} className="rs-modal">
@@ -3445,7 +3912,8 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
                 {tab === "status"  && <StatusTab  forceUpdate={forceUpdate} />}
                 {tab === "clan"    && <ClanTab    forceUpdate={forceUpdate} />}
                 {tab === "profile" && <ProfileTab forceUpdate={forceUpdate} />}
-                {tab === "avatar"  && <AvatarTab  forceUpdate={forceUpdate} />}
+                {tab === "avatar"      && <AvatarTab  forceUpdate={forceUpdate} />}
+                {tab === "colorbanner" && <BannerTab  forceUpdate={forceUpdate} />}
                 {tab === "servers" && <NicksTab   forceUpdate={forceUpdate} />}
                 {tab === "data"    && <DataTab    forceUpdate={forceUpdate} />}
             </ModalContent>
@@ -3464,9 +3932,18 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
                                 <span>DisplayName: <b style={{ color: settings.store.globalNickEnabled ? C.nick : `${C.nick}80` }}>{settings.store.globalNickEnabled ? settings.store.globalNickIntervalSeconds + "s" : "off"}</b></span>
                                 <span>DisplayPronoun: <b style={{ color: settings.store.profilePronounsEnabled ? C.pronoun : `${C.pronoun}80` }}>{settings.store.profilePronounsEnabled ? settings.store.pronounsIntervalSeconds + "s" : "off"}</b></span>
                                 <span>Bio: <b style={{ color: settings.store.profileBioEnabled ? C.bio : `${C.bio}80` }}>{settings.store.profileBioEnabled ? settings.store.bioIntervalSeconds + "s" : "off"}</b></span>
+                                <span>Avatar: <b style={{ color: settings.store.avatarEnabled ? "#9c67ff" : "#9c67ff80" }}>{settings.store.avatarEnabled ? settings.store.avatarIntervalSeconds + "s" : "off"}</b></span>
+                                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    ColorBanner: <b style={{ color: settings.store.bannerEnabled ? "#c084fc" : "#c084fc80" }}>{settings.store.bannerEnabled ? settings.store.bannerIntervalSeconds + "s" : "off"}</b>
+                                    {settings.store.bannerShowCurrentColor && bcrCurrentColor && bcrIsValidHex(bcrCurrentColor) && (
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                            <span style={{ width: 10, height: 10, borderRadius: 2, background: bcrCurrentColor, border: "1px solid rgba(255,255,255,.2)", display: "inline-block", flexShrink: 0 }} />
+                                            <span style={{ fontFamily: "monospace", fontSize: 9, color: "#c084fc" }}>{bcrCurrentColor}</span>
+                                        </span>
+                                    )}
+                                </span>
                                 <span>Nicks: <b style={{ color: settings.store.nickEnabled ? C.nick : `${C.nick}80` }}>{settings.store.nickEnabled ? settings.store.nickIntervalSeconds + "s" : "off"}</b></span>
                                 <span>Pronouns: <b style={{ color: settings.store.serverPronounsEnabled ? C.pronoun : `${C.pronoun}80` }}>{settings.store.serverPronounsEnabled ? settings.store.serverPronounsIntervalSeconds + "s" : "off"}</b></span>
-                                <span>Avatar: <b style={{ color: settings.store.avatarEnabled ? "#9c67ff" : "#9c67ff80" }}>{settings.store.avatarEnabled ? settings.store.avatarIntervalSeconds + "s" : "off"}</b></span>
                             </>
                         }
                     </div>
@@ -3481,7 +3958,7 @@ function RSUserAreaButton() {
     const [active, setActive] = React.useState(false);
     React.useEffect(() => {
         const id = setInterval(() => {
-            const timers = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0);
+            const timers = nickTimers.size + guildPronounsTimers.size + (statusTimer ? 1 : 0) + (clanTimer ? 1 : 0) + (bioTimer ? 1 : 0) + (pronounsTimer ? 1 : 0) + (globalNickTimer ? 1 : 0) + (globalSyncTimer ? 1 : 0) + (arRotatorTimer ? 1 : 0) + (bcrRotatorTimer ? 1 : 0);
             setActive(timers > 0);
         }, 800);
         return () => clearInterval(id);
@@ -3504,7 +3981,7 @@ function RSUserAreaButton() {
 
 export default definePlugin({
     name: "Rotator Suite",
-    description: "All-in-one Discord identity rotator. Cycles status (presence + presets), clan, bio, global pronouns, global display name, server nicknames, per-server pronouns, and avatar - each with its own independent timer. Profile has 3 independent cycles (bio/pronouns/display name). Server Profiles has 2 (nicknames/pronouns). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
+    description: "All-in-one Discord identity rotator. Cycles status, clan, bio, global pronouns, display name, server nicknames, per-server pronouns, avatar, and banner color (26 modes, HSV picker, favorites). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
@@ -3582,6 +4059,12 @@ export default definePlugin({
         arShuffleQueue = arStored.shuffleQueue ?? [];
         if (settings.store.avatarEnabled && arGetActive().length) arStartRotator(false);
 
+        const bcrStored: BcrStoreData = (await DataStore.get(BCR_SK)) ?? { favorites: [], usedFavs: [], wasRunning: false, currentColor: null };
+        bcrFavorites    = bcrStored.favorites    ?? [];
+        bcrUsedFavs     = bcrStored.usedFavs     ?? [];
+        bcrCurrentColor = bcrStored.currentColor ?? null;
+        if (bcrStored.wasRunning || settings.store.bannerEnabled) bcrStartRotator(false);
+
         Vencord.Api.UserArea.addUserAreaButton("rotator-suite", () => <RSUserAreaButton />);
 
         if (settings.store.autoStart) {
@@ -3599,6 +4082,9 @@ export default definePlugin({
         stopAllRotators();
         arStopRotator();
         arAvatars = []; arSeqIndex = 0; arShuffleQueue = [];
+        bcrFavorites = []; bcrUsedFavs = []; bcrRandomBatch = []; bcrSeqBatch = [];
+        bcrCachedHue = null; bcrGradientState = null; bcrMonoBaseHue = null;
+        bcrCurrentColor = null; bcrOnColorApplied = null;
         if (onCloseHandler) { window.removeEventListener("beforeunload", onCloseHandler); onCloseHandler = null; }
         Vencord.Api.UserArea.removeUserAreaButton("rotator-suite");
         document.getElementById("rs-css")?.remove();
