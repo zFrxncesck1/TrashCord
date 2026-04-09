@@ -659,6 +659,74 @@ function HueRadiusSlider({ value, onChange }: { value: number; onChange: (v: num
     );
 }
 
+function FavsReorderList({ favs, commitFavs, setPreview, setTab }: {
+    favs: string[];
+    commitFavs: (nf: string[]) => Promise<void>;
+    setPreview: (hex: string) => void;
+    setTab: (t: string) => void;
+}) {
+    const dragRef = React.useRef<number | null>(null);
+    const [overIdx, setOverIdx] = React.useState<number | null>(null);
+
+    const onDS = (e: React.DragEvent, i: number) => {
+        dragRef.current = i;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(i));
+    };
+    const onDO = (e: React.DragEvent, i: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOverIdx(prev => prev !== i ? i : prev);
+    };
+    const onDL = (i: number) => setOverIdx(prev => prev === i ? null : prev);
+    const onDP = (e: React.DragEvent, to: number) => {
+        e.preventDefault();
+        const from = dragRef.current;
+        if (from !== null && from !== to) {
+            const next = [...favs];
+            const [item] = next.splice(from, 1);
+            next.splice(to, 0, item);
+            void commitFavs(next);
+        }
+        dragRef.current = null;
+        setOverIdx(null);
+    };
+    const onDE = () => { dragRef.current = null; setOverIdx(null); };
+
+    return (
+        <div style={{ maxHeight: 300, overflowY: "auto", paddingRight: 2 }}>
+            {favs.map((hex, i) => {
+                const isDragged = dragRef.current === i;
+                const isOver = overIdx === i && dragRef.current !== i;
+                return (
+                    <div key={hex} draggable
+                        onDragStart={e => onDS(e, i)} onDragOver={e => onDO(e, i)}
+                        onDragLeave={() => onDL(i)} onDrop={e => onDP(e, i)} onDragEnd={onDE}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 7,
+                            padding: "5px 8px", borderRadius: 7, marginBottom: 3,
+                            background: isOver ? "rgba(192,132,252,.09)" : "rgba(255,255,255,.03)",
+                            border: `1px solid ${isOver ? "rgba(192,132,252,.5)" : C.line}`,
+                            opacity: isDragged ? 0.3 : 1,
+                            cursor: "grab", userSelect: "none" as const,
+                        }}>
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="rgba(255,255,255,.3)" style={{ flexShrink: 0 }}>
+                            <rect y="1" width="12" height="1.8" rx="0.9"/>
+                            <rect y="5" width="12" height="1.8" rx="0.9"/>
+                            <rect y="9" width="12" height="1.8" rx="0.9"/>
+                        </svg>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, background: isValidHex(hex) ? hex : "#333", border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: "pointer" }}
+                            onClick={() => { setPreview(hex); setTab("color"); }} title="Edit in Color tab" />
+                        <span style={{ flex: 1, fontSize: 11, color: C.text, fontFamily: "monospace", userSelect: "all" as const }}>{hex}</span>
+                        <button onClick={e => { e.stopPropagation(); void commitFavs(favs.filter((_, j) => j !== i)); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 function BannerColorRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggle: () => void }) {
     const [running,  setRunning]  = React.useState(rotatorTimer !== null);
     const [mode,     setModeS]    = React.useState<CycleMode>((settings.store.mode as CycleMode) ?? "full_random");
@@ -871,22 +939,14 @@ function BannerColorRotatorModal({ modalProps, onToggle }: { modalProps: any; on
                             )
                             : (
                                 <>
-                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                        <span style={{ fontSize: 10, color: C.sub }}>Drag to reorder · click swatch to edit</span>
                                         <button onClick={() => void commitFavs([])}
                                             style={{ fontSize: 10, color: C.red, background: "none", border: "none", cursor: "pointer", outline: "none" }}>
                                             Clear all
                                         </button>
                                     </div>
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 200, overflowY: "auto" }}>
-                                        {favs.map(hex => (
-                                            <div key={hex} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 5px 2px 3px", borderRadius: 5, background: "rgba(255,255,255,.04)", border: `1px solid ${C.line}` }}>
-                                                <Swatch color={hex} size={14} onClick={() => { setPreview(hex); setTab("color"); }} title="Edit in Color tab" />
-                                                <span style={{ fontSize: 10, color: C.text, fontFamily: "monospace", userSelect: "all" }}>{hex}</span>
-                                                <button onClick={() => void commitFavs(favs.filter(c => c !== hex))}
-                                                    style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 10, padding: 0, outline: "none", lineHeight: 1 }}>✕</button>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <FavsReorderList favs={favs} commitFavs={commitFavs} setPreview={setPreview} setTab={setTab} />
                                 </>
                             )
                         }
