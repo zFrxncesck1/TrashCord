@@ -376,6 +376,13 @@ async function applyCloseStatus(): Promise<void> {
     await applyStatus(entry);
 }
 
+async function applyCloseBanner(): Promise<void> {
+    if (!settings.store.closeBannerEnabled) return;
+    const hex = settings.store.closeBannerColor.trim();
+    if (!bcrIsValidHex(hex)) return;
+    await bcrApplyColor(hex);
+}
+
 async function applyCloseClan(): Promise<void> {
     if (!settings.store.closeClanEnabled) return;
     const id = settings.store.closeClanId.trim();
@@ -1079,7 +1086,7 @@ const settings = definePluginSettings({
     avatarEnabled: { type: OptionType.BOOLEAN, default: false, description: "Avatar rotator enabled (configure in Avatar tab)." },
     avatarIntervalSeconds: { type: OptionType.NUMBER, default: AR_DEFAULT_S, description: "Seconds between avatar changes (min 60 recommended - Discord rate-limits)." },
     avatarRandom: { type: OptionType.BOOLEAN, default: true, description: "Random avatar order - no repeats until all shown once." },
-    avatarShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast notifications for avatar changes." },
+    avatarShowToast: { type: OptionType.BOOLEAN, default: true, description: "Show toast notifications for avatar changes." },
     avatarExcludedExtensions: { type: OptionType.STRING, default: "", description: "Comma-separated extensions to skip during avatar rotation (e.g. gif,avif)." },
     _sBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Banner Color" color="#c084fc" /> },
     bannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Banner color rotator enabled (configure in Banner tab)." },
@@ -1089,6 +1096,9 @@ const settings = definePluginSettings({
     bannerCustomBaseColor: { type: OptionType.STRING, default: "#c084fc", description: "Base color for shade/mono modes (configure in Banner tab)." },
     bannerShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast on each banner color change." },
     bannerShowCurrentColor: { type: OptionType.BOOLEAN, default: false, description: "Show active color hex+swatch in the footer next to ColorBanner (updates live)." },
+    _sCloseBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="On Close Banner" color="#c084fc" /> },
+    closeBannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Apply a fixed banner color when Discord closes (beforeunload)." },
+    closeBannerColor: { type: OptionType.STRING, default: "#111214", description: "Banner hex color to apply on close (e.g. #111214)." },
     _sServerProfilesGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Server Profiles" color={C.nick} /> },
     nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch - when OFF, no nick timers run even if servers are toggled on." },
     nickIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server nickname changes (Server Profiles tab)." },
@@ -1151,14 +1161,14 @@ function injectCSS() {
 .rs-count-badge{font-size:10px;background:rgba(124,77,255,.2);border-radius:8px;padding:2px 8px;color:#ce93d8}
 .rs-count{font-size:10px;padding:2px 7px;border-radius:8px;font-weight:700;background:rgba(124,77,255,.18);color:#ce93d8}
 .rs-sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
-.rs-bio-list{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
-.rs-bio-item{display:flex;align-items:flex-start;border-radius:7px;overflow:hidden;border:1px solid rgba(124,77,255,.25);background:rgba(124,77,255,.06)}
+.rs-bio-list{display:flex;flex-direction:column;gap:3px;margin-bottom:6px;max-height:220px;overflow-y:auto;padding-right:2px}
+.rs-bio-item{display:flex;align-items:flex-start;border-radius:7px;border:1px solid rgba(124,77,255,.25);background:rgba(124,77,255,.06)}
 .rs-bio-item.editing{border-color:#9c67ff;background:rgba(124,77,255,.13)}
 .rs-bio-item.rs-over{border-color:#ffa726!important}
 .rs-bio-item.rs-dragging{opacity:.3}
-.rs-bio-view{flex:1;padding:6px 9px;font-size:12px;color:#e8d5ff;white-space:pre-wrap;word-break:break-word;line-height:1.4;font-family:monospace;cursor:pointer;min-height:24px}
+.rs-bio-view{flex:1;padding:6px 9px;font-size:12px;color:#e8d5ff;white-space:pre-wrap;word-break:break-word;line-height:1.4;font-family:monospace;cursor:pointer;min-height:24px;max-height:72px;overflow:hidden}
 .rs-bio-view:hover{background:rgba(124,77,255,.07)}
-.rs-bio-edit-area{flex:1;resize:vertical;min-height:50px;font-size:12px;background:transparent;border:none;padding:6px 9px;color:#f0eaff;font-family:monospace;line-height:1.4;outline:none;width:0;caret-color:#9c67ff}
+.rs-bio-edit-area{flex:1;resize:vertical;min-height:60px;max-height:200px;font-size:12px;background:transparent;border:none;padding:6px 9px;color:#f0eaff;font-family:monospace;line-height:1.4;outline:none;width:0;caret-color:#9c67ff}
 .rs-bio-btns{display:flex;flex-direction:column;border-left:1px solid rgba(124,77,255,.18)}
 .rs-bio-btn{background:none;border:none;cursor:pointer;padding:4px 7px;color:#757575;font-size:12px;flex:1;white-space:nowrap}
 .rs-bio-btn:hover{color:#e8d5ff;background:rgba(124,77,255,.12)}
@@ -1196,7 +1206,7 @@ function injectCSS() {
 .rs-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px;color:#9e9e9e}
 .rs-summary-grid b{color:#ce93d8}
 .rs-nick-expand{margin-top:6px;border-top:1px solid rgba(124,77,255,.18);padding-top:7px}
-.rs-nick-list{display:flex;flex-direction:column;gap:3px;margin-bottom:5px}
+.rs-nick-list{display:flex;flex-direction:column;gap:3px;margin-bottom:5px;max-height:150px;overflow-y:auto;padding-right:2px}
 .rs-sec-hdr{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .rs-sec-hdr-line{flex:1;height:1px}
 .rs-sec-hdr-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
@@ -1739,6 +1749,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                 </div>
             </div>
             {filteredList.length === 0 && <div className="rs-empty">No entries yet. Add one above.</div>}
+            <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
             {filteredList.map((entry, fi) => {
                 const i = list.indexOf(entry);
                 const isEdit = editIdx === i;
@@ -1791,6 +1802,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                     </div>
                 );
             })}
+            </div>
             {confirm && <ConfirmBox msg="Delete all status entries?" onConfirm={() => { statusEntries = []; statusSeqIdx = 0; statusLastVal = null; saveData(); forceUpdate(); setConfirm(false); }} onCancel={() => setConfirm(false)} />}
             <div className="rs-hint" style={{ marginTop: 6 }}>
                 Ctrl+Enter to add · Enabled: <b style={{ color: settings.store.statusEnabled ? C.enabled : "#757575" }}>{settings.store.statusEnabled ? "yes" : "no"}</b> · Interval: <b style={{ color: C.data }}>{settings.store.statusIntervalSeconds}s</b> · Mode: <b style={{ color: "#ab47bc" }}>{settings.store.statusRandomize ? "random" : "seq"}</b>
@@ -1832,6 +1844,23 @@ function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
     );
 }
 
+function scrapeClanTagsFromDOM(): Map<string, string> {
+    const map = new Map<string, string>();
+    try {
+        document.querySelectorAll<HTMLImageElement>("img.badge__10651").forEach(img => {
+            const m = img.src.match(/clan-badges\/(\d{17,20})\//);
+            if (!m) return;
+            const guildId = m[1];
+            const container = img.closest("[aria-label]");
+            const ariaTag = container?.getAttribute("aria-label")?.match(/:\s*(.+)$/)?.[1]?.trim();
+            const tagEl = img.parentElement?.querySelector?.(".tagText__10651");
+            const tag = ariaTag || tagEl?.textContent?.trim();
+            if (tag) map.set(guildId, tag);
+        });
+    } catch {}
+    return map;
+}
+
 function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [input, setInput] = React.useState("");
     const [editIdx, setEditIdx] = React.useState<number | null>(null);
@@ -1854,12 +1883,13 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
     }
 
     const allDiscordGuilds = React.useMemo(() => {
+        const domTags = scrapeClanTagsFromDOM();
         try {
             const raw = Object.values(getGuildStore()?.getGuilds?.() ?? {}) as any[];
             return raw.map((g: any) => ({
                 id: g.id as string,
                 name: g.name as string,
-                tag: (g.clan?.tag ?? g.clanTag ?? null) as string | null,
+                tag: (g.clan?.tag ?? g.clanTag ?? domTags.get(g.id) ?? null) as string | null,
             }));
         } catch { return []; }
     }, [showBrowser, autoDetect]);
@@ -1877,11 +1907,11 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
     }, [allDiscordGuilds]);
 
     const browserGuilds = React.useMemo(() => {
-        const source = autoDetect ? allDiscordGuilds : clanGuilds;
+        const source = allDiscordGuilds;
         if (!browserFilter.trim()) return source;
         const f = browserFilter.toLowerCase();
         return source.filter(g => g.name.toLowerCase().includes(f) || g.id.includes(f));
-    }, [allDiscordGuilds, clanGuilds, browserFilter, autoDetect]);
+    }, [allDiscordGuilds, browserFilter]);
 
     return (
         <div>
@@ -1928,7 +1958,7 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
                                 <span className="rs-item-text" style={{ flex: 1 }}>{g.name}</span>
                                 {g.tag && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>}
-                                <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0 }}>{g.id}</span>
+                                <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0, userSelect: "text" as const, cursor: "text" }}>{g.id}</span>
                             </div>
                         ))}
                     </div>
@@ -1936,19 +1966,21 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
             ) : (
                 <>
                     {clanIds.length === 0 && <div className="rs-empty" style={{ marginBottom: 6 }}>No clan IDs yet.</div>}
-                    {clanIds.map((id, i) => (
-                        <div key={id} {...dProps(i)} className={cls(i, "rs-item")}>
-                            <span className="rs-drag">⠿</span>
-                            {editIdx === i
-                                ? <input autoFocus className="rs-item-input" value={editVal}
-                                    onChange={e => setEditVal(e.target.value)}
-                                    onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") saveEdit(i); if (e.key === "Escape") setEditIdx(null); }}
-                                    onBlur={() => saveEdit(i)} />
-                                : <span className="rs-item-mono" onClick={() => { setEditIdx(i); setEditVal(id); }}>{id}</span>
-                            }
-                            <button className="rs-del-btn" onClick={() => remove(id)}>✕</button>
-                        </div>
-                    ))}
+                    <div style={{ maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
+                        {clanIds.map((id, i) => (
+                            <div key={id} {...dProps(i)} className={cls(i, "rs-item")}>
+                                <span className="rs-drag">⠿</span>
+                                {editIdx === i
+                                    ? <input autoFocus className="rs-item-input" value={editVal}
+                                        onChange={e => setEditVal(e.target.value)}
+                                        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") saveEdit(i); if (e.key === "Escape") setEditIdx(null); }}
+                                        onBlur={() => saveEdit(i)} />
+                                    : <span className="rs-item-mono" onClick={() => { setEditIdx(i); setEditVal(id); }}>{id}</span>
+                                }
+                                <button className="rs-del-btn" onClick={() => remove(id)}>✕</button>
+                            </div>
+                        ))}
+                    </div>
                     <div className="rs-row" style={{ marginTop: 6 }}>
                         <TextInput value={input} onChange={setInput} placeholder="Server ID (17-20 digits)..."
                             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") add(); }} />
@@ -1973,11 +2005,14 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
 
                     {showBrowser && (
                         <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.clan}33`, background: "rgba(5,15,40,.7)" }}>
-                            <div className="rs-hint" style={{ marginBottom: 6 }}>
-                                {clanGuilds.length > 0 ? "Servers with a clan tag detected." : "No clan-tagged servers found - showing all your servers."} <b style={{ color: C.clan }}>+</b> to add · <b style={{ color: ACT }}>✕</b> to remove
+                            <div className="rs-hint" style={{ marginBottom: 4 }}>
+                                <b style={{ color: C.clan }}>+</b> to add · <b style={{ color: ACT }}>✕</b> to remove
+                            </div>
+                            <div style={{ fontSize: 10, color: "#faa61a", padding: "3px 7px", borderRadius: 5, background: "rgba(250,166,26,.08)", border: "1px solid rgba(250,166,26,.18)", marginBottom: 6 }}>
+                                ⚠ Tag detection uses the internal store + DOM scan. Tags may not appear if Discord hasn't rendered the clan selector yet.
                             </div>
                             <TextInput placeholder="Filter by name or ID..." value={browserFilter} onChange={setBrowserFilter} />
-                            <div style={{ marginTop: 6, maxHeight: 220, overflowY: "auto" as const }}>
+                            <div style={{ marginTop: 6, maxHeight: 260, overflowY: "auto" as const }}>
                                 {browserGuilds.length === 0 && <div className="rs-empty">No servers match your filter.</div>}
                                 {browserGuilds.map(g => {
                                     const inList = clanIds.includes(g.id);
@@ -1985,8 +2020,11 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 6px", borderRadius: 6, marginBottom: 2, background: inList ? `${ACT}0e` : "rgba(255,255,255,.02)", border: `1px solid ${inList ? ACT + "33" : "transparent"}` }}>
                                             <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
                                             <span style={{ flex: 1, fontSize: 11, color: inList ? ACT : C.text, fontWeight: inList ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{g.name}</span>
-                                            {g.tag && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>}
-                                            <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0 }}>{g.id}</span>
+                                            {g.tag
+                                                ? <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>
+                                                : <span style={{ fontSize: 9, color: "#5a7a9a", fontWeight: 600, flexShrink: 0, opacity: 0.6 }}>?tag</span>
+                                            }
+                                            <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0, userSelect: "text" as const, cursor: "text" }}>{g.id}</span>
                                             {inList
                                                 ? <button onClick={() => { clanIds = clanIds.filter(c => c !== g.id); clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); }}
                                                     style={{ padding: "2px 8px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}18`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>✕</button>
@@ -2099,6 +2137,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <div className="rs-divider" style={{ margin: "5px 0 6px" }} />
                 {confirmGn && <ConfirmBox msg="Delete all display name entries?" onConfirm={() => { globalNickEntries = []; globalNickSeqIdx = 0; globalNickLastVal = null; saveData(); forceUpdate(); setConfirmGn(false); }} onCancel={() => setConfirmGn(false)} />}
                 {globalNickEntries.length === 0 && <div className="rs-empty" style={{ marginBottom: 5 }}>No display name entries yet.</div>}
+                <div style={{ maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
                 {globalNickEntries.map((n, i) => (
                     <div key={`gn_${i}_${n}`} {...gnDProps(i)} className={gnCls(i, "rs-item rs-item-compact")}>
                         <span className="rs-drag">⠿</span>
@@ -2114,6 +2153,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                         <button className="rs-del-btn" onClick={() => removeGn(i)}>&#10005;</button>
                     </div>
                 ))}
+                </div>
                 <div className="rs-row" style={{ marginTop: 5 }}>
                     <TextInput value={gnDraft} onChange={(v: string) => setGnDraft(v.slice(0, 32))} placeholder="Add display name (max 32)..."
                         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") addGn(); }} />
@@ -2137,6 +2177,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <div className="rs-divider" style={{ margin: "5px 0 6px" }} />
                 {confirmPr && <ConfirmBox msg="Delete all pronouns?" onConfirm={() => { pronounsList = ""; prSeqIdx = 0; prLastVal = null; saveData(); forceUpdate(); setConfirmPr(false); }} onCancel={() => setConfirmPr(false)} />}
                 {prList.length === 0 && <div className="rs-empty" style={{ marginBottom: 5 }}>No pronouns yet.</div>}
+                <div style={{ maxHeight: 160, overflowY: "auto", paddingRight: 2 }}>
                 {prList.map((p, i) => (
                     <div key={`pr_${i}_${p}`} {...prDProps(i)} className={prCls(i, "rs-item rs-item-compact")}>
                         <span className="rs-drag">⠿</span>
@@ -2144,6 +2185,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                         <button className="rs-del-btn" onClick={() => removePronoun(i)}>&#10005;</button>
                     </div>
                 ))}
+                </div>
                 <div className="rs-row" style={{ marginTop: 5 }}>
                     <TextInput value={prDraft} onChange={setPrDraft} placeholder="Add pronoun (e.g. he/him)..."
                         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") addPronoun(); }} />
@@ -3260,6 +3302,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
             </div>
 
             {sorted.length === 0 && <div className="rs-empty">No servers found.</div>}
+            <div style={{ maxHeight: 520, overflowY: "auto", paddingRight: 2 }}>
             {sorted.map(g => {
                 const color = colorFor(g.id);
                 const running = nickTimers.has(g.id) && settings.store.nickEnabled;
@@ -3434,6 +3477,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         <div className="rs-empty" style={{ marginBottom: 4 }}>No pronouns set - add local entries or fill the global pronoun pool above.</div>
                                     )}
                                     {confirmClear === `pr-${g.id}` && <ConfirmBox msg={`Clear all local pronouns for ${g.name}?`} onConfirm={() => { g.guildPronouns = []; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; saveData(); forceUpdate(); setConfirmClear(null); }} onCancel={() => setConfirmClear(null)} />}
+                                    <div style={{ maxHeight: 130, overflowY: "auto", paddingRight: 2 }}>
                                     {gPrList.map((pr, pi) => (
                                         <div key={`${g.id}_pr_${pi}`}
                                             draggable
@@ -3460,6 +3504,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                             <button className="rs-del-btn" onClick={() => { g.guildPronouns = gPrList.filter((_, j) => j !== pi); g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; saveData(); forceUpdate(); }}>&#10005;</button>
                                         </div>
                                     ))}
+                                    </div>
                                     <div className="rs-row" style={{ marginTop: 4 }}>
                                         <TextInput value={nickInputs[`__pr_${g.id}`] ?? ""} onChange={(v: string) => setNickInputs(p => ({ ...p, [`__pr_${g.id}`]: v.slice(0, 40) }))}
                                             placeholder="Add a pronoun for this server (max 40)..."
@@ -3478,6 +3523,7 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     </div>
                 );
             })}
+            </div>
 
             <div className="rs-manual-add">
                 <div className="rs-manual-add-title">Add server manually</div>
@@ -3792,6 +3838,41 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
     );
 }
 
+function OnCloseBannerPanel({ forceUpdate }: { forceUpdate: () => void }) {
+    const enabled = settings.store.closeBannerEnabled;
+    const [color, setColor] = React.useState(settings.store.closeBannerColor ?? "#111214");
+    const save = () => { settings.store.closeBannerColor = color.trim(); forceUpdate(); };
+    return (
+        <div>
+            <PanelToggle label="On-Close Banner" description="Apply a fixed banner color when Discord closes (beforeunload - not fired on crash/kill)"
+                value={enabled} color="#c084fc"
+                onChange={v => { settings.store.closeBannerEnabled = v; forceUpdate(); }} />
+            {enabled && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 10px", border: "1px solid rgba(192,132,252,.25)", borderRadius: 7, background: "rgba(10,0,30,.5)", marginTop: 3 }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 4, background: bcrIsValidHex(color) ? color : "#333", border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0 }} />
+                        <input value={color} onChange={e => setColor(e.target.value)} onBlur={save}
+                            onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") save(); }}
+                            placeholder="#rrggbb"
+                            maxLength={7}
+                            style={{ flex: 1, background: "rgba(10,0,30,.7)", border: `1px solid ${bcrIsValidHex(color) ? "rgba(192,132,252,.44)" : "rgba(239,83,80,.5)"}`, borderRadius: 5, color: "#f0eaff", fontSize: 12, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
+                        <button onClick={() => { setColor(bcrCurrentColor ?? "#111214"); settings.store.closeBannerColor = bcrCurrentColor ?? "#111214"; forceUpdate(); }}
+                            style={{ padding: "3px 9px", borderRadius: 5, border: "1px solid rgba(192,132,252,.3)", background: "rgba(192,132,252,.12)", color: "#c084fc", cursor: "pointer", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                            Use current
+                        </button>
+                    </div>
+                    {color.trim() && !bcrIsValidHex(color.trim()) && (
+                        <div style={{ fontSize: 10, color: "#ef9a9a" }}>⚠ Invalid hex - must be #rrggbb format.</div>
+                    )}
+                    {bcrIsValidHex(color.trim()) && (
+                        <div style={{ fontSize: 10, color: "#c084fc", opacity: .8 }}>Banner will be set to <b>{color.trim()}</b> upon closure.</div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function BcrHr() { return <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "7px 0" }} />; }
 function BcrSwatch({ color, size = 22, active, onClick, title: t }: { color: string; size?: number; active?: boolean; onClick?: () => void; title?: string }) {
     return <div title={t ?? color} onClick={onClick} style={{ width: size, height: size, borderRadius: 5, background: bcrIsValidHex(color) ? color : "#333", flexShrink: 0, cursor: onClick ? "pointer" : "default", border: active ? "2px solid #c084fc" : "1.5px solid rgba(255,255,255,.18)", boxSizing: "border-box" }} />;
@@ -3853,6 +3934,58 @@ function BcrHueRadiusSlider({ value, onChange }: { value: number; onChange: (v: 
                 <div style={{ position: "absolute", top: "50%", left: 0, width: `${pct}%`, height: 4, borderRadius: 2, background: "#c084fc", transform: "translateY(-50%)" }} />
                 <div style={{ position: "absolute", top: "50%", left: `${pct}%`, width: 14, height: 14, borderRadius: "50%", background: "#c084fc", border: "2px solid #fff", transform: "translate(-50%,-50%)", boxShadow: "0 0 4px rgba(0,0,0,.5)" }} />
             </div>
+        </div>
+    );
+}
+
+function FavsReorderList({ favs, commitFavs, setPreview, setSubTab }: {
+    favs: string[];
+    commitFavs: (nf: string[]) => Promise<void>;
+    setPreview: (hex: string) => void;
+    setSubTab: (t: "color" | "cycle" | "favs") => void;
+}) {
+    const dragRef = React.useRef<number | null>(null);
+    const [overIdx, setOverIdx] = React.useState<number | null>(null);
+
+    const onDS = (e: React.DragEvent, i: number) => { dragRef.current = i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(i)); };
+    const onDO = (e: React.DragEvent, i: number) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOverIdx(prev => prev !== i ? i : prev); };
+    const onDL = (i: number) => setOverIdx(prev => prev === i ? null : prev);
+    const onDP = (e: React.DragEvent, to: number) => {
+        e.preventDefault();
+        const from = dragRef.current;
+        if (from !== null && from !== to) {
+            const next = [...favs];
+            const [item] = next.splice(from, 1);
+            next.splice(to, 0, item);
+            void commitFavs(next);
+        }
+        dragRef.current = null; setOverIdx(null);
+    };
+    const onDE = () => { dragRef.current = null; setOverIdx(null); };
+
+    return (
+        <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
+            {favs.map((hex, i) => {
+                const isDragged = dragRef.current === i;
+                const isOver = overIdx === i && dragRef.current !== i;
+                return (
+                    <div key={hex} draggable
+                        onDragStart={e => onDS(e, i)} onDragOver={e => onDO(e, i)}
+                        onDragLeave={() => onDL(i)} onDrop={e => onDP(e, i)} onDragEnd={onDE}
+                        style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, marginBottom: 3, background: isOver ? "rgba(192,132,252,.09)" : "rgba(255,255,255,.03)", border: `1px solid ${isOver ? "rgba(192,132,252,.5)" : "rgba(255,255,255,.07)"}`, opacity: isDragged ? 0.3 : 1, cursor: "grab", userSelect: "none" }}>
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="rgba(255,255,255,.3)" style={{ flexShrink: 0 }}>
+                            <rect y="1" width="12" height="1.8" rx="0.9"/>
+                            <rect y="5" width="12" height="1.8" rx="0.9"/>
+                            <rect y="9" width="12" height="1.8" rx="0.9"/>
+                        </svg>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, background: hex, border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: "pointer" }}
+                            onClick={() => { setPreview(hex); setSubTab("color"); }} title="Edit in Color tab" />
+                        <span style={{ flex: 1, fontSize: 11, color: "#f0e6ff", fontFamily: "monospace", userSelect: "all" }}>{hex}</span>
+                        <button onClick={e => { e.stopPropagation(); void commitFavs(favs.filter((_, j) => j !== i)); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)", fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -3985,6 +4118,8 @@ function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
                             </div>
                         ))}
                     </div>
+                    <BcrHr />
+                    <OnCloseBannerPanel forceUpdate={forceUpdate} />
                 </div>
             )}
 
@@ -3993,18 +4128,11 @@ function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
                     {favs.length === 0
                         ? <div style={{ textAlign: "center", padding: "20px 0", color: "var(--text-muted)", fontSize: 11 }}><div style={{ fontSize: 20, marginBottom: 4 }}>🎨</div>No favorites yet - pick a color and save it</div>
                         : <>
-                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Drag to reorder · click swatch to edit</span>
                                 <button onClick={() => void commitFavs([])} style={{ fontSize: 10, color: "#ed4245", background: "none", border: "none", cursor: "pointer", outline: "none" }}>Clear all</button>
                             </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 200, overflowY: "auto" }}>
-                                {favs.map(hex => (
-                                    <div key={hex} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 5px 2px 3px", borderRadius: 5, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)" }}>
-                                        <BcrSwatch color={hex} size={14} onClick={() => { setPreview(hex); setSubTab("color"); }} title="Edit in Color tab" />
-                                        <span style={{ fontSize: 10, color: "#f0e6ff", fontFamily: "monospace", userSelect: "all" }}>{hex}</span>
-                                        <button onClick={() => void commitFavs(favs.filter(c => c !== hex))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 10, padding: 0, outline: "none", lineHeight: 1 }}>✕</button>
-                                    </div>
-                                ))}
-                            </div>
+                            <FavsReorderList favs={favs} commitFavs={commitFavs} setPreview={setPreview} setSubTab={setSubTab} />
                         </>
                     }
                 </div>
@@ -4244,7 +4372,7 @@ export default definePlugin({
             startAllRotators();
         }
 
-        onCloseHandler = () => { applyCloseStatus(); applyCloseClan(); };
+        onCloseHandler = () => { applyCloseStatus(); applyCloseClan(); applyCloseBanner(); };
         window.addEventListener("beforeunload", onCloseHandler);
         if (settings.store.stopOnInvisible) startInvisibleWatcher();
     },
