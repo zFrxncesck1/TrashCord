@@ -2,7 +2,7 @@ name: Sync fork with upstream (Equicord)
 
 on:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '15 00 * * *'
   workflow_dispatch:
 
 jobs:
