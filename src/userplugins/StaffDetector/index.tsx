@@ -152,7 +152,7 @@ const settings = definePluginSettings({
     },
     soundVolume: {
         type: OptionType.SLIDER,
-        default: 0.5,
+        default: 0.36,
         description: "Master volume for all StaffDetector sounds (0% - 100%).",
         markers: [0, 0.25, 0.5, 0.75, 1],
         stickToMarkers: false,
