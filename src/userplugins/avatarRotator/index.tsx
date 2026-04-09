@@ -46,7 +46,7 @@ const settings = definePluginSettings({
     enabled:            { type: OptionType.BOOLEAN, description: "Enable automatic avatar rotation",                                                                  default: false,    onChange: (v: boolean) => v ? startRotator(false) : stopRotator() },
     intervalSeconds:    { type: OptionType.NUMBER,  description: "Change interval in seconds (recommended min 60 - Discord rate-limits ~2 per 10 min)",              default: DEFAULT_S },
     random:             { type: OptionType.BOOLEAN, description: "Random order - no repeats until every avatar is shown once",                                        default: true },
-    showToast:          { type: OptionType.BOOLEAN, description: "Show toast notifications (errors included)",                                                        default: true },
+    showToast:          { type: OptionType.BOOLEAN, description: "Show toast notifications (errors included)",                                                        default: false },
     showButton:         { type: OptionType.BOOLEAN, description: "Show AvatarRotator button in the user area (bottom-left)",                                         default: true },
     excludedExtensions: { type: OptionType.STRING,  description: "Comma-separated extensions to skip during rotation (e.g. gif,avif)",                               default: "" },
 });
