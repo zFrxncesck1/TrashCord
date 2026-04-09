@@ -354,6 +354,12 @@ let voiceCheckInterval: ReturnType<typeof setInterval> | null = null;
 let lastVoiceGuildId: string | null = null;
 let cachedVoiceStateStore: any = null;
 let cachedChannelStore: any = null;
+let globalStopTimer: ReturnType<typeof setTimeout> | null = null;
+let globalStopEndTime: number | null = null;
+let isManualStop = false;
+let invisibleWatchInterval: ReturnType<typeof setInterval> | null = null;
+let wasInvisible = false;
+let cachedPresenceStore: any = null;
 
 async function applyCloseStatus(): Promise<void> {
     if (!settings.store.closeStatusEnabled) return;
@@ -921,12 +927,14 @@ function stopAllRotators() {
     stopAllNicks(); stopAllGuildPronouns();
     stopStatusTimer(); stopClanTimer();
     stopBioTimer(); stopPronounsTimer(); stopGlobalNickTimer();
-    stopGlobalTimer(); stopVoiceWatcher(); bcrStopRotator();
+    stopGlobalTimer(); stopVoiceWatcher(); bcrStopRotator(); arStopRotator();
 }
 
 function startAllRotators() {
     stopAllRotators();
     if (!pluginActive) return;
+    if (isManualStop || wasInvisible) return;
+    if (settings.store.avatarEnabled && arGetActive().length) arStartRotator(false);
     if (settings.store.clanEnabled) scheduleClanLoop();
     if (settings.store.globalSync) {
         globalTick(); scheduleGlobalLoop();
@@ -944,6 +952,69 @@ function startAllRotators() {
     }
     if (settings.store.voiceActivateEnabled) startVoiceWatcher();
     if (settings.store.bannerEnabled) bcrStartRotator(false);
+}
+
+function formatStopDuration(ms: number): string {
+    if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+    if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
+    return `${Math.round(ms / 3600000)}h`;
+}
+
+function doGlobalStop(durationMs: number | null) {
+    isManualStop = true;
+    stopAllRotators();
+    if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
+    if (durationMs !== null && durationMs > 0) {
+        globalStopEndTime = Date.now() + durationMs;
+        globalStopTimer = setTimeout(() => {
+            isManualStop = false; globalStopEndTime = null; globalStopTimer = null;
+            if (pluginActive && !wasInvisible) startAllRotators();
+            Toasts.show({ message: "All Rotators resumed (timer ended)", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+        }, durationMs);
+    } else {
+        globalStopEndTime = null;
+    }
+    Toasts.show({ message: durationMs ? `Rotators stopped for ${formatStopDuration(durationMs)}` : "All Rotators stopped", type: Toasts.Type.MESSAGE, id: Toasts.genId() });
+}
+
+function doGlobalResume() {
+    isManualStop = false;
+    if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
+    globalStopEndTime = null;
+    if (pluginActive) startAllRotators();
+    Toasts.show({ message: "All Rotators resumed", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+}
+
+function getMyCurrentStatus(): string {
+    try {
+        if (!cachedPresenceStore) cachedPresenceStore = findByProps("getStatus", "getActivities");
+        const user = UserStore.getCurrentUser();
+        if (!user) return "unknown";
+        return cachedPresenceStore?.getStatus?.(user.id) ?? "unknown";
+    } catch { return "unknown"; }
+}
+
+function startInvisibleWatcher() {
+    if (invisibleWatchInterval !== null) return;
+    wasInvisible = getMyCurrentStatus() === "invisible";
+    invisibleWatchInterval = setInterval(() => {
+        if (!pluginActive || !settings.store.stopOnInvisible) return;
+        const nowInvis = getMyCurrentStatus() === "invisible";
+        if (nowInvis && !wasInvisible) {
+            wasInvisible = true;
+            stopAllRotators();
+            Toasts.show({ message: "Invisible detected - Rotators paused", type: Toasts.Type.MESSAGE, id: Toasts.genId() });
+        } else if (!nowInvis && wasInvisible) {
+            wasInvisible = false;
+            if (!isManualStop && pluginActive) startAllRotators();
+            Toasts.show({ message: "Status visible - Rotators resumed", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+        }
+    }, 3000);
+}
+
+function stopInvisibleWatcher() {
+    if (invisibleWatchInterval) { clearInterval(invisibleWatchInterval); invisibleWatchInterval = null; }
+    wasInvisible = false;
 }
 
 function SettingsSep({ title, color = "#9c67ff" }: { title: string; color?: string }) {
@@ -1032,6 +1103,7 @@ const settings = definePluginSettings({
     showButton: { type: OptionType.BOOLEAN, default: true, description: "Show the Rotator Suite button in the user area (bottom-left)." },
     autoStart: { type: OptionType.BOOLEAN, default: true, description: "Auto-start all enabled rotators when Discord loads." },
     enableLogs: { type: OptionType.BOOLEAN, default: false, description: "Print rotator activity and errors to the console (F12)." },
+    stopOnInvisible: { type: OptionType.BOOLEAN, default: false, description: "Pause all rotators automatically when status is set to invisible." },
 });
 
 function injectCSS() {
@@ -1781,31 +1853,35 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
         const n = [...clanIds]; n[i] = v; clanIds = n; saveData(); setEditIdx(null); forceUpdate();
     }
 
-    const clanGuilds = React.useMemo(() => {
+    const allDiscordGuilds = React.useMemo(() => {
         try {
             const raw = Object.values(getGuildStore()?.getGuilds?.() ?? {}) as any[];
-            return raw
-                .map((g: any) => ({
-                    id: g.id as string,
-                    name: g.name as string,
-                    tag: (g.clan?.tag ?? g.clanTag ?? null) as string | null,
-                }))
-                .filter(g => {
-                    const store = getGuildStore()?.getGuild?.(g.id) ?? {};
-                    const feat = store.features ?? (getGuildStore()?.getGuilds?.() ?? {})[g.id]?.features;
-                    const hasFeat = feat
-                        ? (Array.isArray(feat) ? feat.includes("CLAN") : feat.has?.("CLAN"))
-                        : false;
-                    return g.tag || hasFeat;
-                });
+            return raw.map((g: any) => ({
+                id: g.id as string,
+                name: g.name as string,
+                tag: (g.clan?.tag ?? g.clanTag ?? null) as string | null,
+            }));
         } catch { return []; }
     }, [showBrowser, autoDetect]);
 
+    const clanGuilds = React.useMemo(() => {
+        return allDiscordGuilds.filter(g => {
+            if (g.tag) return true;
+            try {
+                const raw = (getGuildStore()?.getGuilds?.() ?? {})[g.id];
+                const feat = raw?.features;
+                if (!feat) return false;
+                return Array.isArray(feat) ? feat.includes("CLAN") : (feat.has?.("CLAN") ?? false);
+            } catch { return false; }
+        });
+    }, [allDiscordGuilds]);
+
     const browserGuilds = React.useMemo(() => {
-        if (!browserFilter.trim()) return clanGuilds;
+        const source = autoDetect ? allDiscordGuilds : clanGuilds;
+        if (!browserFilter.trim()) return source;
         const f = browserFilter.toLowerCase();
-        return clanGuilds.filter(g => g.name.toLowerCase().includes(f) || g.id.includes(f));
-    }, [clanGuilds, browserFilter]);
+        return source.filter(g => g.name.toLowerCase().includes(f) || g.id.includes(f));
+    }, [allDiscordGuilds, clanGuilds, browserFilter, autoDetect]);
 
     return (
         <div>
@@ -1842,11 +1918,11 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
             {autoDetect ? (
                 <div style={{ padding: "8px 10px", border: "1px solid rgba(66,165,245,.2)", borderRadius: 8, marginBottom: 8, background: "rgba(10,20,50,.6)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                        <span className="rs-hint" style={{ flex: 1 }}>Cycling <b style={{ color: C.clan }}>{clanGuilds.length}</b> servers with clan tag.</span>
+                        <span className="rs-hint" style={{ flex: 1 }}>Cycling <b style={{ color: C.clan }}>{allDiscordGuilds.length}</b> servers {clanGuilds.length > 0 && <span style={{ color: "#5a7a9a" }}>({clanGuilds.length} with clan tag)</span>}</span>
                         <TextInput placeholder="Filter..." value={browserFilter} onChange={setBrowserFilter} />
                     </div>
                     <div style={{ maxHeight: 200, overflowY: "auto" as const }}>
-                        {browserGuilds.length === 0 && <div className="rs-empty">No clan servers found.</div>}
+                        {browserGuilds.length === 0 && <div className="rs-empty">No servers found.</div>}
                         {browserGuilds.map(g => (
                             <div className="rs-item rs-item-compact" key={g.id} style={{ marginBottom: 2 }}>
                                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
@@ -1891,18 +1967,18 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                         style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 12px", borderRadius: 8, border: `1px solid ${showBrowser ? C.clan + "55" : "rgba(66,165,245,.2)"}`, background: showBrowser ? `${C.clan}14` : "rgba(10,20,50,.5)", color: showBrowser ? C.clan : "#5a7a9a", cursor: "pointer", fontSize: 11, fontWeight: 800, textAlign: "left" as const }}>
                         <span style={{ fontSize: 13 }}>{showBrowser ? "▾" : "▸"}</span>
                         Browse Clan Servers
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: `${C.clan}22`, color: C.clan, marginLeft: 4 }}>{clanGuilds.length} with tag</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: `${C.clan}22`, color: C.clan, marginLeft: 4 }}>{clanGuilds.length > 0 ? `${clanGuilds.length} with tag` : `${allDiscordGuilds.length} servers`}</span>
                         {!showBrowser && <span style={{ fontSize: 9, color: "#5a7a9a", fontWeight: 600, marginLeft: "auto" }}>hidden by default</span>}
                     </button>
 
                     {showBrowser && (
                         <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.clan}33`, background: "rgba(5,15,40,.7)" }}>
                             <div className="rs-hint" style={{ marginBottom: 6 }}>
-                                Only servers with a clan tag. <b style={{ color: C.clan }}>+</b> to add · <b style={{ color: ACT }}>✕</b> to remove
+                                {clanGuilds.length > 0 ? "Servers with a clan tag detected." : "No clan-tagged servers found - showing all your servers."} <b style={{ color: C.clan }}>+</b> to add · <b style={{ color: ACT }}>✕</b> to remove
                             </div>
                             <TextInput placeholder="Filter by name or ID..." value={browserFilter} onChange={setBrowserFilter} />
                             <div style={{ marginTop: 6, maxHeight: 220, overflowY: "auto" as const }}>
-                                {browserGuilds.length === 0 && <div className="rs-empty">No clan servers found.</div>}
+                                {browserGuilds.length === 0 && <div className="rs-empty">No servers match your filter.</div>}
                                 {browserGuilds.map(g => {
                                     const inList = clanIds.includes(g.id);
                                     return (
@@ -3446,6 +3522,94 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
 
 }
 
+function StopAllPanel({ forceUpdate }: { forceUpdate: () => void }) {
+    const [durVal, setDurVal] = React.useState("30");
+    const [durUnit, setDurUnit] = React.useState<"s" | "m" | "h">("m");
+    const [now, setNow] = React.useState(Date.now());
+    const stopped = isManualStop || wasInvisible;
+
+    React.useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    function toMs(): number {
+        const n = Math.max(1, parseFloat(durVal) || 1);
+        if (durUnit === "h") return n * 3600000;
+        if (durUnit === "m") return n * 60000;
+        return n * 1000;
+    }
+
+    function remaining(): string {
+        if (!globalStopEndTime) return "";
+        const diff = globalStopEndTime - now;
+        if (diff <= 0) return "";
+        const s = Math.ceil(diff / 1000);
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60); const rs = s % 60;
+        if (m < 60) return `${m}m ${rs}s`;
+        const h = Math.floor(m / 60); const rm = m % 60;
+        return `${h}h ${rm}m`;
+    }
+
+    const rem = remaining();
+    const invisPaused = wasInvisible && !isManualStop;
+
+    return (
+        <div style={{ marginTop: 10 }}>
+            <div className="rs-divider" style={{ margin: "8px 0" }} />
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".7px", color: "#e57373", marginBottom: 6 }}>Rotator Control</div>
+            {stopped && (
+                <div style={{ padding: "7px 11px", borderRadius: 8, background: "rgba(239,83,80,.1)", border: "1px solid rgba(239,83,80,.35)", marginBottom: 8, fontSize: 11, color: "#ef9a9a", lineHeight: 1.6 }}>
+                    {invisPaused
+                        ? "⛔ All rotators paused - invisible status detected. They will resume when you become visible."
+                        : rem
+                            ? `⏸ All rotators stopped - resuming in ${rem}.`
+                            : "⏸ All rotators manually stopped. Press Resume to restart."
+                    }
+                </div>
+            )}
+            {!stopped && (
+                <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" as const, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, color: "#9e9e9e" }}>Stop for:</span>
+                    <input type="number" min={1} value={durVal}
+                        onChange={e => setDurVal(e.target.value)}
+                        onFocus={e => e.target.select()}
+                        onKeyDown={e => e.stopPropagation()}
+                        style={{ width: 56, background: "rgba(10,0,30,.7)", border: "1px solid rgba(239,83,80,.35)", borderRadius: 5, color: "#f0eaff", fontSize: 12, padding: "3px 7px", outline: "none", textAlign: "center" }} />
+                    {(["s", "m", "h"] as const).map(u => (
+                        <button key={u} onClick={() => setDurUnit(u)}
+                            style={{ padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: "pointer", border: `1px solid ${durUnit === u ? "rgba(239,83,80,.6)" : "rgba(239,83,80,.25)"}`, background: durUnit === u ? "rgba(239,83,80,.18)" : "rgba(10,0,30,.6)", color: durUnit === u ? "#ef9a9a" : "#5a4a7a" }}>
+                            {u}
+                        </button>
+                    ))}
+                    <button onClick={() => { doGlobalStop(toMs()); forceUpdate(); }}
+                        style={{ padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", border: "1px solid rgba(239,83,80,.4)", background: "rgba(239,83,80,.15)", color: "#ef9a9a" }}>
+                        ⏹ Stop
+                    </button>
+                    <button onClick={() => { doGlobalStop(null); forceUpdate(); }}
+                        style={{ padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", border: "1px solid rgba(239,83,80,.25)", background: "rgba(239,83,80,.08)", color: "#ef9a9a88" }}>
+                        ⏹ Stop ∞
+                    </button>
+                </div>
+            )}
+            <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" as const }}>
+                {stopped && !invisPaused && (
+                    <button onClick={() => { doGlobalResume(); forceUpdate(); }}
+                        style={{ padding: "4px 14px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", border: "1px solid rgba(67,160,71,.5)", background: "rgba(67,160,71,.15)", color: "#81c784" }}>
+                        ▶ Resume Now
+                    </button>
+                )}
+                <Button color={Button.Colors.BRAND} onClick={() => { if (!isManualStop && !wasInvisible) { startAllRotators(); forceUpdate(); } }} className="rs-btn-sm"
+                    style={{ opacity: (isManualStop || wasInvisible) ? 0.4 : 1 }}>
+                    ↺ Restart All Rotators
+                </Button>
+                <span className="rs-hint">Use after changing interval values in other tabs.</span>
+            </div>
+        </div>
+    );
+}
+
 function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [importMsg, setImportMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
     const [confirmReset, setConfirmReset] = React.useState(false);
@@ -3541,6 +3705,8 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
         settings.store.globalNickEnabled && "Display Name",
         settings.store.nickEnabled && guilds.some(g => g.enabled) && "Server Nicks",
         guilds.some(g => g.guildPronounsEnabled && (g.guildPronouns?.length ?? 0) > 0) && "Server Pronouns",
+        settings.store.avatarEnabled && arGetActive().length > 0 && "Avatar",
+        settings.store.bannerEnabled && "ColorBanner",
     ].filter(Boolean) as string[];
 
     return (
@@ -3571,17 +3737,14 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
                     onChange={v => { settings.store.showButton = v; forceUpdate(); }} />
                 <PanelToggle label="Console Logs" description="Print all rotator activity and errors to the browser console (F12)" value={settings.store.enableLogs}
                     onChange={v => { settings.store.enableLogs = v; }} />
+                <PanelToggle label="Stop When Invisible" description="Automatically pause all rotators when your status is set to Invisible (resumes on visible)" value={settings.store.stopOnInvisible}
+                    onChange={v => { settings.store.stopOnInvisible = v; if (v) startInvisibleWatcher(); else stopInvisibleWatcher(); forceUpdate(); }} />
                 {activeLabels.length > 0 && (
                     <div style={{ fontSize: 11, color: "#9e9e9e", marginTop: 8 }}>
                         Active: <b style={{ color: C.enabled }}>{activeLabels.join(" · ")}</b>
                     </div>
                 )}
-                <div style={{ marginTop: 9, display: "flex", gap: 8, alignItems: "center" }}>
-                    <Button color={Button.Colors.BRAND} onClick={() => { startAllRotators(); forceUpdate(); }} className="rs-btn-sm">
-                        Restart All Rotators
-                    </Button>
-                    <span className="rs-hint">Use after changing interval values in other tabs.</span>
-                </div>
+                <StopAllPanel forceUpdate={forceUpdate} />
             </div>
 
             <div className="rs-data-card">
@@ -3919,7 +4082,17 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
             </ModalContent>
 
             <ModalFooter>
-                <div style={{ display: "flex", gap: 8, width: "100%", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, width: "100%", alignItems: "center", flexWrap: "wrap" as const }}>
+                    {(isManualStop || wasInvisible) && (
+                        <div style={{ width: "100%", padding: "5px 10px", borderRadius: 7, background: "rgba(239,83,80,.1)", border: "1px solid rgba(239,83,80,.3)", fontSize: 11, color: "#ef9a9a", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                            {wasInvisible && !isManualStop ? "⛔ PAUSED - Invisible status" : isManualStop && globalStopEndTime ? `⏸ STOPPED - Go to Data tab to resume` : "⏸ MANUALLY STOPPED - Go to Data tab to resume"}
+                        </div>
+                    )}
+                    {settings.store.stopOnInvisible && !wasInvisible && !isManualStop && (
+                        <div style={{ width: "100%", padding: "4px 10px", borderRadius: 7, background: "rgba(124,77,255,.07)", border: "1px solid rgba(124,77,255,.18)", fontSize: 10, color: "#9575cd" }}>
+                            👁 Stop-on-Invisible is active - rotators pause automatically when you go invisible.
+                        </div>
+                    )}
                     <div className="rs-footer-info">
                         {isGlobalSync
                             ? <>
@@ -4073,14 +4246,18 @@ export default definePlugin({
 
         onCloseHandler = () => { applyCloseStatus(); applyCloseClan(); };
         window.addEventListener("beforeunload", onCloseHandler);
+        if (settings.store.stopOnInvisible) startInvisibleWatcher();
     },
 
     stop() {
         pluginActive = false;
         lastGlobalNickApply = 0;
         cachedToken = null; cachedGuildStore = null; cachedVoiceStateStore = null; cachedChannelStore = null;
+        isManualStop = false; wasInvisible = false;
+        if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
+        globalStopEndTime = null; cachedPresenceStore = null;
+        stopInvisibleWatcher();
         stopAllRotators();
-        arStopRotator();
         arAvatars = []; arSeqIndex = 0; arShuffleQueue = [];
         bcrFavorites = []; bcrUsedFavs = []; bcrRandomBatch = []; bcrSeqBatch = [];
         bcrCachedHue = null; bcrGradientState = null; bcrMonoBaseHue = null;
