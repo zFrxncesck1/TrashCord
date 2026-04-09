@@ -338,6 +338,7 @@ let globalGuildPronouns: string[] = [];
 
 let cachedToken: any = null; let cachedGuildStore: any = null;
 let cachedClanGuilds: string[] = []; let lastClanFetch = 0;
+const domTagCache = new Map<string, string>();
 const nickTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const guildPronounsTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1844,21 +1845,29 @@ function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
     );
 }
 
-function scrapeClanTagsFromDOM(): Map<string, string> {
-    const map = new Map<string, string>();
+function updateDomTagCache(): void {
     try {
-        document.querySelectorAll<HTMLImageElement>("img.badge__10651").forEach(img => {
+        document.querySelectorAll<HTMLImageElement>('img[src*="/clan-badges/"]').forEach(img => {
             const m = img.src.match(/clan-badges\/(\d{17,20})\//);
             if (!m) return;
-            const guildId = m[1];
-            const container = img.closest("[aria-label]");
-            const ariaTag = container?.getAttribute("aria-label")?.match(/:\s*(.+)$/)?.[1]?.trim();
-            const tagEl = img.parentElement?.querySelector?.(".tagText__10651");
-            const tag = ariaTag || tagEl?.textContent?.trim();
-            if (tag) map.set(guildId, tag);
+            const id = m[1];
+            if (domTagCache.has(id)) return;
+            const labeled = img.closest('[aria-label]');
+            if (labeled) {
+                const al = labeled.getAttribute('aria-label') ?? '';
+                const am = al.match(/[:\uff1a]\s*(.+)$/);
+                if (am?.[1]?.trim()) { domTagCache.set(id, am[1].trim()); return; }
+            }
+            const par = img.parentElement;
+            if (!par) return;
+            for (const sp of Array.from(par.querySelectorAll('span'))) {
+                const t = sp.textContent?.trim() ?? '';
+                if (t && t.length >= 1 && t.length <= 16 && !sp.querySelector('img') && !sp.querySelector('span')) {
+                    domTagCache.set(id, t); return;
+                }
+            }
         });
     } catch {}
-    return map;
 }
 
 function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
@@ -1883,14 +1892,14 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
     }
 
     const allDiscordGuilds = React.useMemo(() => {
-        const domTags = scrapeClanTagsFromDOM();
+        updateDomTagCache();
         try {
             const raw = Object.values(getGuildStore()?.getGuilds?.() ?? {}) as any[];
-            return raw.map((g: any) => ({
-                id: g.id as string,
-                name: g.name as string,
-                tag: (g.clan?.tag ?? g.clanTag ?? domTags.get(g.id) ?? null) as string | null,
-            }));
+            return raw.map((g: any) => {
+                const storeTag = g.clan?.tag ?? g.clanTag ?? g.clan?.identity_tag ?? g.clan?.identityTag ?? null;
+                const tag = (storeTag ?? domTagCache.get(g.id) ?? null) as string | null;
+                return { id: g.id as string, name: g.name as string, tag };
+            });
         } catch { return []; }
     }, [showBrowser, autoDetect]);
 
@@ -4268,7 +4277,7 @@ function RSUserAreaButton() {
     if (!settings.store.showButton) return null;
     return (
         <UserAreaButton
-            tooltipText={active ? "Rotator Suite - running" : "Rotator Suite"}
+            tooltipText={active ? "Rotator Suite - [Running]" : "Rotator Suite"}
             icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
@@ -4382,6 +4391,7 @@ export default definePlugin({
         lastGlobalNickApply = 0;
         cachedToken = null; cachedGuildStore = null; cachedVoiceStateStore = null; cachedChannelStore = null;
         isManualStop = false; wasInvisible = false;
+        domTagCache.clear();
         if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
         globalStopEndTime = null; cachedPresenceStore = null;
         stopInvisibleWatcher();
