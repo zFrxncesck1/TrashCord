@@ -1079,7 +1079,7 @@ const settings = definePluginSettings({
     avatarEnabled: { type: OptionType.BOOLEAN, default: false, description: "Avatar rotator enabled (configure in Avatar tab)." },
     avatarIntervalSeconds: { type: OptionType.NUMBER, default: AR_DEFAULT_S, description: "Seconds between avatar changes (min 60 recommended - Discord rate-limits)." },
     avatarRandom: { type: OptionType.BOOLEAN, default: true, description: "Random avatar order - no repeats until all shown once." },
-    avatarShowToast: { type: OptionType.BOOLEAN, default: true, description: "Show toast notifications for avatar changes." },
+    avatarShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast notifications for avatar changes." },
     avatarExcludedExtensions: { type: OptionType.STRING, default: "", description: "Comma-separated extensions to skip during avatar rotation (e.g. gif,avif)." },
     _sBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Banner Color" color="#c084fc" /> },
     bannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Banner color rotator enabled (configure in Banner tab)." },
