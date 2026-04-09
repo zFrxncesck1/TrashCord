@@ -8,7 +8,7 @@ import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByPropsLazy, findStoreLazy } from "@webpack";
+import { findByCodeLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
     FluxDispatcher,
@@ -22,8 +22,7 @@ import {
 } from "@webpack/common";
 
 const SelectedChannelStore = findStoreLazy("SelectedChannelStore");
-const GuildRoleStore = findStoreLazy("GuildRoleStore");
-const PermCalc = findByPropsLazy("computePermissions", "canEveryoneRole");
+const computePermissions: (options: { user?: { id: string; } | string | null; context?: any; overwrites?: any; checkElevated?: boolean; }) => bigint = findByCodeLazy(".getCurrentUser()", ".computeLurkerPermissionsAllowList()");
 
 const logger = new Logger("StaffDetector");
 const currentChannelStaff = new Set<string>();
@@ -150,6 +149,13 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Play audio alert on staff join/leave.",
+    },
+    soundVolume: {
+        type: OptionType.SLIDER,
+        default: 0.5,
+        description: "Master volume for all StaffDetector sounds (0% - 100%).",
+        markers: [0, 0.25, 0.5, 0.75, 1],
+        stickToMarkers: false,
     },
     useCustomSounds: {
         type: OptionType.BOOLEAN,
@@ -296,73 +302,59 @@ const PERM_CHECKS: Array<[keyof typeof settings.store, bigint]> = [
     ["deafenMembersPermission", PermissionsBits.DEAFEN_MEMBERS],
 ];
 
-function safeRolePerms(role: any): bigint {
-    if (!role) return 0n;
-    const p = role.permissions_new ?? role.permissions;
-    if (p == null) return 0n;
-    try { return typeof p === "bigint" ? p : BigInt(p); } catch { return 0n; }
-}
-
-function getRolesMap(guildId: string): Record<string, any> {
-    try {
-        const snap = GuildRoleStore.getRolesSnapshot?.(guildId);
-        if (snap && typeof snap === "object" && !Array.isArray(snap)) return snap;
-    } catch { }
-    try {
-        const byId = GuildRoleStore.getRoles?.(guildId);
-        if (byId && typeof byId === "object" && !Array.isArray(byId)) return byId;
-    } catch { }
-    return GuildStore.getGuild(guildId)?.roles ?? {};
-}
-
-function computeMemberPerms(guildId: string, userId: string, memberRoles: string[]): bigint {
-    try {
-        const result = PermCalc?.computePermissions?.({ userId, guildId });
-        if (typeof result === "bigint") return result;
-    } catch { }
-
-    const rolesMap = getRolesMap(guildId);
-    let perms = safeRolePerms(rolesMap[guildId]);
-
-    for (let i = 0; i < memberRoles.length; i++) {
-        perms |= safeRolePerms(rolesMap[memberRoles[i]]);
+function computePermsFromRoles(guildId: string, roleIds: string[]): bigint {
+    const guild = GuildStore.getGuild(guildId);
+    if (!guild?.roles) return 0n;
+    let perms = 0n;
+    const toCheck = [guildId, ...roleIds];
+    for (let i = 0; i < toCheck.length; i++) {
+        const role = guild.roles[toCheck[i]];
+        if (!role) continue;
+        const p = role.permissions_new ?? role.permissions;
+        if (p == null) continue;
+        try { perms |= typeof p === "bigint" ? p : BigInt(p); } catch { }
     }
-
     return perms;
 }
 
-function isUserStaff(userId: string, guildId: string): boolean {
+function isUserStaff(userId: string, guildId: string, roles?: string[]): boolean {
     const guild = GuildStore.getGuild(guildId);
     if (!guild) return false;
     if (guild.ownerId === userId) return true;
 
-    const member = GuildMemberStore.getMember(guildId, userId);
-    if (!member) return false;
+    const memberRoles = roles
+        ?? GuildMemberStore.getMember(guildId, userId)?.roles
+        ?? null;
+    if (memberRoles === null) return false;
 
-    const perms = computeMemberPerms(guildId, userId, member.roles ?? []);
-    if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
+    let perms = computePermsFromRoles(guildId, memberRoles);
+
+    if (perms === 0n && memberRoles.length > 0) {
+        try {
+            const result = computePermissions({ user: { id: userId }, context: guild });
+            if (typeof result === "bigint" && result > 0n) perms = result;
+        } catch { }
+    }
+
+    if (settings.store.enableLogs)
+        logger.debug(`StaffDetector: ${userId} roles=[${memberRoles}] perms=0x${perms.toString(16)}`);
 
     for (let i = 0; i < PERM_CHECKS.length; i++) {
         const [key, perm] = PERM_CHECKS[i];
         if (settings.store[key] && (perms & perm) !== 0n) return true;
     }
-
     return false;
 }
 
-function requestMemberIfNeeded(guildId: string, userId: string): boolean {
-    const guild = GuildStore.getGuild(guildId);
-    if (guild?.ownerId === userId) return true;
-
-    const member = GuildMemberStore.getMember(guildId, userId);
-    if (member != null && Array.isArray(member.roles) && member.roles.length > 0) return true;
-
-    const key = `${guildId}:${userId}`;
-    if (!fetchedMembers.has(key)) {
-        fetchedMembers.add(key);
-        FluxDispatcher.dispatch({ type: "GUILD_MEMBERS_REQUEST", guildIds: [guildId], userIds: [userId] });
+function batchFetch(guildId: string, userIds: string[]): void {
+    const toFetch: string[] = [];
+    for (let i = 0; i < userIds.length; i++) {
+        const k = `${guildId}:${userIds[i]}`;
+        if (!fetchedMembers.has(k)) { fetchedMembers.add(k); toFetch.push(userIds[i]); }
     }
-    return false;
+    if (!toFetch.length) return;
+    FluxDispatcher.dispatch({ type: "GUILD_MEMBERS_REQUEST", guildIds: [guildId], userIds: toFetch });
+    if (settings.store.enableLogs) logger.debug(`StaffDetector: fetching ${toFetch.length} members`);
 }
 
 function getUsername(userId: string): string {
@@ -392,7 +384,7 @@ function notify(title: string, body: string, icon?: string): void {
 
 function playSrc(src: string): void {
     const audio = new Audio(src);
-    audio.volume = 1;
+    audio.volume = Math.max(0, Math.min(1, settings.store.soundVolume ?? 0.5));
     audio.play().catch(e => { if (settings.store.enableLogs) logger.error("StaffDetector: playSrc error:", e); });
 }
 
@@ -427,10 +419,8 @@ function notifyAlreadyStaff(staffIds: string[], channelId: string): void {
 function scanChannelStaff(channelId: string): void {
     const channel = ChannelStore.getChannel(channelId);
     if (!channel?.guild_id) return;
-
     const myUserId = UserStore.getCurrentUser()?.id;
     if (!myUserId) return;
-
     const voiceStates = VoiceStateStore.getVoiceStatesForChannel(channelId);
     if (!voiceStates) return;
 
@@ -439,6 +429,7 @@ function scanChannelStaff(channelId: string): void {
     pendingChecks.clear();
 
     const staffFound: string[] = [];
+    const toFetch: string[] = [];
     const userIds = Object.keys(voiceStates);
 
     for (let i = 0; i < userIds.length; i++) {
@@ -446,51 +437,61 @@ function scanChannelStaff(channelId: string): void {
         if (uid === myUserId) continue;
         if (!isServerAllowedForUser(guildId, uid) || !isUserTracked(uid)) continue;
 
-        if (requestMemberIfNeeded(guildId, uid)) {
-            if (isUserStaff(uid, guildId)) {
+        if (GuildStore.getGuild(guildId)?.ownerId === uid) {
+            currentChannelStaff.add(uid);
+            staffFound.push(uid);
+            continue;
+        }
+
+        const vsRoles: string[] | undefined = voiceStates[uid]?.member?.roles;
+        const cachedRoles: string[] | undefined = GuildMemberStore.getMember(guildId, uid)?.roles;
+        const roles = vsRoles ?? cachedRoles;
+
+        if (roles != null) {
+            if (isUserStaff(uid, guildId, roles)) {
                 currentChannelStaff.add(uid);
                 staffFound.push(uid);
             }
         } else {
             pendingChecks.set(uid, { guildId, channelId, isAlready: true });
+            toFetch.push(uid);
         }
     }
 
+    batchFetch(guildId, toFetch);
     if (staffFound.length) notifyAlreadyStaff(staffFound, channelId);
 
     if (pendingChecks.size > 0) {
         if (retryTimer !== null) clearTimeout(retryTimer);
         retryTimer = setTimeout(() => {
             retryTimer = null;
-            const currentChannelId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
-            if (currentChannelId !== channelId) return;
-
+            const vc: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
+            if (vc !== channelId) return;
             const lateFound: string[] = [];
             for (const [uid, pending] of pendingChecks) {
-                if (!pending.isAlready) continue;
-                const member = GuildMemberStore.getMember(pending.guildId, uid);
-                if (!member) continue;
+                const cached = GuildMemberStore.getMember(pending.guildId, uid);
+                if (!cached) continue;
                 pendingChecks.delete(uid);
-                if (isUserStaff(uid, pending.guildId) && !currentChannelStaff.has(uid)) {
+                if (isUserStaff(uid, pending.guildId, cached.roles) && !currentChannelStaff.has(uid)) {
                     currentChannelStaff.add(uid);
                     lateFound.push(uid);
                 }
             }
             if (lateFound.length) notifyAlreadyStaff(lateFound, channelId);
-        }, 3500);
+        }, 4000);
     }
 }
 
-function processPendingMember(userId: string, guildId: string): void {
+function processPendingMember(userId: string, guildId: string, roles: string[]): void {
     const pending = pendingChecks.get(userId);
     if (!pending || pending.guildId !== guildId) return;
     pendingChecks.delete(userId);
 
-    if (!isServerAllowedForUser(guildId, userId) || !isUserTracked(userId) || !isUserStaff(userId, guildId)) return;
+    if (!isServerAllowedForUser(guildId, userId) || !isUserTracked(userId)) return;
+    if (!isUserStaff(userId, guildId, roles)) return;
 
     const currentChannelId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
     if (!currentChannelId || currentChannelId !== pending.channelId) return;
-
     if (currentChannelStaff.has(userId)) return;
     currentChannelStaff.add(userId);
 
@@ -505,6 +506,29 @@ function processPendingMember(userId: string, guildId: string): void {
     }
 }
 
+let scannedChannelId: string | null = null;
+let scanDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function triggerScan(channelId: string): void {
+    if (scannedChannelId === channelId) return;
+    if (scanDebounce !== null) clearTimeout(scanDebounce);
+    scanDebounce = setTimeout(() => {
+        scanDebounce = null;
+        const vc: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
+        if (vc !== channelId) return;
+        scannedChannelId = channelId;
+        scanChannelStaff(channelId);
+    }, 500);
+}
+
+function resetState(clearScanned: boolean): void {
+    if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+    if (scanDebounce !== null) { clearTimeout(scanDebounce); scanDebounce = null; }
+    currentChannelStaff.clear();
+    pendingChecks.clear();
+    if (clearScanned) scannedChannelId = null;
+}
+
 export default definePlugin({
     name: "StaffDetector",
     description: "Alerts (toast/notification + sound) when staff join or leave your VC.",
@@ -516,22 +540,20 @@ export default definePlugin({
 
     start() {
         const vcId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
-        if (vcId) scanChannelStaff(vcId);
+        if (vcId) triggerScan(vcId);
     },
 
     flux: {
         VOICE_CHANNEL_SELECT({ channelId }: { channelId: string | null; }) {
-            if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
-            currentChannelStaff.clear();
-            pendingChecks.clear();
+            resetState(true);
             if (!channelId) return;
             const channel = ChannelStore.getChannel(channelId);
             if (!channel?.guild_id) return;
             if (settings.store.enableLogs) logger.debug(`StaffDetector: joined VC ${channelId}`);
-            scanChannelStaff(channelId);
+            triggerScan(channelId);
         },
 
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: Array<{ userId: string; channelId?: string; oldChannelId?: string; }>; }) {
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: Array<{ userId: string; channelId?: string; oldChannelId?: string; member?: any; }>; }) {
             const currentChannelId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
             if (!currentChannelId) return;
 
@@ -542,16 +564,31 @@ export default definePlugin({
             if (!myUserId) return;
 
             for (let i = 0; i < voiceStates.length; i++) {
-                const { userId, channelId, oldChannelId } = voiceStates[i];
-                if (userId === myUserId) continue;
+                const { userId, channelId, oldChannelId, member: vsMember } = voiceStates[i];
+
+                if (userId === myUserId) {
+                    if (channelId !== currentChannelId && oldChannelId === currentChannelId) {
+                        resetState(true);
+                    } else if (channelId === currentChannelId && scannedChannelId !== currentChannelId) {
+                        triggerScan(currentChannelId);
+                    }
+                    continue;
+                }
+
                 if (!isServerAllowedForUser(channel.guild_id, userId)) continue;
 
-                const entered = channelId === currentChannelId && oldChannelId !== currentChannelId;
+                const entered = channelId === currentChannelId
+                    && oldChannelId !== currentChannelId
+                    && !currentChannelStaff.has(userId)
+                    && !pendingChecks.has(userId);
 
                 if (entered) {
                     if (!isUserTracked(userId)) continue;
-                    if (requestMemberIfNeeded(channel.guild_id, userId)) {
-                        if (!isUserStaff(userId, channel.guild_id)) continue;
+                    const vsRoles: string[] | undefined = vsMember?.roles;
+                    const cachedRoles: string[] | undefined = GuildMemberStore.getMember(channel.guild_id, userId)?.roles;
+                    const roles = vsRoles ?? cachedRoles;
+                    if (roles != null) {
+                        if (!isUserStaff(userId, channel.guild_id, roles)) continue;
                         currentChannelStaff.add(userId);
                         const name = getUsername(userId);
                         const ctx = getChannelContext(currentChannelId);
@@ -560,6 +597,7 @@ export default definePlugin({
                         notify("🚨 StaffDetector:", `"${name}" joined - ${ctx}`, getAvatarUrl(userId));
                     } else {
                         pendingChecks.set(userId, { guildId: channel.guild_id, channelId: currentChannelId, isAlready: false });
+                        batchFetch(channel.guild_id, [userId]);
                     }
                     continue;
                 }
@@ -581,23 +619,25 @@ export default definePlugin({
             }
         },
 
-        GUILD_MEMBERS_CHUNK({ guildId, members }: { guildId: string; members: Array<{ user: { id: string; }; }>; }) {
+        GUILD_MEMBERS_CHUNK({ guildId, members }: { guildId: string; members: Array<any>; }) {
             if (!members?.length) return;
             for (let i = 0; i < members.length; i++) {
-                const uid = members[i]?.user?.id;
-                if (uid) processPendingMember(uid, guildId);
+                const m = members[i];
+                const uid = m?.user?.id ?? m?.userId;
+                const roles: string[] = Array.isArray(m?.roles) ? m.roles : [];
+                if (uid) processPendingMember(uid, guildId, roles);
             }
         },
 
-        GUILD_MEMBER_UPDATE({ guildId, user }: { guildId: string; user: { id: string; }; }) {
-            if (user?.id) processPendingMember(user.id, guildId);
+        GUILD_MEMBER_UPDATE({ guildId, user, roles }: { guildId: string; user: { id: string; }; roles?: string[]; }) {
+            if (!user?.id) return;
+            const memberRoles = roles ?? GuildMemberStore.getMember(guildId, user.id)?.roles ?? [];
+            processPendingMember(user.id, guildId, memberRoles);
         },
     },
 
     stop() {
-        if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
-        currentChannelStaff.clear();
-        pendingChecks.clear();
+        resetState(true);
         fetchedMembers.clear();
     },
 });
