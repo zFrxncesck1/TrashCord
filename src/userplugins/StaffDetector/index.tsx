@@ -8,9 +8,10 @@ import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { findStoreLazy } from "@webpack";
+import { findByPropsLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
+    FluxDispatcher,
     GuildMemberStore,
     GuildStore,
     PermissionsBits,
@@ -21,8 +22,20 @@ import {
 } from "@webpack/common";
 
 const SelectedChannelStore = findStoreLazy("SelectedChannelStore");
+const GuildRoleStore = findStoreLazy("GuildRoleStore");
+const PermCalc = findByPropsLazy("computePermissions", "canEveryoneRole");
+
 const logger = new Logger("StaffDetector");
 const currentChannelStaff = new Set<string>();
+
+interface PendingCheck {
+    guildId: string;
+    channelId: string;
+    isAlready: boolean;
+}
+const pendingChecks = new Map<string, PendingCheck>();
+const fetchedMembers = new Set<string>();
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 const DEFAULT_SOUND_URLS = {
     join: "https://github.com/zFrxncesck1/zFrxncesck1/raw/refs/heads/main/host/sounds/join.wav",
@@ -67,8 +80,7 @@ function AudioUploadButton({ label, dataKey }: { label: string; dataKey: "custom
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
-                const dataUri = reader.result as string;
-                (settings.store as any)[dataKey] = dataUri;
+                (settings.store as any)[dataKey] = reader.result as string;
                 (settings.store as any)[dataKey + "Name"] = file.name;
                 setFilename(file.name);
             };
@@ -87,21 +99,14 @@ function AudioUploadButton({ label, dataKey }: { label: string; dataKey: "custom
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
             <button
                 onClick={handleClick}
-                style={{
-                    padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.sounds}66`,
-                    background: `${C.sounds}18`, color: C.sounds, fontSize: 12, fontWeight: 700,
-                    cursor: "pointer",
-                }}
+                style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.sounds}66`, background: `${C.sounds}18`, color: C.sounds, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
             >
                 {label}
             </button>
             {filename
                 ? <>
                     <span style={{ fontSize: 11, color: "#9e9e9e", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</span>
-                    <button
-                        onClick={handleClear}
-                        style={{ background: "none", border: "none", color: "#757575", cursor: "pointer", fontSize: 13, padding: "0 4px", lineHeight: 1 }}
-                    >✕</button>
+                    <button onClick={handleClear} style={{ background: "none", border: "none", color: "#757575", cursor: "pointer", fontSize: 13, padding: "0 4px", lineHeight: 1 }}>✕</button>
                 </>
                 : <span style={{ fontSize: 11, color: "#5a4a6a" }}>No file uploaded</span>
             }
@@ -151,46 +156,24 @@ const settings = definePluginSettings({
         default: false,
         description: "OFF - built-in WAV. ON - use uploaded file or URL below (uploaded file takes priority over URL).",
     },
-
-    customJoinSoundData: {
-        type: OptionType.STRING,
-        default: "",
-        description: "",
-        hidden: true,
-    },
-    customJoinSoundDataName: {
-        type: OptionType.STRING,
-        default: "",
-        description: "",
-        hidden: true,
-    },
+    customJoinSoundData: { type: OptionType.STRING, default: "", description: "", hidden: true },
+    customJoinSoundDataName: { type: OptionType.STRING, default: "", description: "", hidden: true },
     customJoinSound: {
         type: OptionType.STRING,
         default: "",
-        description: "JOIN fallback URL (https://...) — used only if no file is uploaded above. Empty = built-in custom MP3.",
+        description: "JOIN fallback URL (https://...) - used only if no file is uploaded above. Empty = built-in custom MP3.",
     },
     customJoinUpload: {
         type: OptionType.COMPONENT,
         description: "Upload JOIN sound (replaces previous upload).",
         component: () => <AudioUploadButton label="Upload JOIN Sound" dataKey="customJoinSoundData" />,
     },
-
-    customLeaveSoundData: {
-        type: OptionType.STRING,
-        default: "",
-        description: "",
-        hidden: true,
-    },
-    customLeaveSoundDataName: {
-        type: OptionType.STRING,
-        default: "",
-        description: "",
-        hidden: true,
-    },
+    customLeaveSoundData: { type: OptionType.STRING, default: "", description: "", hidden: true },
+    customLeaveSoundDataName: { type: OptionType.STRING, default: "", description: "", hidden: true },
     customLeaveSound: {
         type: OptionType.STRING,
         default: "",
-        description: "LEAVE fallback URL (https://...) — used only if no file is uploaded above. Empty = built-in custom MP3.",
+        description: "LEAVE fallback URL (https://...) - used only if no file is uploaded above. Empty = built-in custom MP3.",
     },
     customLeaveUpload: {
         type: OptionType.COMPONENT,
@@ -220,7 +203,7 @@ const settings = definePluginSettings({
     serverExcludeIds: {
         type: OptionType.STRING,
         default: "",
-        description: "Blocklist - never alert in these guild IDs. Accepts one or more IDs separated by comma, space, or dash. Overridden by User Include list.",
+        description: "Blocklist - never alert in these guild IDs. Overridden by User Include list. Accepts one or more IDs separated by comma, space, or dash.",
     },
 
     userHeader: {
@@ -231,7 +214,7 @@ const settings = definePluginSettings({
     userIncludeIds: {
         type: OptionType.STRING,
         default: "",
-        description: "Track ONLY these user IDs (empty = all with matching perms). Overrides server filter — these users are always tracked regardless of server exclude/include. Accepts one or more IDs separated by comma, space, or dash.",
+        description: "Track ONLY these user IDs (empty = all with matching perms). Overrides server filter. Accepts one or more IDs separated by comma, space, or dash.",
     },
     userExcludeIds: {
         type: OptionType.STRING,
@@ -290,33 +273,12 @@ function isServerAllowedForUser(guildId: string, userId: string): boolean {
 }
 
 function isUserTracked(userId: string): boolean {
+    const user = UserStore.getUser(userId);
+    if (user?.bot) return false;
     const inc = parseIds(settings.store.userIncludeIds);
     if (inc.length && !inc.includes(userId)) return false;
     const exc = parseIds(settings.store.userExcludeIds);
     return !exc.length || !exc.includes(userId);
-}
-
-function memberHasPerm(guildId: string, userId: string, perm: bigint): boolean {
-    const guild = GuildStore.getGuild(guildId);
-    if (!guild) return false;
-    if (guild.ownerId === userId) return true;
-    const member = GuildMemberStore.getMember(guildId, userId);
-    if (!member?.roles) return false;
-    const roles = member.roles;
-    for (let i = 0; i < roles.length; i++) {
-        const role = guild.roles[roles[i]];
-        if (!role) continue;
-        const perms = BigInt(role.permissions);
-        if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
-        if ((perms & perm) !== 0n) return true;
-    }
-    const everyoneRole = guild.roles[guildId];
-    if (everyoneRole) {
-        const perms = BigInt(everyoneRole.permissions);
-        if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
-        if ((perms & perm) !== 0n) return true;
-    }
-    return false;
 }
 
 const PERM_CHECKS: Array<[keyof typeof settings.store, bigint]> = [
@@ -334,13 +296,71 @@ const PERM_CHECKS: Array<[keyof typeof settings.store, bigint]> = [
     ["deafenMembersPermission", PermissionsBits.DEAFEN_MEMBERS],
 ];
 
+function safeRolePerms(role: any): bigint {
+    if (!role) return 0n;
+    const p = role.permissions_new ?? role.permissions;
+    if (p == null) return 0n;
+    try { return typeof p === "bigint" ? p : BigInt(p); } catch { return 0n; }
+}
+
+function getRolesMap(guildId: string): Record<string, any> {
+    try {
+        const snap = GuildRoleStore.getRolesSnapshot?.(guildId);
+        if (snap && typeof snap === "object" && !Array.isArray(snap)) return snap;
+    } catch { }
+    try {
+        const byId = GuildRoleStore.getRoles?.(guildId);
+        if (byId && typeof byId === "object" && !Array.isArray(byId)) return byId;
+    } catch { }
+    return GuildStore.getGuild(guildId)?.roles ?? {};
+}
+
+function computeMemberPerms(guildId: string, userId: string, memberRoles: string[]): bigint {
+    try {
+        const result = PermCalc?.computePermissions?.({ userId, guildId });
+        if (typeof result === "bigint") return result;
+    } catch { }
+
+    const rolesMap = getRolesMap(guildId);
+    let perms = safeRolePerms(rolesMap[guildId]);
+
+    for (let i = 0; i < memberRoles.length; i++) {
+        perms |= safeRolePerms(rolesMap[memberRoles[i]]);
+    }
+
+    return perms;
+}
+
 function isUserStaff(userId: string, guildId: string): boolean {
     const guild = GuildStore.getGuild(guildId);
     if (!guild) return false;
     if (guild.ownerId === userId) return true;
+
+    const member = GuildMemberStore.getMember(guildId, userId);
+    if (!member) return false;
+
+    const perms = computeMemberPerms(guildId, userId, member.roles ?? []);
+    if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
+
     for (let i = 0; i < PERM_CHECKS.length; i++) {
         const [key, perm] = PERM_CHECKS[i];
-        if (settings.store[key] && memberHasPerm(guildId, userId, perm)) return true;
+        if (settings.store[key] && (perms & perm) !== 0n) return true;
+    }
+
+    return false;
+}
+
+function requestMemberIfNeeded(guildId: string, userId: string): boolean {
+    const guild = GuildStore.getGuild(guildId);
+    if (guild?.ownerId === userId) return true;
+
+    const member = GuildMemberStore.getMember(guildId, userId);
+    if (member != null && Array.isArray(member.roles) && member.roles.length > 0) return true;
+
+    const key = `${guildId}:${userId}`;
+    if (!fetchedMembers.has(key)) {
+        fetchedMembers.add(key);
+        FluxDispatcher.dispatch({ type: "GUILD_MEMBERS_REQUEST", guildIds: [guildId], userIds: [userId] });
     }
     return false;
 }
@@ -360,8 +380,7 @@ function getChannelContext(channelId: string): string {
     if (!channel) return "";
     const guild = channel.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
     if (channel.name && guild?.name) return `#${channel.name} - ${guild.name}`;
-    if (channel.name) return `#${channel.name}`;
-    return "";
+    return channel.name ? `#${channel.name}` : "";
 }
 
 function notify(title: string, body: string, icon?: string): void {
@@ -374,16 +393,14 @@ function notify(title: string, body: string, icon?: string): void {
 function playSrc(src: string): void {
     const audio = new Audio(src);
     audio.volume = 1;
-    audio.play().catch(e => {
-        if (settings.store.enableLogs) logger.error("StaffDetector: playSrc error:", e);
-    });
+    audio.play().catch(e => { if (settings.store.enableLogs) logger.error("StaffDetector: playSrc error:", e); });
 }
 
 function playStaffSound(isJoin: boolean): void {
     if (!settings.store.enableSounds) return;
     if (settings.store.useCustomSounds) {
-        const dataUri = isJoin ? settings.store.customJoinSoundData : settings.store.customLeaveSoundData;
-        if (dataUri) { playSrc(dataUri); return; }
+        const data = isJoin ? settings.store.customJoinSoundData : settings.store.customLeaveSoundData;
+        if (data) { playSrc(data); return; }
         const url = (isJoin ? settings.store.customJoinSound : settings.store.customLeaveSound)?.trim();
         if (url) { playSrc(url); return; }
         playSrc(isJoin ? CUSTOM_DEFAULT_URLS.join : CUSTOM_DEFAULT_URLS.leave);
@@ -392,7 +409,22 @@ function playStaffSound(isJoin: boolean): void {
     playSrc(isJoin ? DEFAULT_SOUND_URLS.join : DEFAULT_SOUND_URLS.leave);
 }
 
-function scanChannelStaff(channelId: string, isInit: boolean): void {
+function notifyAlreadyStaff(staffIds: string[], channelId: string): void {
+    if (!settings.store.notifyAlreadyInVc || !staffIds.length) return;
+    const ctx = getChannelContext(channelId);
+    playStaffSound(true);
+    if (staffIds.length === 1) {
+        const name = getUsername(staffIds[0]);
+        if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" already in VC - ${ctx}`);
+        notify("⚠️ StaffDetector:", `"${name}" already here - ${ctx}`, getAvatarUrl(staffIds[0]));
+    } else {
+        const names = staffIds.map(id => `"${getUsername(id)}"`).join(", ");
+        if (settings.store.enableLogs) logger.info(`StaffDetector: ${staffIds.length} staff already in VC - ${ctx}`);
+        notify("⚠️ StaffDetector:", `${staffIds.length} staff: ${names} - ${ctx}`, getAvatarUrl(staffIds[0]));
+    }
+}
+
+function scanChannelStaff(channelId: string): void {
     const channel = ChannelStore.getChannel(channelId);
     if (!channel?.guild_id) return;
 
@@ -402,33 +434,74 @@ function scanChannelStaff(channelId: string, isInit: boolean): void {
     const voiceStates = VoiceStateStore.getVoiceStatesForChannel(channelId);
     if (!voiceStates) return;
 
-    const userIds = Object.keys(voiceStates);
-    if (!userIds.length) return;
+    const guildId = channel.guild_id;
+    currentChannelStaff.clear();
+    pendingChecks.clear();
 
-    if (isInit) {
-        currentChannelStaff.clear();
-        const staffFound: string[] = [];
-        for (let i = 0; i < userIds.length; i++) {
-            const uid = userIds[i];
-            if (uid === myUserId) continue;
-            if (!isServerAllowedForUser(channel.guild_id, uid)) continue;
-            if (isUserStaff(uid, channel.guild_id) && isUserTracked(uid)) {
+    const staffFound: string[] = [];
+    const userIds = Object.keys(voiceStates);
+
+    for (let i = 0; i < userIds.length; i++) {
+        const uid = userIds[i];
+        if (uid === myUserId) continue;
+        if (!isServerAllowedForUser(guildId, uid) || !isUserTracked(uid)) continue;
+
+        if (requestMemberIfNeeded(guildId, uid)) {
+            if (isUserStaff(uid, guildId)) {
                 currentChannelStaff.add(uid);
                 staffFound.push(uid);
             }
-        }
-        if (!staffFound.length || !settings.store.notifyAlreadyInVc) return;
-        const ctx = getChannelContext(channelId);
-        playStaffSound(true);
-        if (staffFound.length === 1) {
-            const name = getUsername(staffFound[0]);
-            if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" already in VC - ${ctx}`);
-            notify("⚠️ StaffDetector:", `"${name}" already here - ${ctx}`, getAvatarUrl(staffFound[0]));
         } else {
-            const names = staffFound.map(id => `"${getUsername(id)}"`).join(", ");
-            if (settings.store.enableLogs) logger.info(`StaffDetector: ${staffFound.length} staff already in VC - ${ctx}`);
-            notify("⚠️ StaffDetector:", `${staffFound.length} staff: ${names} - ${ctx}`, getAvatarUrl(staffFound[0]));
+            pendingChecks.set(uid, { guildId, channelId, isAlready: true });
         }
+    }
+
+    if (staffFound.length) notifyAlreadyStaff(staffFound, channelId);
+
+    if (pendingChecks.size > 0) {
+        if (retryTimer !== null) clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => {
+            retryTimer = null;
+            const currentChannelId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
+            if (currentChannelId !== channelId) return;
+
+            const lateFound: string[] = [];
+            for (const [uid, pending] of pendingChecks) {
+                if (!pending.isAlready) continue;
+                const member = GuildMemberStore.getMember(pending.guildId, uid);
+                if (!member) continue;
+                pendingChecks.delete(uid);
+                if (isUserStaff(uid, pending.guildId) && !currentChannelStaff.has(uid)) {
+                    currentChannelStaff.add(uid);
+                    lateFound.push(uid);
+                }
+            }
+            if (lateFound.length) notifyAlreadyStaff(lateFound, channelId);
+        }, 3500);
+    }
+}
+
+function processPendingMember(userId: string, guildId: string): void {
+    const pending = pendingChecks.get(userId);
+    if (!pending || pending.guildId !== guildId) return;
+    pendingChecks.delete(userId);
+
+    if (!isServerAllowedForUser(guildId, userId) || !isUserTracked(userId) || !isUserStaff(userId, guildId)) return;
+
+    const currentChannelId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
+    if (!currentChannelId || currentChannelId !== pending.channelId) return;
+
+    if (currentChannelStaff.has(userId)) return;
+    currentChannelStaff.add(userId);
+
+    if (pending.isAlready) {
+        notifyAlreadyStaff([userId], pending.channelId);
+    } else {
+        const name = getUsername(userId);
+        const ctx = getChannelContext(pending.channelId);
+        if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" joined - ${ctx}`);
+        playStaffSound(true);
+        notify("🚨 StaffDetector:", `"${name}" joined - ${ctx}`, getAvatarUrl(userId));
     }
 }
 
@@ -443,17 +516,19 @@ export default definePlugin({
 
     start() {
         const vcId: string | null = SelectedChannelStore.getVoiceChannelId?.() ?? null;
-        if (vcId) scanChannelStaff(vcId, true);
+        if (vcId) scanChannelStaff(vcId);
     },
 
     flux: {
         VOICE_CHANNEL_SELECT({ channelId }: { channelId: string | null; }) {
+            if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
             currentChannelStaff.clear();
+            pendingChecks.clear();
             if (!channelId) return;
             const channel = ChannelStore.getChannel(channelId);
             if (!channel?.guild_id) return;
             if (settings.store.enableLogs) logger.debug(`StaffDetector: joined VC ${channelId}`);
-            scanChannelStaff(channelId, true);
+            scanChannelStaff(channelId);
         },
 
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: Array<{ userId: string; channelId?: string; oldChannelId?: string; }>; }) {
@@ -474,32 +549,55 @@ export default definePlugin({
                 const entered = channelId === currentChannelId && oldChannelId !== currentChannelId;
 
                 if (entered) {
-                    if (!isUserStaff(userId, channel.guild_id) || !isUserTracked(userId)) continue;
-                    currentChannelStaff.add(userId);
-                    const name = getUsername(userId);
-                    const ctx = getChannelContext(currentChannelId);
-                    if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" joined - ${ctx}`);
-                    playStaffSound(true);
-                    notify("🚨 StaffDetector:", `"${name}" joined - ${ctx}`, getAvatarUrl(userId));
+                    if (!isUserTracked(userId)) continue;
+                    if (requestMemberIfNeeded(channel.guild_id, userId)) {
+                        if (!isUserStaff(userId, channel.guild_id)) continue;
+                        currentChannelStaff.add(userId);
+                        const name = getUsername(userId);
+                        const ctx = getChannelContext(currentChannelId);
+                        if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" joined - ${ctx}`);
+                        playStaffSound(true);
+                        notify("🚨 StaffDetector:", `"${name}" joined - ${ctx}`, getAvatarUrl(userId));
+                    } else {
+                        pendingChecks.set(userId, { guildId: channel.guild_id, channelId: currentChannelId, isAlready: false });
+                    }
                     continue;
                 }
 
                 const left = oldChannelId === currentChannelId && channelId !== currentChannelId;
-                if (left && currentChannelStaff.has(userId)) {
-                    currentChannelStaff.delete(userId);
-                    const name = getUsername(userId);
-                    const ctx = getChannelContext(currentChannelId);
-                    const remaining = currentChannelStaff.size;
-                    const suffix = remaining > 0 ? ` - ${remaining} staff remaining` : " - No staff remaining";
-                    if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" left - ${ctx} (${remaining} remaining)`);
-                    playStaffSound(false);
-                    notify("✅ StaffDetector:", `"${name}" left - ${ctx}${suffix}`, getAvatarUrl(userId));
+                if (left) {
+                    pendingChecks.delete(userId);
+                    if (currentChannelStaff.has(userId)) {
+                        currentChannelStaff.delete(userId);
+                        const name = getUsername(userId);
+                        const ctx = getChannelContext(currentChannelId);
+                        const remaining = currentChannelStaff.size;
+                        const suffix = remaining > 0 ? ` - ${remaining} staff remaining` : " - No staff remaining";
+                        if (settings.store.enableLogs) logger.info(`StaffDetector: "${name}" left - ${ctx} (${remaining} remaining)`);
+                        playStaffSound(false);
+                        notify("✅ StaffDetector:", `"${name}" left - ${ctx}${suffix}`, getAvatarUrl(userId));
+                    }
                 }
             }
+        },
+
+        GUILD_MEMBERS_CHUNK({ guildId, members }: { guildId: string; members: Array<{ user: { id: string; }; }>; }) {
+            if (!members?.length) return;
+            for (let i = 0; i < members.length; i++) {
+                const uid = members[i]?.user?.id;
+                if (uid) processPendingMember(uid, guildId);
+            }
+        },
+
+        GUILD_MEMBER_UPDATE({ guildId, user }: { guildId: string; user: { id: string; }; }) {
+            if (user?.id) processPendingMember(user.id, guildId);
         },
     },
 
     stop() {
+        if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
         currentChannelStaff.clear();
+        pendingChecks.clear();
+        fetchedMembers.clear();
     },
 });
