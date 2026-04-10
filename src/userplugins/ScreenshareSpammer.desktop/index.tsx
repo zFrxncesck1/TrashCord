@@ -23,30 +23,21 @@ const desktopSources = findByCodeLazy("desktop sources");
 
 let interval:    ReturnType<typeof setInterval> | null = null;
 let keyListener: ((e: KeyboardEvent) => void)  | null = null;
-let observer:    MutationObserver              | null = null;
+let styleEl:     HTMLStyleElement              | null = null;
 let on  = false;
 let src: any = null;
 let uid = "";
 
-let rafPending = false;
-function removeActivityPanels() {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(() => {
-        rafPending = false;
-        document.querySelectorAll('[class*="activityPanel"]').forEach(el => el.remove());
-    });
+function injectStyle() {
+    if (styleEl) return;
+    styleEl = document.createElement("style");
+    styleEl.textContent = '[class*="activityPanel"],.vc-whos-watching-screenshare-panel{display:none!important}';
+    document.head.appendChild(styleEl);
 }
 
-function startObserver() {
-    removeActivityPanels();
-    observer = new MutationObserver(removeActivityPanels);
-    observer.observe(document.body, { childList: true, subtree: true });
-}
-
-function stopObserver() {
-    observer?.disconnect();
-    observer = null;
+function removeStyle() {
+    styleEl?.remove();
+    styleEl = null;
 }
 
 function streamKey(guildId: string | null | undefined, channelId: string): string {
@@ -86,7 +77,7 @@ function stopSpam() {
     if (on) { forceClose(); on = false; }
     src = null;
     uid = "";
-    stopObserver();
+    removeStyle();
     Toasts.show({ message: "⏹ ScreenshareSpammer - Stopped", type: Toasts.Type.SUCCESS, id: Toasts.genId(), options: { duration: 1500 } });
 }
 
@@ -99,7 +90,7 @@ async function startSpam() {
         if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === "S") { e.preventDefault(); stopSpam(); }
     };
     document.addEventListener("keydown", keyListener);
-    startObserver();
+    injectStyle();
     Toasts.show({ message: "📡 Spamming Started — Ctrl+Shift+S to Stop", type: Toasts.Type.MESSAGE, id: "ss-spam", options: { duration: 2500 } });
     interval = setInterval(tick, settings.store.intervalMs);
 }
