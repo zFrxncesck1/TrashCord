@@ -3,7 +3,7 @@ import definePlugin from "@utils/types";
 import { Forms, Button, React } from "@webpack/common";
 
 const SCAM_LIST_URL = "https://raw.githubusercontent.com/Discord-AntiScam/scam-links/refs/heads/main/list.txt";
-const UPDATE_INTERVAL = 3_600_000;
+const UPDATE_INTERVAL = 43_200_000;
 
 let scamDomains: Set<string> = new Set();
 let intervalId: ReturnType<typeof setInterval> | null = null;
