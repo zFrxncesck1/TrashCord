@@ -83,8 +83,13 @@ function clampPan(wr: HTMLElement, s: ZoomState) {
     s.panY = clamp(s.panY, -ey, ey);
 }
 
+function isNoMirrorActive(): boolean {
+    return !!document.getElementById("no-mirrored-camera-fix");
+}
+
 function shouldMirror(vid: HTMLElement): boolean {
     if (settings.store.forceMirror) return true;
+    if (isNoMirrorActive()) return false;
     return [...vid.classList].some(c => c.startsWith("mirror"));
 }
 
