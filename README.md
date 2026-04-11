@@ -13,7 +13,7 @@ No censorship, no arbitrary rules: every plugin is welcome, every idea takes sha
 ### Included Plugins
 
 All Equicord plugins plus custom ones made for TrashCord.  
-Check out the full list in the [`src/plugins`](./src/plugins) folder and the upcoming [`PLUGINS.md`](./PLUGINS.md).
+Check out the full list in the [`src/plugins`](./src/plugins), [`src/equicordplugins`](./src/equicordplugins) and [`src/userplugins`](./src/userplugins) folders.
 
 ---
 
