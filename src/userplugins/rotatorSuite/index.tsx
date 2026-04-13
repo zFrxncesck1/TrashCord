@@ -1155,8 +1155,8 @@ function injectCSS() {
 .rs-card{border-radius:9px;padding:9px 12px;margin-bottom:6px;border:1.5px solid rgba(124,77,255,.25);background:rgba(20,5,50,.55)}
 .rs-card-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .rs-card-left{display:flex;align-items:center;gap:7px;min-width:0;flex:1}
-.rs-server-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e8d5ff}
-.rs-server-id{font-size:10px;color:#757575;flex-shrink:0}
+.rs-server-name{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e8d5ff;max-width:100%}
+.rs-server-id{display:none}
 .rs-badge{font-size:10px;padding:1px 7px;border-radius:8px;font-weight:700;flex-shrink:0;white-space:nowrap}
 .rs-actions{display:flex;gap:5px;align-items:center;flex-shrink:0}
 .rs-manual-add{border:2px dashed rgba(124,77,255,.25);border-radius:8px;padding:9px;margin:6px 0}
@@ -1668,8 +1668,30 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
             <TextInput value={draft} onChange={setDraft}
                 placeholder="Status text... or Discord emoji <:name:id> + text"
                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); add(); } }} />
-            <div className="rs-hint" style={{ marginBottom: 4 }}>
-                Prefix with <b>eval </b> for dynamic JS - e.g. <b>eval new Date().toLocaleTimeString()</b> · clock emoji: <b>eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][(new Date()).getHours()%12]</b>
+            <div style={{ margin: "4px 0 6px", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,167,38,.2)", background: "rgba(255,167,38,.05)", userSelect: "text" as const }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: "#faa61a", marginBottom: 4, letterSpacing: ".5px", textTransform: "uppercase" as const }}>
+                    ⚡ eval prefix - dynamic JS
+                </div>
+                <div style={{ fontSize: 10, color: "#9e9e9e", marginBottom: 5 }}>
+                    Prefix any status with <span style={{ fontFamily: "monospace", background: "rgba(255,167,38,.15)", padding: "1px 5px", borderRadius: 3, color: "#faa61a", userSelect: "all" as const }}>eval </span> to run JS live. Click a snippet to insert:
+                </div>
+                {([
+                    ["🕐 Clock", "eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][(new Date()).getHours()%12]"],
+                    ["🕑 Time", "eval new Date().toLocaleTimeString()"],
+                    ["📅 Date", "eval new Date().toLocaleDateString()"],
+                    ["📅🕑 DateTime", "eval new Date().toLocaleString()"],
+                    ["🕐 Hour", "eval new Date().getHours()+':00'"],
+                ] as [string, string][]).map(([label, snippet]) => (
+                    <button key={label}
+                        title={snippet}
+                        onClick={() => setDraft(snippet)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, margin: "2px 3px 2px 0", padding: "2px 8px", borderRadius: 5, border: "1px solid rgba(255,167,38,.35)", background: "rgba(255,167,38,.12)", color: "#faa61a", cursor: "pointer", fontSize: 10, fontWeight: 700, outline: "none" }}>
+                        {label}
+                    </button>
+                ))}
+                <div style={{ marginTop: 5, fontSize: 10, color: "#6a5a5a" }}>
+                    Custom: <span style={{ fontFamily: "monospace", color: "#9e9e9e", userSelect: "all" as const, cursor: "text" }}>eval new Date().getHours()+' h'</span>
+                </div>
             </div>
             <StatusTypeSelector value={draftStatusType} onChange={setDraftStatusType} />
             <ClearAfterSelector value={draftClearAfter} onChange={setDraftClearAfter} />
@@ -2058,13 +2080,12 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                     const inList = clanIds.includes(g.id);
                                     return (
                                         <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 6px", borderRadius: 6, marginBottom: 2, background: inList ? `${ACT}0e` : "rgba(255,255,255,.02)", border: `1px solid ${inList ? ACT + "33" : "transparent"}` }}>
-                                            <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} />
-                                            <span style={{ flex: 1, fontSize: 11, color: inList ? ACT : C.text, fontWeight: inList ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{g.name}</span>
+                                            <div style={{ width: 6, height: 6, borderRadius: "50%", background: colorFor(g.id), flexShrink: 0 }} title={g.id} />
+                                            <span style={{ flex: 1, fontSize: 11, color: inList ? ACT : C.text, fontWeight: inList ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }} title={g.name}>{g.name}</span>
                                             {g.tag
-                                                ? <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>
+                                                ? <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}35`, color: C.clan, border: `1px solid ${C.clan}55`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>
                                                 : <span style={{ fontSize: 9, color: "#5a7a9a", fontWeight: 600, flexShrink: 0, opacity: 0.6 }}>?tag</span>
                                             }
-                                            <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0, userSelect: "text" as const, cursor: "text" }}>{g.id}</span>
                                             {inList
                                                 ? <button onClick={() => { clanIds = clanIds.filter(c => c !== g.id); clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); }}
                                                     style={{ padding: "2px 8px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}18`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>✕</button>
@@ -3279,7 +3300,8 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         if (e.key === "Escape") setNickEdit(p => ({ ...p, [key]: null }));
                                     }}
                                     onBlur={() => { const v = es.val.trim(); if (v) { globalGuildPronouns = [...globalGuildPronouns]; globalGuildPronouns[pi] = v; saveData(); } setNickEdit(p => ({ ...p, [key]: null })); forceUpdate(); }} />
-                                : <span className="rs-item-text" style={{ fontWeight: 600, color: C.pronoun }}>{pr}</span>
+                                : <span className="rs-item-text" style={{ fontWeight: 600, color: C.pronoun }}
+                                    onDoubleClick={() => setNickEdit(p => ({ ...p, [key]: { idx: pi, val: pr } }))}>{pr}</span>
                             }
                             <button className="rs-edit-btn" onClick={() => setNickEdit(p => ({ ...p, [key]: { idx: pi, val: pr } }))}>&#9998;</button>
                             <button className="rs-del-btn" onClick={() => { globalGuildPronouns = globalGuildPronouns.filter((_, j) => j !== pi); saveData(); forceUpdate(); }}>&#10005;</button>
@@ -3361,18 +3383,21 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <div key={g.id} className="rs-card" style={{ borderColor: (g.enabled && settings.store.nickEnabled) ? `${color}60` : "rgba(124,77,255,.2)" }}>
                         <div className="rs-card-header">
                             <div className="rs-card-left">
-                                <div className="rs-dot" style={{ width: 7, height: 7, background: running ? color : "#2a1a4a" }} />
-                                <span className="rs-server-name">{g.name}</span>
-                                <span className="rs-server-id">{g.id}</span>
-                                <span className="rs-badge" style={{ background: `${NM_COLOR[mode]}18`, color: NM_COLOR[mode], border: `1px solid ${NM_COLOR[mode]}33` }}>
-                                    {NM_LABEL[mode]} · {mode === "global" ? globalNicks.length : mode === "both" ? effective.length : g.nicks.length} nicks
-                                </span>
-                                {g.guildPronounsEnabled && (
-                                    <span className="rs-badge" style={{ background: `${NM_COLOR[g.guildPronounsMode ?? "custom"]}18`, color: NM_COLOR[g.guildPronounsMode ?? "custom"], border: `1px solid ${NM_COLOR[g.guildPronounsMode ?? "custom"]}33` }}>
-                                        {NM_LABEL[g.guildPronounsMode ?? "custom"]} · {effectivePrList.length} pr
-                                    </span>
-                                )}
-                                {g.manual && <span className="rs-badge" style={{ background: "rgba(120,120,120,.12)", color: "#9e9e9e" }}>manual</span>}
+                                <div className="rs-dot" title={g.id} style={{ width: 8, height: 8, background: running ? color : "#2a1a4a", cursor: "help", flexShrink: 0 }} />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <span className="rs-server-name" title={g.name}>{g.name}</span>
+                                    <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 3, marginTop: 2 }}>
+                                        <span className="rs-badge" style={{ background: `${NM_COLOR[mode]}30`, color: NM_COLOR[mode], border: `1px solid ${NM_COLOR[mode]}55` }}>
+                                            {NM_LABEL[mode]} · {mode === "global" ? globalNicks.length : mode === "both" ? effective.length : g.nicks.length}n
+                                        </span>
+                                        {g.guildPronounsEnabled && (
+                                            <span className="rs-badge" style={{ background: `${NM_COLOR[g.guildPronounsMode ?? "custom"]}30`, color: NM_COLOR[g.guildPronounsMode ?? "custom"], border: `1px solid ${NM_COLOR[g.guildPronounsMode ?? "custom"]}55` }}>
+                                                {NM_LABEL[g.guildPronounsMode ?? "custom"]} · {effectivePrList.length}pr
+                                            </span>
+                                        )}
+                                        {g.manual && <span className="rs-badge" style={{ background: "rgba(120,120,120,.2)", color: "#bdbdbd", border: "1px solid rgba(120,120,120,.35)" }}>manual</span>}
+                                    </div>
+                                </div>
                             </div>
                             <div className="rs-actions">
                                 {settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal && (
@@ -3538,7 +3563,8 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                                                         if (e2.key === "Escape") setNickEdit(p => ({ ...p, [`__pr_${g.id}_${pi}`]: null }));
                                                     }}
                                                     onBlur={() => { const ek = nickEdit[`__pr_${g.id}_${pi}`]; const v = (ek as any)?.val?.trim(); if (v) { g.guildPronouns = [...gPrList]; g.guildPronouns[pi] = v; saveData(); } setNickEdit(p => ({ ...p, [`__pr_${g.id}_${pi}`]: null })); forceUpdate(); }} />
-                                                : <span className="rs-item-text" style={{ color: C.pronoun, fontWeight: 600 }}>{pr}</span>
+                                                : <span className="rs-item-text" style={{ color: C.pronoun, fontWeight: 600 }}
+                                                    onDoubleClick={() => setNickEdit(p => ({ ...p, [`__pr_${g.id}_${pi}`]: { idx: pi, val: pr } }))}>{pr}</span>
                                             }
                                             <button className="rs-edit-btn" onClick={() => setNickEdit(p => ({ ...p, [`__pr_${g.id}_${pi}`]: { idx: pi, val: pr } }))}>&#9998;</button>
                                             <button className="rs-del-btn" onClick={() => { g.guildPronouns = gPrList.filter((_, j) => j !== pi); g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; saveData(); forceUpdate(); }}>&#10005;</button>
@@ -3986,6 +4012,16 @@ function FavsReorderList({ favs, commitFavs, setPreview, setSubTab }: {
 }) {
     const dragRef = React.useRef<number | null>(null);
     const [overIdx, setOverIdx] = React.useState<number | null>(null);
+    const [editIdx, setEditIdx] = React.useState<number | null>(null);
+    const [editVal, setEditVal] = React.useState("");
+
+    const saveHexEdit = (i: number) => {
+        const v = editVal.trim().toLowerCase();
+        if (bcrIsValidHex(v) && v !== favs[i]) {
+            const next = [...favs]; next[i] = v; void commitFavs(next);
+        }
+        setEditIdx(null);
+    };
 
     const onDS = (e: React.DragEvent, i: number) => { dragRef.current = i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(i)); };
     const onDO = (e: React.DragEvent, i: number) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOverIdx(prev => prev !== i ? i : prev); };
@@ -4009,19 +4045,29 @@ function FavsReorderList({ favs, commitFavs, setPreview, setSubTab }: {
                 const isDragged = dragRef.current === i;
                 const isOver = overIdx === i && dragRef.current !== i;
                 return (
-                    <div key={hex} draggable
-                        onDragStart={e => onDS(e, i)} onDragOver={e => onDO(e, i)}
+                    <div key={`${hex}_${i}`} draggable={editIdx !== i}
+                        onDragStart={e => editIdx !== i && onDS(e, i)} onDragOver={e => onDO(e, i)}
                         onDragLeave={() => onDL(i)} onDrop={e => onDP(e, i)} onDragEnd={onDE}
-                        style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, marginBottom: 3, background: isOver ? "rgba(192,132,252,.09)" : "rgba(255,255,255,.03)", border: `1px solid ${isOver ? "rgba(192,132,252,.5)" : "rgba(255,255,255,.07)"}`, opacity: isDragged ? 0.3 : 1, cursor: "grab", userSelect: "none" }}>
+                        style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, marginBottom: 3, background: isOver ? "rgba(192,132,252,.09)" : "rgba(255,255,255,.03)", border: `1px solid ${isOver ? "rgba(192,132,252,.5)" : "rgba(255,255,255,.07)"}`, opacity: isDragged ? 0.3 : 1, cursor: editIdx === i ? "default" : "grab", userSelect: "none" }}>
                         <svg width="10" height="10" viewBox="0 0 12 12" fill="rgba(255,255,255,.3)" style={{ flexShrink: 0 }}>
                             <rect y="1" width="12" height="1.8" rx="0.9"/>
                             <rect y="5" width="12" height="1.8" rx="0.9"/>
                             <rect y="9" width="12" height="1.8" rx="0.9"/>
                         </svg>
-                        <div style={{ width: 18, height: 18, borderRadius: 4, background: hex, border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: "pointer" }}
-                            onClick={() => { setPreview(hex); setSubTab("color"); }} title="Edit in Color tab" />
-                        <span style={{ flex: 1, fontSize: 11, color: "#f0e6ff", fontFamily: "monospace", userSelect: "all" }}>{hex}</span>
-                        <button onClick={e => { e.stopPropagation(); void commitFavs(favs.filter((_, j) => j !== i)); }}
+                        <div style={{ width: 18, height: 18, borderRadius: 4, background: editIdx === i ? (bcrIsValidHex(editVal) ? editVal : "#333") : hex, border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: "pointer" }}
+                            onClick={() => { if (editIdx !== i) { setPreview(hex); setSubTab("color"); } }} title="Edit in Color tab" />
+                        {editIdx === i
+                            ? <input autoFocus className="rs-item-input"
+                                value={editVal} maxLength={7}
+                                onChange={e => setEditVal(e.target.value)}
+                                onKeyDown={(e: React.KeyboardEvent) => { e.stopPropagation(); if (e.key === "Enter") saveHexEdit(i); if (e.key === "Escape") setEditIdx(null); }}
+                                onBlur={() => saveHexEdit(i)}
+                                style={{ flex: 1, fontFamily: "monospace", fontSize: 11, userSelect: "text" }} />
+                            : <span style={{ flex: 1, fontSize: 11, color: "#f0e6ff", fontFamily: "monospace", userSelect: "all", cursor: "text" }}
+                                onDoubleClick={e => { e.stopPropagation(); setEditIdx(i); setEditVal(hex); }}>{hex}</span>
+                        }
+                        <button className="rs-edit-btn" title="Edit hex" onClick={e => { e.stopPropagation(); setEditIdx(i); setEditVal(hex); }}>&#9998;</button>
+                        <button onClick={e => { e.stopPropagation(); if (editIdx === i) setEditIdx(null); void commitFavs(favs.filter((_, j) => j !== i)); }}
                             style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)", fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
                     </div>
                 );
