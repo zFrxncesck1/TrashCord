@@ -665,10 +665,34 @@ function FavsReorderList({ favs, commitFavs, setPreview, setTab }: {
     setPreview: (hex: string) => void;
     setTab: (t: string) => void;
 }) {
-    const dragRef = React.useRef<number | null>(null);
+    const dragRef  = React.useRef<number | null>(null);
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
     const [overIdx, setOverIdx] = React.useState<number | null>(null);
+    const [editIdx, setEditIdx] = React.useState<number | null>(null);
+    const [editVal, setEditVal] = React.useState("");
+
+    const startEdit = (i: number, hex: string) => {
+        setEditIdx(i);
+        setEditVal(hex);
+        setTimeout(() => { inputRef.current?.select(); }, 0);
+    };
+
+    const commitEdit = () => {
+        if (editIdx === null) return;
+        const raw = editVal.trim();
+        const v   = raw.startsWith("#") ? raw : "#" + raw;
+        if (isValidHex(v)) {
+            const next = [...favs];
+            next[editIdx] = v.toLowerCase();
+            void commitFavs(next);
+        }
+        setEditIdx(null);
+    };
+
+    const cancelEdit = () => setEditIdx(null);
 
     const onDS = (e: React.DragEvent, i: number) => {
+        if (editIdx !== null) return;
         dragRef.current = i;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(i));
@@ -697,29 +721,63 @@ function FavsReorderList({ favs, commitFavs, setPreview, setTab }: {
         <div style={{ maxHeight: 300, overflowY: "auto", paddingRight: 2 }}>
             {favs.map((hex, i) => {
                 const isDragged = dragRef.current === i;
-                const isOver = overIdx === i && dragRef.current !== i;
+                const isOver    = overIdx === i && dragRef.current !== i;
+                const isEditing = editIdx === i;
+                const previewHex = isEditing && isValidHex(editVal.startsWith("#") ? editVal : "#" + editVal)
+                    ? (editVal.startsWith("#") ? editVal : "#" + editVal)
+                    : hex;
                 return (
-                    <div key={hex} draggable
+                    <div key={`${hex}-${i}`} draggable={!isEditing}
                         onDragStart={e => onDS(e, i)} onDragOver={e => onDO(e, i)}
                         onDragLeave={() => onDL(i)} onDrop={e => onDP(e, i)} onDragEnd={onDE}
                         style={{
                             display: "flex", alignItems: "center", gap: 7,
                             padding: "5px 8px", borderRadius: 7, marginBottom: 3,
                             background: isOver ? "rgba(192,132,252,.09)" : "rgba(255,255,255,.03)",
-                            border: `1px solid ${isOver ? "rgba(192,132,252,.5)" : C.line}`,
+                            border: `1px solid ${isEditing ? C.accent + "99" : isOver ? "rgba(192,132,252,.5)" : C.line}`,
                             opacity: isDragged ? 0.3 : 1,
-                            cursor: "grab", userSelect: "none" as const,
+                            cursor: isEditing ? "default" : "grab", userSelect: "none" as const,
                         }}>
                         <svg width="10" height="10" viewBox="0 0 12 12" fill="rgba(255,255,255,.3)" style={{ flexShrink: 0 }}>
                             <rect y="1" width="12" height="1.8" rx="0.9"/>
                             <rect y="5" width="12" height="1.8" rx="0.9"/>
                             <rect y="9" width="12" height="1.8" rx="0.9"/>
                         </svg>
-                        <div style={{ width: 18, height: 18, borderRadius: 4, background: isValidHex(hex) ? hex : "#333", border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: "pointer" }}
-                            onClick={() => { setPreview(hex); setTab("color"); }} title="Edit in Color tab" />
-                        <span style={{ flex: 1, fontSize: 11, color: C.text, fontFamily: "monospace", userSelect: "all" as const }}>{hex}</span>
-                        <button onClick={e => { e.stopPropagation(); void commitFavs(favs.filter((_, j) => j !== i)); }}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        <div style={{ width: 18, height: 18, borderRadius: 4, background: isValidHex(previewHex) ? previewHex : "#333", border: "1.5px solid rgba(255,255,255,.18)", flexShrink: 0, cursor: isEditing ? "default" : "pointer" }}
+                            onClick={() => { if (!isEditing) { setPreview(hex); setTab("color"); } }} title={isEditing ? undefined : "Edit in Color tab"} />
+                        {isEditing ? (
+                            <input ref={inputRef} value={editVal} maxLength={7} autoFocus
+                                onChange={e => { const v = e.target.value; setEditVal(v.startsWith("#") ? v : v ? "#" + v.replace(/^#+/, "") : ""); }}
+                                onBlur={commitEdit}
+                                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commitEdit(); } if (e.key === "Escape") cancelEdit(); }}
+                                style={{ flex: 1, background: "rgba(0,0,0,.5)", border: `1px solid ${isValidHex(editVal.startsWith("#") ? editVal : "#" + editVal) ? C.accent : C.red}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "2px 6px", outline: "none", fontFamily: "monospace", userSelect: "text" as const }} />
+                        ) : (
+                            <span
+                                style={{ flex: 1, fontSize: 11, color: C.text, fontFamily: "monospace", userSelect: "all" as const, cursor: "text" }}
+                                onDoubleClick={() => startEdit(i, hex)}
+                                title="Double-click to edit">
+                                {hex}
+                            </span>
+                        )}
+                        {isEditing ? (
+                            <>
+                                <button onClick={e => { e.stopPropagation(); commitEdit(); }}
+                                    title="Confirm"
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: C.green, fontSize: 14, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✓</button>
+                                <button onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                                    title="Cancel"
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={e => { e.stopPropagation(); startEdit(i, hex); }}
+                                    title="Edit color"
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 11, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0, opacity: 0.7 }}>✏</button>
+                                <button onClick={e => { e.stopPropagation(); void commitFavs(favs.filter((_, j) => j !== i)); }}
+                                    title="Remove"
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: C.sub, fontSize: 12, padding: 0, outline: "none", lineHeight: 1, flexShrink: 0 }}>✕</button>
+                            </>
+                        )}
                     </div>
                 );
             })}
@@ -940,7 +998,7 @@ function BannerColorRotatorModal({ modalProps, onToggle }: { modalProps: any; on
                             : (
                                 <>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                        <span style={{ fontSize: 10, color: C.sub }}>Drag to reorder · click swatch to edit</span>
+                                        <span style={{ fontSize: 10, color: C.sub }}>Drag to reorder · double-click or ✏ to edit</span>
                                         <button onClick={() => void commitFavs([])}
                                             style={{ fontSize: 10, color: C.red, background: "none", border: "none", cursor: "pointer", outline: "none" }}>
                                             Clear all
