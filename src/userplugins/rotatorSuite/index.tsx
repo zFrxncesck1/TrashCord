@@ -316,6 +316,7 @@ interface StoreData {
     bioLastVal?: string | null; prLastVal?: string | null;
     globalNickEntries: string[]; globalNickSeqIdx: number; globalNickLastVal?: string | null;
     globalGuildPronouns: string[];
+    clanServerNames?: Record<string, { name: string; tag: string | null }>;
 }
 
 let storeCreatedAt = "";
@@ -326,6 +327,7 @@ let pronounsList = "";
 let statusEntries: StatusEntry[] = [];
 let statusPresets: StatusPreset[] = [];
 let clanIds: string[] = [];
+let clanServerNames: Record<string, { name: string; tag: string | null }> = {};
 let statusSeqIdx = 0; let clanSeqIdx = 0; let bioSeqIdx = 0; let prSeqIdx = 0;
 let statusLastVal: string | null = null;
 let clanLastVal: string | null = null;
@@ -398,7 +400,7 @@ const saveData = () => DataStore.set(SK, {
     statusSeqIdx, clanSeqIdx, bioSeqIdx, prSeqIdx,
     statusLastVal, clanLastVal, bioLastVal, prLastVal,
     globalNickEntries, globalNickSeqIdx, globalNickLastVal,
-    globalGuildPronouns,
+    globalGuildPronouns, clanServerNames,
 } as StoreData);
 
 function parseList(raw: string): string[] { return raw.split("§").map(s => s.trim()).filter(Boolean); }
@@ -1114,7 +1116,7 @@ const settings = definePluginSettings({
     showButton: { type: OptionType.BOOLEAN, default: true, description: "Show the Rotator Suite button in the user area (bottom-left)." },
     autoStart: { type: OptionType.BOOLEAN, default: true, description: "Auto-start all enabled rotators when Discord loads." },
     enableLogs: { type: OptionType.BOOLEAN, default: false, description: "Print rotator activity and errors to the console (F12)." },
-    stopOnInvisible: { type: OptionType.BOOLEAN, default: false, description: "Pause all rotators automatically when status is set to invisible." },
+    stopOnInvisible: { type: OptionType.BOOLEAN, default: true, description: "Pause all rotators automatically when status is set to invisible." },
 });
 
 function injectCSS() {
@@ -1884,10 +1886,20 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
         saveData(); forceUpdate();
     });
 
-    function add() { const v = input.trim(); if (!v || !/^\d{17,20}$/.test(v) || clanIds.includes(v)) return; clanIds = [...clanIds, v]; saveData(); setInput(""); forceUpdate(); }
+    function add() {
+        const v = input.trim();
+        if (!v || !/^\d{17,20}$/.test(v) || clanIds.includes(v)) return;
+        const g = allDiscordGuilds.find(x => x.id === v);
+        if (g) clanServerNames[v] = { name: g.name, tag: g.tag };
+        clanIds = [...clanIds, v]; saveData(); setInput(""); forceUpdate();
+    }
     function remove(id: string) { clanIds = clanIds.filter(c => c !== id); clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); }
     function saveEdit(i: number) {
         const v = editVal.trim(); if (!v || !/^\d{17,20}$/.test(v)) { setEditIdx(null); return; }
+        const oldId = clanIds[i];
+        if (oldId !== v) delete clanServerNames[oldId];
+        const g = allDiscordGuilds.find(x => x.id === v);
+        if (g) clanServerNames[v] = { name: g.name, tag: g.tag };
         const n = [...clanIds]; n[i] = v; clanIds = n; saveData(); setEditIdx(null); forceUpdate();
     }
 
@@ -1895,11 +1907,15 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
         updateDomTagCache();
         try {
             const raw = Object.values(getGuildStore()?.getGuilds?.() ?? {}) as any[];
-            return raw.map((g: any) => {
+            const result = raw.map((g: any) => {
                 const storeTag = g.clan?.tag ?? g.clanTag ?? g.clan?.identity_tag ?? g.clan?.identityTag ?? null;
                 const tag = (storeTag ?? domTagCache.get(g.id) ?? null) as string | null;
                 return { id: g.id as string, name: g.name as string, tag };
             });
+            for (const g of result) {
+                if (clanIds.includes(g.id)) clanServerNames[g.id] = { name: g.name, tag: g.tag };
+            }
+            return result;
         } catch { return []; }
     }, [showBrowser, autoDetect]);
 
@@ -1976,7 +1992,13 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                 <>
                     {clanIds.length === 0 && <div className="rs-empty" style={{ marginBottom: 6 }}>No clan IDs yet.</div>}
                     <div style={{ maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
-                        {clanIds.map((id, i) => (
+                        {clanIds.map((id, i) => {
+                            const currentG = allDiscordGuilds.find(x => x.id === id);
+                            const saved = clanServerNames[id];
+                            const inGuild = !!currentG;
+                            const displayName = currentG?.name ?? saved?.name ?? null;
+                            const displayTag = currentG?.tag ?? saved?.tag ?? null;
+                            return (
                             <div key={id} {...dProps(i)} className={cls(i, "rs-item")}>
                                 <span className="rs-drag">⠿</span>
                                 {editIdx === i
@@ -1986,9 +2008,18 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         onBlur={() => saveEdit(i)} />
                                     : <span className="rs-item-mono" onClick={() => { setEditIdx(i); setEditVal(id); }}>{id}</span>
                                 }
+                                <span style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0, maxWidth: 130, overflow: "hidden" }}>
+                                    {displayTag && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{displayTag}]</span>}
+                                    {displayName
+                                        ? <span style={{ fontSize: 10, color: inGuild ? C.text : "#faa61a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, maxWidth: 80 }}>{displayName}</span>
+                                        : <span style={{ fontSize: 9, color: "#5a7a9a", fontStyle: "italic", flexShrink: 0 }}>? not found</span>
+                                    }
+                                    {!inGuild && displayName && <span style={{ fontSize: 8, color: "#faa61a", fontWeight: 800, flexShrink: 0, padding: "1px 4px", borderRadius: 4, background: "rgba(250,166,26,.12)", border: "1px solid rgba(250,166,26,.25)" }}>left</span>}
+                                </span>
                                 <button className="rs-del-btn" onClick={() => remove(id)}>✕</button>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     <div className="rs-row" style={{ marginTop: 6 }}>
                         <TextInput value={input} onChange={setInput} placeholder="Server ID (17-20 digits)..."
@@ -4347,6 +4378,7 @@ export default definePlugin({
         }
         statusPresets = Array.isArray((stored as any).statusPresets) ? (stored as any).statusPresets : [];
         clanIds      = stored.clanIds      ?? [];
+        clanServerNames = (stored as any).clanServerNames ?? {};
         statusSeqIdx = stored.statusSeqIdx ?? 0;
         clanSeqIdx   = stored.clanSeqIdx   ?? 0;
         bioSeqIdx    = stored.bioSeqIdx    ?? 0;
