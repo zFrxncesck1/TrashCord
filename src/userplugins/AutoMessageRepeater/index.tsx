@@ -35,13 +35,13 @@ const STORE = {
 };
 
 const LIST_META: { key: keyof WordLists; label: string; short: string; color: string; }[] = [
-    { key: "general",       label: "① General  —  always active",         short: "General",        color: "#7c4dff" },
-    { key: "dmGeneral",     label: "② DM  —  General",                    short: "DM General",     color: "#b39ddb" },
-    { key: "dmMale",        label: "③ DM  —  Male ♂",                     short: "DM Male",        color: "#64b5f6" },
-    { key: "dmFemale",      label: "④ DM  —  Female ♀",                   short: "DM Female",      color: "#f48fb1" },
-    { key: "serverGeneral", label: "⑤ Server / Group DM  —  General",     short: "Srv General",    color: "#6a1b9a" },
-    { key: "serverMale",    label: "⑥ Server / Group DM  —  Male ♂",      short: "Srv Male",       color: "#1565c0" },
-    { key: "serverFemale",  label: "⑦ Server / Group DM  —  Female ♀",    short: "Srv Female",     color: "#880e4f" },
+    { key: "general",       label: "① General  -  always active",         short: "General",        color: "#7c4dff" },
+    { key: "dmGeneral",     label: "② DM  -  General",                    short: "DM General",     color: "#b39ddb" },
+    { key: "dmMale",        label: "③ DM  -  Male ♂",                     short: "DM Male",        color: "#64b5f6" },
+    { key: "dmFemale",      label: "④ DM  -  Female ♀",                   short: "DM Female",      color: "#f48fb1" },
+    { key: "serverGeneral", label: "⑤ Server / Group DM  -  General",     short: "Srv General",    color: "#6a1b9a" },
+    { key: "serverMale",    label: "⑥ Server / Group DM  -  Male ♂",      short: "Srv Male",       color: "#1565c0" },
+    { key: "serverFemale",  label: "⑦ Server / Group DM  -  Female ♀",    short: "Srv Female",     color: "#880e4f" },
 ];
 
 const DEFAULT_LISTS: WordLists = {
@@ -211,11 +211,11 @@ function handleChannelSelect() {
 function toggleRepeating() { isRepeating ? stopRepeating() : startRepeating(); }
 
 const save = {
-    entries: () => DataStore.set(STORE.ENTRIES, messageEntries),
-    lists:   () => DataStore.set(STORE.LISTS, wordLists),
-    enabled: () => DataStore.set(STORE.ENABLED, listEnabled),
-    gender:  () => DataStore.set(STORE.GENDER, genderMode),
-    auto:    () => DataStore.set(STORE.AUTO_CH, autoChannel),
+    entries: () => { settings.store.messageEntriesJson = JSON.stringify(messageEntries); return DataStore.set(STORE.ENTRIES, messageEntries); },
+    lists:   () => { settings.store.wordListsJson      = JSON.stringify(wordLists);      return DataStore.set(STORE.LISTS, wordLists); },
+    enabled: () => { settings.store.listEnabledJson    = JSON.stringify(listEnabled);    return DataStore.set(STORE.ENABLED, listEnabled); },
+    gender:  () => { settings.store.genderModeStore    = genderMode;                     return DataStore.set(STORE.GENDER, genderMode); },
+    auto:    () => { settings.store.autoChannelStore   = autoChannel;                    return DataStore.set(STORE.AUTO_CH, autoChannel); },
 };
 
 function matchesKeybind(e: KeyboardEvent, combo: string): boolean {
@@ -270,7 +270,7 @@ async function importSettings(json: string): Promise<string> {
         if (typeof data.autoChannel === "boolean") { autoChannel = data.autoChannel; await save.auto(); }
         if (data.settings) Object.entries(data.settings).forEach(([k, v]) => { (settings.store as any)[k] = v; });
         return "✅ Imported successfully!";
-    } catch { return "❌ Invalid JSON — import failed."; }
+    } catch { return "❌ Invalid JSON - import failed."; }
 }
 
 const AMR_CSS = `
@@ -380,7 +380,7 @@ function GenderSelector({ onUpdate }: { onUpdate?: () => void; }) {
             {cur && (
                 <div className="amr-hint" style={{ marginTop: 4, color: "#8a8e9a" }}>
                     ℹ️  {cur.desc}  ·  General (Neutral) lists are <b style={{ color: "#b0b4c0" }}>always included</b> regardless of gender mode.
-                    {genderMode === "male" && " ♂ Selecting Male also keeps Neutral lists — to exclude Neutral, disable list ① manually."}
+                    {genderMode === "male" && " ♂ Selecting Male also keeps Neutral lists - to exclude Neutral, disable list ① manually."}
                 </div>
             )}
         </div>
@@ -454,7 +454,7 @@ function SpamCountSelector() {
             <NumStepper value={count} min={1} onChange={v => { settings.store.spamCount = v; update(); }} />
             {!hasWords && (
                 <div className="amr-warn" style={{ marginTop: 4 }}>
-                    ⚠ Burst count ignored — no words found in the active lists. Add words to the enabled pools first.
+                    ⚠ Burst count ignored - no words found in the active lists. Add words to the enabled pools first.
                 </div>
             )}
         </div>
@@ -539,7 +539,7 @@ function KeybindRecorder() {
 function KeybindSection() {
     return (
         <div>
-            <span className="amr-lbl" style={{ marginBottom: 7 }}>Keybind  —  hold modifiers (Ctrl / Shift / Alt / Meta) then press any key</span>
+            <span className="amr-lbl" style={{ marginBottom: 7 }}>Keybind  -  hold modifiers (Ctrl / Shift / Alt / Meta) then press any key</span>
             <KeybindRecorder />
         </div>
     );
@@ -548,7 +548,7 @@ function KeybindSection() {
 function WordListsSection() {
     return (
         <div>
-            <span className="amr-lbl" style={{ marginBottom: 7 }}>Random Word Lists  —  7 color-coded pools · click a list header to expand and edit</span>
+            <span className="amr-lbl" style={{ marginBottom: 7 }}>Random Word Lists  -  7 color-coded pools · click a list header to expand and edit</span>
             <WordListsEditor />
         </div>
     );
@@ -573,7 +573,7 @@ function MessageEntries() {
         <div className="amr-wrap">
             {messageEntries.length === 0 && (
                 <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11, padding: "7px 10px", border: "1px dashed #3a3b40", borderRadius: 5, marginBottom: 7 }}>
-                    No messages — enable <b>Random Words</b> to run in random-only mode.
+                    No messages - enable <b>Random Words</b> to run in random-only mode.
                 </div>
             )}
             {messageEntries.map((e, i) => (
@@ -656,7 +656,7 @@ function GenderAndChannelSetting() {
             <span className="amr-lbl">Gender Mode</span>
             <GenderSelector onUpdate={update} />
             <div style={{ marginTop: 10 }}>
-                <span className="amr-lbl">Active Lists  —  click to toggle individual pools</span>
+                <span className="amr-lbl">Active Lists  -  click to toggle individual pools</span>
                 <ListEnableToggles onUpdate={update} />
             </div>
         </div>
@@ -836,7 +836,7 @@ function RepeaterModal(props: ModalProps) {
                     </div>
                     <span className="amr-lbl">Gender Mode</span>
                     <GenderSelector onUpdate={update} />
-                    {showWarn && <div className="amr-warn">⚠ 1-on-1 DM in <b>All</b> mode — gender unknown, both ♂ and ♀ lists active.</div>}
+                    {showWarn && <div className="amr-warn">⚠ 1-on-1 DM in <b>All</b> mode - gender unknown, both ♂ and ♀ lists active.</div>}
                 </div>
 
                 <div className="amr-sec">
@@ -891,7 +891,7 @@ function RepeaterModal(props: ModalProps) {
                 </div>
 
                 <div className="amr-sec">
-                    <span className="amr-lbl">Keybind  —  Ctrl / Shift / Alt / Meta + any key</span>
+                    <span className="amr-lbl">Keybind  -  Ctrl / Shift / Alt / Meta + any key</span>
                     <KeybindRecorder />
                 </div>
 
@@ -949,32 +949,32 @@ const RepeaterContextMenu: NavContextMenuPatchCallback = children => {
 const settings = definePluginSettings({
     messages: {
         type: OptionType.COMPONENT,
-        description: "Messages to repeat — leave empty and enable Random Words for random-only mode",
+        description: "Messages to repeat - leave empty and enable Random Words for random-only mode",
         component: MessageEntries,
     },
     randomWordsEnabled: {
         type: OptionType.BOOLEAN,
-        description: "Random Words — send randomly built sentences from active word pools (runs continuously if no message entries set)",
+        description: "Random Words - send randomly built sentences from active word pools (runs continuously if no message entries set)",
         default: false,
     },
     randomSpamCount: {
         type: OptionType.COMPONENT,
-        description: "Sentences per burst — how many random sentences to send at once (ignored if word lists are empty)",
+        description: "Sentences per burst - how many random sentences to send at once (ignored if word lists are empty)",
         component: SpamCountSelector,
     },
     randomDelayRange: {
         type: OptionType.COMPONENT,
-        description: "Min/Max wait between bursts — a random delay between these two values is chosen before each new burst",
+        description: "Min/Max wait between bursts - a random delay between these two values is chosen before each new burst",
         component: DelayRangeEditor,
     },
     sentenceLengthRange: {
         type: OptionType.COMPONENT,
-        description: "Sentence length — min and max number of words randomly picked per generated sentence (1–50)",
+        description: "Sentence length - min and max number of words randomly picked per generated sentence (1–50)",
         component: SentenceLengthEditor,
     },
     wordListsData: {
         type: OptionType.COMPONENT,
-        description: "Random Word Lists — 7 color-coded pools combined based on channel type and gender mode",
+        description: "Random Word Lists - 7 color-coded pools combined based on channel type and gender mode",
         component: WordListsSection,
     },
     genderAndChannel: {
@@ -984,12 +984,12 @@ const settings = definePluginSettings({
     },
     variableDelayEnabled: {
         type: OptionType.BOOLEAN,
-        description: "Entry Delay Jitter — when ON, adds a random ±N ms offset to each scheduled message to break repeating patterns and help avoid bot-detection",
+        description: "Entry Delay Jitter - when ON, adds a random ±N ms offset to each scheduled message to break repeating patterns and help avoid bot-detection",
         default: true,
     },
     jitterMsInput: {
         type: OptionType.COMPONENT,
-        description: "Jitter ±ms — max deviation applied per entry. Set to 0 for no offset. Has no effect when Jitter is OFF.",
+        description: "Jitter ±ms - max deviation applied per entry. Set to 0 for no offset. Has no effect when Jitter is OFF.",
         component: JitterEditor,
     },
     capsMode: {
@@ -1004,12 +1004,12 @@ const settings = definePluginSettings({
     },
     periodEnabled: {
         type: OptionType.BOOLEAN,
-        description: "Append suffix — add a custom character at the end of each generated sentence",
+        description: "Append suffix - add a custom character at the end of each generated sentence",
         default: true,
     },
     periodCharInput: {
         type: OptionType.COMPONENT,
-        description: "Suffix character — character appended when suffix is enabled (default: .)",
+        description: "Suffix character - character appended when suffix is enabled (default: .)",
         component: () => {
             const update = useForceUpdater();
             return (
@@ -1023,7 +1023,7 @@ const settings = definePluginSettings({
     },
     wordListSeparatorInput: {
         type: OptionType.COMPONENT,
-        description: "Word list separator — character used to split entries in all word lists (default: space). Supports comma, pipe, §, etc.",
+        description: "Word list separator - character used to split entries in all word lists (default: space). Supports comma, pipe, §, etc.",
         component: () => {
             const update = useForceUpdater();
             return (
@@ -1038,30 +1038,35 @@ const settings = definePluginSettings({
     },
     outputSeparatorSetting: {
         type: OptionType.COMPONENT,
-        description: "Output separator — custom character to join words in the generated sentence shown in chat (independent from the list separator)",
+        description: "Output separator - custom character to join words in the generated sentence shown in chat (independent from the list separator)",
         component: OutputSeparatorEditor,
     },
     showSeparatorInOutput: {
         type: OptionType.BOOLEAN,
-        description: "Use output separator — when ON, words in generated sentences are joined with the output separator instead of a plain space",
+        description: "Use output separator - when ON, words in generated sentences are joined with the output separator instead of a plain space",
         default: false,
     },
     lockToChannel: {
         type: OptionType.BOOLEAN,
-        description: "Lock to Channel — when ON, switching channel does NOT stop the repeater. Messages keep going to the channel where it was started. Turn OFF to restore the default behavior (stops automatically on channel switch).",
+        description: "Lock to Channel - when ON, switching channel does NOT stop the repeater. Messages keep going to the channel where it was started. Turn OFF to restore the default behavior (stops automatically on channel switch).",
         default: false,
     },
     keybindSetting: {
         type: OptionType.COMPONENT,
-        description: "Keyboard shortcut to toggle start/stop — hold modifiers (Ctrl/Shift/Alt/Meta) then press any key",
+        description: "Keyboard shortcut to toggle start/stop - hold modifiers (Ctrl/Shift/Alt/Meta) then press any key",
         component: KeybindSection,
     },
     exportImport: {
         type: OptionType.COMPONENT,
-        description: "Export all settings, word lists and entries to a timestamped JSON file — or import from a previous export via file picker",
+        description: "Export all settings, word lists and entries to a timestamped JSON file - or import from a previous export via file picker",
         component: ExportImportPanel,
     },
-    wordList:             { type: OptionType.STRING,  description: "", default: DEFAULT_LISTS.general, hidden: true },
+    wordList:             { type: OptionType.STRING,  description: "", default: DEFAULT_LISTS.general,  hidden: true },
+    messageEntriesJson:   { type: OptionType.STRING,  description: "", default: "",                      hidden: true },
+    wordListsJson:        { type: OptionType.STRING,  description: "", default: "",                      hidden: true },
+    listEnabledJson:      { type: OptionType.STRING,  description: "", default: "",                      hidden: true },
+    genderModeStore:      { type: OptionType.STRING,  description: "", default: "all",                   hidden: true },
+    autoChannelStore:     { type: OptionType.BOOLEAN, description: "", default: true,                    hidden: true },
     spamCount:            { type: OptionType.NUMBER,  description: "", default: 1,     hidden: true },
     keybind:              { type: OptionType.STRING,  description: "", default: "",    hidden: true },
     randomDelayMin:       { type: OptionType.NUMBER,  description: "", default: 800,   hidden: true },
@@ -1119,7 +1124,7 @@ export default definePlugin({
 
     commands: [{
         name: "amr",
-        description: "Control AutoMessageRepeater — configure directly via options",
+        description: "Control AutoMessageRepeater - configure directly via options",
         inputType: ApplicationCommandInputType.BUILT_IN,
         options: [
             { name: "action",  description: "start | stop | toggle",                                                                                                          type: 3, required: false },
@@ -1156,7 +1161,7 @@ export default definePlugin({
                 if (gender === "all") {
                     const c = getCurrentChannel();
                     if (c && c.type === 1 && autoChannel)
-                        msgs.push("⚠ 1-on-1 DM detected — gender unknown, both ♂ and ♀ lists will be used.");
+                        msgs.push("⚠ 1-on-1 DM detected - gender unknown, both ♂ and ♀ lists will be used.");
                 }
             }
             if (auto === "on" || auto === "off")     { autoChannel = auto === "on"; save.auto(); msgs.push(`Auto channel detection → **${auto}**`); }
@@ -1171,7 +1176,7 @@ export default definePlugin({
                 msgs.push(`Active lists → ${LIST_META.filter(m => listEnabled[m.key]).map(m => m.short).join(", ") || "none"}`);
             }
 
-            if (action === "start")       { startRepeating(); msgs.push(isRepeating ? "▶ AutoMessageRepeater - Started." : "⚠ Nothing to repeat — add messages or enable Random Words."); }
+            if (action === "start")       { startRepeating(); msgs.push(isRepeating ? "▶ AutoMessageRepeater - Started." : "⚠ Nothing to repeat - add messages or enable Random Words."); }
             else if (action === "stop")   { stopRepeating();  msgs.push("⏹ AutoMessageRepeater - Stopped."); }
             else if (action === "toggle" || (!gender && !auto && !lists && !random && !jitter && !status && panel === undefined)) {
                 toggleRepeating();
@@ -1199,15 +1204,32 @@ export default definePlugin({
     async start() {
         injectCSS();
         const legacy = await DataStore.get(STORE.LEGACY);
-        messageEntries = await DataStore.get(STORE.ENTRIES) ?? legacy ?? [];
-        wordLists = { ...DEFAULT_LISTS, ...(await DataStore.get(STORE.LISTS) ?? {}) };
+        const dsEntries = await DataStore.get(STORE.ENTRIES) ?? legacy;
+        if (dsEntries) {
+            messageEntries = dsEntries;
+        } else if (settings.store.messageEntriesJson) {
+            try { messageEntries = JSON.parse(settings.store.messageEntriesJson); } catch { messageEntries = []; }
+        }
+        const dsLists = await DataStore.get(STORE.LISTS);
+        if (dsLists) {
+            wordLists = { ...DEFAULT_LISTS, ...dsLists };
+        } else if (settings.store.wordListsJson) {
+            try { wordLists = { ...DEFAULT_LISTS, ...JSON.parse(settings.store.wordListsJson) }; } catch { wordLists = { ...DEFAULT_LISTS }; }
+        }
         if (settings.store.wordList && settings.store.wordList !== DEFAULT_LISTS.general && wordLists.general === DEFAULT_LISTS.general) {
             wordLists.general = settings.store.wordList;
-            await save.lists();
         }
-        listEnabled = { ...DEFAULT_ENABLED, ...(await DataStore.get(STORE.ENABLED) ?? {}) };
-        genderMode  = (await DataStore.get(STORE.GENDER))  ?? "all";
-        autoChannel = (await DataStore.get(STORE.AUTO_CH)) ?? true;
+        const dsEnabled = await DataStore.get(STORE.ENABLED);
+        if (dsEnabled) {
+            listEnabled = { ...DEFAULT_ENABLED, ...dsEnabled };
+        } else if (settings.store.listEnabledJson) {
+            try { listEnabled = { ...DEFAULT_ENABLED, ...JSON.parse(settings.store.listEnabledJson) }; } catch { listEnabled = { ...DEFAULT_ENABLED }; }
+        }
+        const dsGender = await DataStore.get(STORE.GENDER);
+        genderMode  = dsGender ?? ((settings.store.genderModeStore as GenderMode | undefined) ?? "all");
+        const dsAuto = await DataStore.get(STORE.AUTO_CH);
+        autoChannel = dsAuto !== undefined ? dsAuto : (settings.store.autoChannelStore ?? true);
+        await Promise.all([save.entries(), save.lists(), save.enabled(), save.gender(), save.auto()]);
         FluxDispatcher.subscribe("CHANNEL_SELECT", handleChannelSelect);
         window.addEventListener("beforeunload", stopRepeating);
         window.addEventListener("keydown", onKeyDown, { capture: true });
