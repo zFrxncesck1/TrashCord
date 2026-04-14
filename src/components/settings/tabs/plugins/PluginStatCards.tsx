@@ -33,7 +33,7 @@ export function UserPluginsCard({ totalUserPlugins, enabledUserPlugins }) {
             <div className="vc-plugin-stats vc-stockplugins-stats-card">
                 <div className="vc-plugin-stats-card-container ">
                     <div className="vc-plugin-stats-card-section">
-                        <BaseText size="md" weight="semibold">Total Userplugins</BaseText>
+                        <BaseText size="md" weight="semibold">Total TrashCord Plugins</BaseText>
                         <Tooltip
                             text={
                                 <img
@@ -59,12 +59,12 @@ export function UserPluginsCard({ totalUserPlugins, enabledUserPlugins }) {
             <div className="vc-plugin-stats vc-stockplugins-stats-card">
                 <div className="vc-plugin-stats-card-container">
                     <div className="vc-plugin-stats-card-section">
-                        <BaseText size="md" weight="semibold">Enabled Userplugins</BaseText>
+                        <BaseText size="md" weight="semibold">Enabled TrashCord Plugins</BaseText>
                         <BaseText size="xl" weight="bold">{enabledUserPlugins}</BaseText>
                     </div>
                     <div className="vc-plugin-stats-card-divider"></div>
                     <div className="vc-plugin-stats-card-section">
-                        <BaseText size="md" weight="semibold">Total Userplugins</BaseText>
+                        <BaseText size="md" weight="semibold">Total TrashCord Plugins</BaseText>
                         <BaseText size="xl" weight="bold">{totalUserPlugins}</BaseText>
                     </div>
                 </div>
