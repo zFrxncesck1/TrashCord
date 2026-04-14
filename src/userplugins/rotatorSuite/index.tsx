@@ -1390,6 +1390,125 @@ function getEmojiUrl(id: string, animated?: boolean): string {
     return `https://cdn.discordapp.com/emojis/${id}.${animated ? "gif" : "png"}`;
 }
 
+const EVAL_SNIPPETS: { cat: string; items: [string, string][] }[] = [
+    { cat: "🕐 Time", items: [
+        ["HH:MM:SS", "eval let f=t=>(t<10?'0':'')+t,d=new Date();`${f(d.getHours())}:${f(d.getMinutes())}:${f(d.getSeconds())}`"],
+        ["HH:MM", "eval let f=t=>(t<10?'0':'')+t,d=new Date();`${f(d.getHours())}:${f(d.getMinutes())}`"],
+        ["H:MM am/pm", "eval new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})"],
+        ["Full time", "eval new Date().toLocaleTimeString()"],
+        ["Hour :00", "eval new Date().getHours()+':00'"],
+    ]},
+    { cat: "📅 Date", items: [
+        ["Short date", "eval new Date().toLocaleDateString()"],
+        ["DD/MM/YYYY", "eval let d=new Date();`${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`"],
+        ["Day name", "eval ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]"],
+        ["Day short", "eval ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]"],
+        ["Date+Time", "eval new Date().toLocaleString()"],
+        ["Month name", "eval ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][new Date().getMonth()]"],
+    ]},
+    { cat: "🕛 Emoji clock", items: [
+        ["Clock emoji", "eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][new Date().getHours()%12]"],
+        ["Moon phase", "eval ['🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘'][Math.floor(new Date().getDate()/3.75)%8]"],
+        ["Day emoji", "eval ['☀️','🌙','🌙','🌙','☀️','☀️','☀️'][new Date().getDay()]"],
+        ["AM/PM emoji", "eval new Date().getHours()<12?'🌅':'🌆'"],
+    ]},
+    { cat: "🎲 Fun", items: [
+        ["Random 1-100", "eval Math.floor(Math.random()*100)+1"],
+        ["Coin flip", "eval Math.random()<.5?'heads':'tails'"],
+        ["Dice 🎲", "eval ['⚀','⚁','⚂','⚃','⚄','⚅'][Math.floor(Math.random()*6)]"],
+        ["Random color", "eval '#'+Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0')"],
+    ]},
+    { cat: "📊 System", items: [
+        ["Memory MB", "eval Math.round(performance.memory?.usedJSHeapSize/1048576||0)+'MB'"],
+        ["Timestamp", "eval Date.now()"],
+        ["ISO time", "eval new Date().toISOString().slice(11,19)"],
+        ["UTC offset", "eval 'UTC'+(new Date().getTimezoneOffset()>0?'-':'+')+Math.abs(new Date().getTimezoneOffset()/60)"],
+    ]},
+];
+
+const EVAL_TOKENS: { label: string; code: string; pad: boolean }[] = [
+    { label: "HH:MM:SS", code: "${f(d.getHours())}:${f(d.getMinutes())}:${f(d.getSeconds())}", pad: true },
+    { label: "HH:MM", code: "${f(d.getHours())}:${f(d.getMinutes())}", pad: true },
+    { label: "H:MM am/pm", code: "${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}", pad: false },
+    { label: "Day name", code: "${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]}", pad: false },
+    { label: "DD/MM/YYYY", code: "${new Date().toLocaleDateString()}", pad: false },
+    { label: "Clock emoji", code: "${['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][new Date().getHours()%12]}", pad: false },
+    { label: "Random 1-100", code: "${Math.floor(Math.random()*100)+1}", pad: false },
+    { label: "Dice 🎲", code: "${['⚀','⚁','⚂','⚃','⚄','⚅'][Math.floor(Math.random()*6)]}", pad: false },
+];
+
+function EvalSnippetPanel({ setDraft }: { setDraft: (v: string) => void }) {
+    const [cat, setCat] = React.useState(0);
+    const [builderOpen, setBuilderOpen] = React.useState(false);
+    const [bLeft, setBLeft] = React.useState("");
+    const [bToken, setBToken] = React.useState(0);
+    const [bRight, setBRight] = React.useState("");
+
+    const buildExpr = () => {
+        const tok = EVAL_TOKENS[bToken];
+        const l = bLeft, r = bRight;
+        if (tok.pad) {
+            return `eval let f=t=>(t<10?'0':'')+t,d=new Date();\`${l}${tok.code}${r}\``;
+        }
+        return `eval \`${l}${tok.code}${r}\``;
+    };
+
+    const btnStyle = (active: boolean): React.CSSProperties => ({
+        display: "inline-flex", alignItems: "center", margin: "2px 2px 2px 0", padding: "2px 7px",
+        borderRadius: 5, border: `1px solid ${active ? "rgba(255,167,38,.6)" : "rgba(255,167,38,.25)"}`,
+        background: active ? "rgba(255,167,38,.2)" : "rgba(255,167,38,.07)",
+        color: active ? "#ffd580" : "#c8a050", cursor: "pointer", fontSize: 10, fontWeight: 700, outline: "none",
+    });
+
+    return (
+        <div>
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 2, marginBottom: 5 }}>
+                {EVAL_SNIPPETS.map((s, ci) => (
+                    <button key={s.cat} style={btnStyle(cat === ci)} onClick={() => setCat(ci)}>{s.cat}</button>
+                ))}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 2 }}>
+                {EVAL_SNIPPETS[cat].items.map(([label, snippet]) => (
+                    <button key={label} title={snippet} onClick={() => setDraft(snippet)}
+                        style={{ display: "inline-flex", alignItems: "center", margin: "2px 2px 2px 0", padding: "2px 8px", borderRadius: 5, border: "1px solid rgba(255,167,38,.3)", background: "rgba(255,167,38,.1)", color: "#faa61a", cursor: "pointer", fontSize: 10, fontWeight: 600, outline: "none" }}>
+                        {label}
+                    </button>
+                ))}
+            </div>
+            <div style={{ marginTop: 6, borderTop: "1px solid rgba(255,167,38,.15)", paddingTop: 5 }}>
+                <button onClick={() => setBuilderOpen(o => !o)}
+                    style={{ fontSize: 10, fontWeight: 800, color: builderOpen ? "#ffd580" : "#c8a050", background: "none", border: "none", cursor: "pointer", outline: "none", padding: 0 }}>
+                    {builderOpen ? "▾" : "▸"} Text builder — left text | dynamic | right text
+                </button>
+                {builderOpen && (
+                    <div style={{ marginTop: 5, display: "flex", flexDirection: "column" as const, gap: 5 }}>
+                        <div style={{ fontSize: 10, color: "#9e9e9e" }}>
+                            Write text around a dynamic part. Example: <span style={{ fontFamily: "monospace", color: "#faa61a", userSelect: "all" as const }}>🖤 ... | HH:MM:SS</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" as const }}>
+                            <input value={bLeft} onChange={e => setBLeft(e.target.value)} placeholder="text before..."
+                                style={{ flex: 1, minWidth: 80, background: "rgba(10,0,30,.7)", border: "1px solid rgba(255,167,38,.3)", borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
+                            <select value={bToken} onChange={e => setBToken(Number(e.target.value))}
+                                style={{ background: "rgba(10,0,30,.85)", border: "1px solid rgba(255,167,38,.4)", borderRadius: 5, color: "#ffa726", fontSize: 11, padding: "3px 6px", outline: "none" }}>
+                                {EVAL_TOKENS.map((t, i) => <option key={t.label} value={i}>{t.label}</option>)}
+                            </select>
+                            <input value={bRight} onChange={e => setBRight(e.target.value)} placeholder="text after..."
+                                style={{ flex: 1, minWidth: 80, background: "rgba(10,0,30,.7)", border: "1px solid rgba(255,167,38,.3)", borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
+                        </div>
+                        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                            <span style={{ flex: 1, fontSize: 10, color: "#9e9e9e", fontFamily: "monospace", wordBreak: "break-all" as const, userSelect: "all" as const }}>{buildExpr()}</span>
+                            <button onClick={() => setDraft(buildExpr())}
+                                style={{ padding: "3px 11px", borderRadius: 5, border: "1px solid rgba(255,167,38,.5)", background: "rgba(255,167,38,.18)", color: "#ffd580", cursor: "pointer", fontSize: 10, fontWeight: 800, outline: "none", flexShrink: 0 }}>
+                                Insert ↑
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function StatusLivePreview({ entry, statusType }: { entry: Pick<StatusEntry, "emojiId" | "emojiName" | "animated" | "text">; statusType: StatusType }) {
     const user = UserStore.getCurrentUser() as any;
     const dot = STATUS_OPTIONS.find(s => s.value === statusType)?.color ?? "#23a55a";
@@ -1668,30 +1787,14 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
             <TextInput value={draft} onChange={setDraft}
                 placeholder="Status text... or Discord emoji <:name:id> + text"
                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); add(); } }} />
-            <div style={{ margin: "4px 0 6px", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,167,38,.2)", background: "rgba(255,167,38,.05)", userSelect: "text" as const }}>
+            <div style={{ margin: "4px 0 6px", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,167,38,.22)", background: "rgba(255,167,38,.04)", userSelect: "text" as const }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: "#faa61a", marginBottom: 4, letterSpacing: ".5px", textTransform: "uppercase" as const }}>
-                    ⚡ eval prefix - dynamic JS
+                    ⚡ eval prefix — dynamic JS
                 </div>
                 <div style={{ fontSize: 10, color: "#9e9e9e", marginBottom: 5 }}>
-                    Prefix any status with <span style={{ fontFamily: "monospace", background: "rgba(255,167,38,.15)", padding: "1px 5px", borderRadius: 3, color: "#faa61a", userSelect: "all" as const }}>eval </span> to run JS live. Click a snippet to insert:
+                    Prefix with <span style={{ fontFamily: "monospace", background: "rgba(255,167,38,.2)", padding: "0px 5px", borderRadius: 3, color: "#ffd580", userSelect: "all" as const, letterSpacing: 1 }}>eval&nbsp;</span> to evaluate JS live. Click snippet to insert:
                 </div>
-                {([
-                    ["🕐 Clock", "eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][(new Date()).getHours()%12]"],
-                    ["🕑 Time", "eval new Date().toLocaleTimeString()"],
-                    ["📅 Date", "eval new Date().toLocaleDateString()"],
-                    ["📅🕑 DateTime", "eval new Date().toLocaleString()"],
-                    ["🕐 Hour", "eval new Date().getHours()+':00'"],
-                ] as [string, string][]).map(([label, snippet]) => (
-                    <button key={label}
-                        title={snippet}
-                        onClick={() => setDraft(snippet)}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, margin: "2px 3px 2px 0", padding: "2px 8px", borderRadius: 5, border: "1px solid rgba(255,167,38,.35)", background: "rgba(255,167,38,.12)", color: "#faa61a", cursor: "pointer", fontSize: 10, fontWeight: 700, outline: "none" }}>
-                        {label}
-                    </button>
-                ))}
-                <div style={{ marginTop: 5, fontSize: 10, color: "#6a5a5a" }}>
-                    Custom: <span style={{ fontFamily: "monospace", color: "#9e9e9e", userSelect: "all" as const, cursor: "text" }}>eval new Date().getHours()+' h'</span>
-                </div>
+                <EvalSnippetPanel setDraft={setDraft} />
             </div>
             <StatusTypeSelector value={draftStatusType} onChange={setDraftStatusType} />
             <ClearAfterSelector value={draftClearAfter} onChange={setDraftClearAfter} />
@@ -1842,6 +1945,24 @@ function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
 
     const save = () => { settings.store.closeClanId = id.trim(); forceUpdate(); };
 
+    const resolved = React.useMemo((): { name: string; tag: string | null } | null => {
+        const v = id.trim();
+        if (!/^\d{17,20}$/.test(v)) return null;
+        try {
+            updateDomTagCache();
+            const gs = getGuildStore()?.getGuilds?.() ?? {};
+            const g = gs[v];
+            if (g) {
+                const storeTag = g.clan?.tag ?? g.clanTag ?? g.clan?.identity_tag ?? g.clan?.identityTag ?? null;
+                const tag = (storeTag ?? domTagCache.get(v) ?? clanServerNames[v]?.tag ?? null) as string | null;
+                return { name: g.name as string, tag };
+            }
+            const saved = clanServerNames[v];
+            if (saved) return saved;
+        } catch {}
+        return null;
+    }, [id]);
+
     return (
         <div>
             <PanelToggle label="On-Close Clan" description="Switch to a specific clan server when Discord closes (beforeunload - not fired on crash/kill)"
@@ -1859,8 +1980,18 @@ function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
                     {id.trim() && !/^\d{17,20}$/.test(id.trim()) && (
                         <div style={{ fontSize: 10, color: "#ef9a9a" }}>⚠ Invalid ID - must be 17-20 digits.</div>
                     )}
-                    {id.trim() && /^\d{17,20}$/.test(id.trim()) && (
-                        <div style={{ fontSize: 10, color: C.clan, opacity: .8 }}>Clan ID <b>{id.trim()}</b> will be applied upon closure.</div>
+                    {resolved && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 8px", borderRadius: 5, background: `${C.clan}10`, border: `1px solid ${C.clan}30` }}>
+                            <span style={{ fontSize: 10, color: C.clan, fontWeight: 700 }}>✓ Detected:</span>
+                            <span style={{ fontSize: 11, color: "#e8d5ff", fontWeight: 600, flex: 1 }}>{resolved.name}</span>
+                            {resolved.tag
+                                ? <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: `${C.clan}30`, color: C.clan, border: `1px solid ${C.clan}55`, fontWeight: 800 }}>[{resolved.tag}]</span>
+                                : <span style={{ fontSize: 9, color: "#5a7a9a", opacity: .7 }}>no tag</span>
+                            }
+                        </div>
+                    )}
+                    {id.trim() && /^\d{17,20}$/.test(id.trim()) && !resolved && (
+                        <div style={{ fontSize: 10, color: "#faa61a", opacity: .8 }}>⚠ Server not found in your guild list or cache.</div>
                     )}
                     <div style={{ fontSize: 10, color: C.hint, opacity: .7 }}>Paste the ID of the server whose clan badge you want to show upon closure.</div>
                 </div>
@@ -2030,10 +2161,10 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                         onBlur={() => saveEdit(i)} />
                                     : <span className="rs-item-mono" onClick={() => { setEditIdx(i); setEditVal(id); }}>{id}</span>
                                 }
-                                <span style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0, maxWidth: 130, overflow: "hidden" }}>
-                                    {displayTag && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}22`, color: C.clan, border: `1px solid ${C.clan}33`, fontWeight: 800, flexShrink: 0 }}>[{displayTag}]</span>}
+                                <span style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0, maxWidth: 220, overflow: "hidden" }}>
+                                    {displayTag && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}30`, color: C.clan, border: `1px solid ${C.clan}55`, fontWeight: 800, flexShrink: 0 }}>[{displayTag}]</span>}
                                     {displayName
-                                        ? <span style={{ fontSize: 10, color: inGuild ? C.text : "#faa61a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, maxWidth: 80 }}>{displayName}</span>
+                                        ? <span style={{ fontSize: 10, color: inGuild ? C.text : "#faa61a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, maxWidth: 160 }} title={displayName}>{displayName}</span>
                                         : <span style={{ fontSize: 9, color: "#5a7a9a", fontStyle: "italic", flexShrink: 0 }}>? not found</span>
                                     }
                                     {!inGuild && displayName && <span style={{ fontSize: 8, color: "#faa61a", fontWeight: 800, flexShrink: 0, padding: "1px 4px", borderRadius: 4, background: "rgba(250,166,26,.12)", border: "1px solid rgba(250,166,26,.25)" }}>left</span>}
@@ -2086,6 +2217,7 @@ function ClanTab({ forceUpdate }: { forceUpdate: () => void }) {
                                                 ? <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: `${C.clan}35`, color: C.clan, border: `1px solid ${C.clan}55`, fontWeight: 800, flexShrink: 0 }}>[{g.tag}]</span>
                                                 : <span style={{ fontSize: 9, color: "#5a7a9a", fontWeight: 600, flexShrink: 0, opacity: 0.6 }}>?tag</span>
                                             }
+                                            <span style={{ fontSize: 9, color: "#5a7a9a", fontFamily: "monospace", flexShrink: 0, userSelect: "all" as const, cursor: "text", padding: "1px 4px", borderRadius: 3, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }} title="Click to select ID">{g.id}</span>
                                             {inList
                                                 ? <button onClick={() => { clanIds = clanIds.filter(c => c !== g.id); clanSeqIdx = 0; clanLastVal = null; saveData(); forceUpdate(); }}
                                                     style={{ padding: "2px 8px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}18`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>✕</button>
@@ -2157,6 +2289,8 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [bioEditIdx, setBioEditIdx] = React.useState<number | null>(null);
     const [bioEditVal, setBioEditVal] = React.useState("");
     const [prDraft, setPrDraft] = React.useState("");
+    const [prEditIdx, setPrEditIdx] = React.useState<number | null>(null);
+    const [prEditVal, setPrEditVal] = React.useState("");
     const [gnDraft, setGnDraft] = React.useState("");
     const [gnEditIdx, setGnEditIdx] = React.useState<number | null>(null);
     const [gnEditVal, setGnEditVal] = React.useState("");
@@ -2174,6 +2308,7 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
     function saveBioEdit(i: number) { const v = bioEditVal.trim(); if (!v) { setBioEditIdx(null); return; } bioEntries = [...bioEntries]; bioEntries[i] = v; saveData(); setBioEditIdx(null); forceUpdate(); }
     function addPronoun() { const v = prDraft.trim(); if (!v || prList.includes(v)) return; pronounsList = [...prList, v].join("§"); saveData(); setPrDraft(""); forceUpdate(); }
     function removePronoun(i: number) { pronounsList = prList.filter((_, j) => j !== i).join("§"); prSeqIdx = 0; prLastVal = null; saveData(); forceUpdate(); }
+    function savePrEdit(i: number) { const v = prEditVal.trim(); if (!v) { setPrEditIdx(null); return; } const n = [...prList]; n[i] = v; pronounsList = n.join("§"); saveData(); setPrEditIdx(null); forceUpdate(); }
     function addGn() { const v = gnDraft.trim(); if (!v || globalNickEntries.includes(v)) return; globalNickEntries = [...globalNickEntries, v]; saveData(); setGnDraft(""); forceUpdate(); }
     function removeGn(i: number) { globalNickEntries = globalNickEntries.filter((_, j) => j !== i); globalNickSeqIdx = 0; globalNickLastVal = null; saveData(); forceUpdate(); }
     function saveGnEdit(i: number) { const v = gnEditVal.trim(); if (!v) { setGnEditIdx(null); return; } globalNickEntries = [...globalNickEntries]; globalNickEntries[i] = v; saveData(); setGnEditIdx(null); forceUpdate(); }
@@ -2242,7 +2377,16 @@ function ProfileTab({ forceUpdate }: { forceUpdate: () => void }) {
                 {prList.map((p, i) => (
                     <div key={`pr_${i}_${p}`} {...prDProps(i)} className={prCls(i, "rs-item rs-item-compact")}>
                         <span className="rs-drag">⠿</span>
-                        <span style={{ flex: 1, fontSize: 12, color: C.text, fontWeight: 600 }}>{p}</span>
+                        {prEditIdx === i
+                            ? <input autoFocus className="rs-item-input" value={prEditVal} maxLength={40}
+                                onChange={e => setPrEditVal(e.target.value)}
+                                onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") savePrEdit(i); if (e.key === "Escape") setPrEditIdx(null); }}
+                                onBlur={() => savePrEdit(i)} />
+                            : <span className="rs-item-text" style={{ flex: 1, fontSize: 12, color: C.pronoun, fontWeight: 600 }}
+                                onClick={() => { setPrEditIdx(i); setPrEditVal(p); }}
+                                onDoubleClick={() => { setPrEditIdx(i); setPrEditVal(p); }}>{p}</span>
+                        }
+                        <button className="rs-edit-btn" onClick={() => { setPrEditIdx(i); setPrEditVal(p); }}>&#9998;</button>
                         <button className="rs-del-btn" onClick={() => removePronoun(i)}>&#10005;</button>
                     </div>
                 ))}
@@ -3149,6 +3293,9 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
     function allBoth() { guilds.forEach(g => { g.nickMode = "both"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
     function allCustom() { guilds.forEach(g => { g.nickMode = "custom"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
     function allGlobal() { guilds.forEach(g => { g.nickMode = "global"; g.seqIndex = 0; g.lastNickVal = null; }); saveData(); forceUpdate(); }
+    function allPrBoth() { guilds.forEach(g => { g.guildPronounsMode = "both"; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; }); saveData(); forceUpdate(); }
+    function allPrCustom() { guilds.forEach(g => { g.guildPronounsMode = "custom"; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; }); saveData(); forceUpdate(); }
+    function allPrGlobal() { guilds.forEach(g => { g.guildPronounsMode = "global"; g.guildPronounsSeqIdx = 0; g.guildPronounsLastVal = null; }); saveData(); forceUpdate(); }
 
     let sorted = [...guilds];
     if (filter) sorted = sorted.filter(g => g.name.toLowerCase().includes(filter.toLowerCase()) || g.id.includes(filter));
@@ -3166,9 +3313,12 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
         "All Inactive Nicks": allInactiveNicks,
         "All Active Pronouns": allActivePronouns,
         "All Inactive Pronouns": allInactivePronouns,
-        "All Both": allBoth,
-        "All Custom": allCustom,
-        "All Global": allGlobal,
+        "All Nick Both": allBoth,
+        "All Nick Custom": allCustom,
+        "All Nick Global": allGlobal,
+        "All Pr Both": allPrBoth,
+        "All Pr Custom": allPrCustom,
+        "All Pr Global": allPrGlobal,
         "All VC-Only": allVCOnly,
         "All Always": allAlways,
     };
@@ -3340,10 +3490,16 @@ function NicksTab({ forceUpdate }: { forceUpdate: () => void }) {
                     <button onClick={() => setConfirmBulk("All Inactive Pronouns")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${INACT}44`, background: `${INACT}15`, color: INACT, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Inactive</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
-                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: NM_COLOR.both, minWidth: 48 }}>Mode</span>
-                    <button onClick={() => setConfirmBulk("All Both")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.both}44`, background: `${NM_COLOR.both}18`, color: NM_COLOR.both, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Both</button>
-                    <button onClick={() => setConfirmBulk("All Custom")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.custom}44`, background: `${NM_COLOR.custom}18`, color: NM_COLOR.custom, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Custom</button>
-                    <button onClick={() => setConfirmBulk("All Global")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.global}44`, background: `${NM_COLOR.global}18`, color: NM_COLOR.global, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Global</button>
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.nick, minWidth: 72 }}>Nick Mode</span>
+                    <button onClick={() => setConfirmBulk("All Nick Both")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.both}44`, background: `${NM_COLOR.both}18`, color: NM_COLOR.both, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Both</button>
+                    <button onClick={() => setConfirmBulk("All Nick Custom")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.custom}44`, background: `${NM_COLOR.custom}18`, color: NM_COLOR.custom, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Custom</button>
+                    <button onClick={() => setConfirmBulk("All Nick Global")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.global}44`, background: `${NM_COLOR.global}18`, color: NM_COLOR.global, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Global</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase" as const, letterSpacing: ".8px", color: C.pronoun, minWidth: 72 }}>Pr Mode</span>
+                    <button onClick={() => setConfirmBulk("All Pr Both")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.both}44`, background: `${NM_COLOR.both}18`, color: NM_COLOR.both, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Both</button>
+                    <button onClick={() => setConfirmBulk("All Pr Custom")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.custom}44`, background: `${NM_COLOR.custom}18`, color: NM_COLOR.custom, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Custom</button>
+                    <button onClick={() => setConfirmBulk("All Pr Global")} style={{ padding: "2px 9px", borderRadius: 5, border: `1px solid ${NM_COLOR.global}44`, background: `${NM_COLOR.global}18`, color: NM_COLOR.global, cursor: "pointer", fontSize: 10, fontWeight: 800 }}>All Global</button>
                 </div>
                 {settings.store.voiceActivateEnabled && !settings.store.voiceActivateGlobal && (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
