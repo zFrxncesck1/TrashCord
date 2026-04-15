@@ -12,4 +12,4 @@ jobs:
       - name: Sync fork with upstream
         run: gh repo sync $GITHUB_REPOSITORY --source Equicord/Equicord --branch main
         env:
-          GITHUB_TOKEN: ${{ secrets.ETOKEN }}
+          GH_TOKEN: ${{ secrets.ETOKEN }}
