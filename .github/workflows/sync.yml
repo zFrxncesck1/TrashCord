@@ -19,5 +19,5 @@ jobs:
           git remote add upstream https://github.com/Equicord/Equicord.git
           git fetch upstream
           git checkout main
-          git merge upstream/main --ff-only || echo "Nothing to merge (or not fast-forward)"
+          git merge upstream/main --no-ff -m "Sync with upstream [skip ci]" || echo "Nothing to merge"
           git push origin main
