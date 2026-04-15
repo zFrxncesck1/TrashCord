@@ -9,7 +9,17 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sync fork with upstream
-        run: gh repo sync $GITHUB_REPOSITORY --source Equicord/Equicord --branch main
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ETOKEN }}
+
+      - name: Sync fork with upstream (Equicord)
+        run: |
+          git remote add upstream https://github.com/Equicord/Equicord.git
+          git fetch upstream
+          git checkout main
+          git merge upstream/main --no-ff -m "Sync with upstream [skip ci]" || echo "Nothing to merge"
+          git push origin main
         env:
-          GH_TOKEN: ${{ secrets.ETOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ETOKEN }}
