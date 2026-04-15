@@ -2,7 +2,7 @@ name: Sync fork with upstream (Equicord)
 
 on:
   schedule:
-    - cron: '49 0 * * *'
+    - cron: '04 1 * * *'
   workflow_dispatch:
 
 permissions:
