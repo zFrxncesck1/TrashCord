@@ -5,6 +5,10 @@ on:
     - cron: '15 0 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  workflows: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -12,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.ETOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync fork with upstream (Equicord)
         run: |
@@ -21,5 +25,3 @@ jobs:
           git checkout main
           git merge upstream/main --no-ff -m "Sync with upstream [skip ci]" || echo "Nothing to merge"
           git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.ETOKEN }}
