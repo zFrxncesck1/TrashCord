@@ -17,8 +17,6 @@
 */
 
 import * as types from "@plugins/philsPluginLibrary/types";
-import { waitForStore } from "webpack/common/internal";
+import { findStoreLazy } from "@webpack";
 
-export let MediaEngineStore: types.MediaEngineStore;
-
-waitForStore("MediaEngineStore", store => MediaEngineStore = store);
+export const MediaEngineStore: types.MediaEngineStore = findStoreLazy("MediaEngineStore");

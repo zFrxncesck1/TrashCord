@@ -23,7 +23,7 @@ import Plugin from "@plugins/betterScreenshare.desktop/index";
 import { screenshareStore } from "@plugins/betterScreenshare.desktop/stores";
 import { SettingsModalCard, SettingsModalCardItem } from "@plugins/philsPluginLibrary";
 import { React } from "@webpack/common";
-import { Settings } from "Vencord";
+import { Settings } from "@api/Settings";
 
 const ReplacedStreamSettings = () => {
     const { use } = screenshareStore;

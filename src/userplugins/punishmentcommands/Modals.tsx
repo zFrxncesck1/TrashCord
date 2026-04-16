@@ -1,7 +1,7 @@
 import ErrorBoundary from "@components/ErrorBoundary";
 import { openModal, ModalRoot, ModalSize, ModalHeader, ModalCloseButton, ModalContent, closeModal, closeAllModals } from "@utils/modal";
 import { Button, Forms, Parser, TextInput } from "@webpack/common";
-import { cl } from "plugins/memberCount";
+import { cl } from "@plugins/memberCount";
 import { SelectedChannelStore, useState } from "@webpack/common";
 import "./style.css";
 import { sendMessage } from "@utils/discord";
