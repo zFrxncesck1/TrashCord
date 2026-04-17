@@ -280,34 +280,31 @@ export default definePlugin({
                 }
             ],
             execute: async (args: any[], ctx: any) => {
+                const channelId = ctx.channel.id;
                 const domainInput = args[0]?.value as string;
 
                 if (!domainInput) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Please provide a domain name!"
-                    });
+                    sendBotMessage(channelId, { content: "Please provide a domain name!" });
                     return;
                 }
 
                 const domain = normalizeDomain(domainInput);
                 logDebug("Looking up domain:", domain);
 
-                sendBotMessage(ctx.channel.id, {
-                    content: "Looking up domain information..."
-                });
+                try {
+                    const info = await getDomainInfo(domain);
 
-                const info = await getDomainInfo(domain);
+                    if (!info) {
+                        sendBotMessage(channelId, {
+                            content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
+                        });
+                        return;
+                    }
 
-                if (!info) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: `Failed to retrieve information for **${domain}**\nPossible reasons:\n• Domain doesn't exist\n• RDAP server unavailable\n• Invalid domain format`
-                    });
-                    return;
+                    sendBotMessage(channelId, { content: createDomainMessage(info) });
+                } catch {
+                    sendBotMessage(channelId, { content: `An unexpected error occurred while looking up **${domain}**` });
                 }
-
-                sendBotMessage(ctx.channel.id, {
-                    content: createDomainMessage(info)
-                });
             }
         },
         {
@@ -324,42 +321,37 @@ export default definePlugin({
                 }
             ],
             execute: async (args: any[], ctx: any) => {
+                const channelId = ctx.channel.id;
                 const ipInput = args[0]?.value as string;
 
                 if (!ipInput) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Please provide an IP address!"
-                    });
+                    sendBotMessage(channelId, { content: "Please provide an IP address!" });
                     return;
                 }
 
                 const ip = ipInput.trim();
 
                 if (!isValidIPv4(ip)) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
-                    });
+                    sendBotMessage(channelId, { content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)" });
                     return;
                 }
 
                 logDebug("Looking up IP:", ip);
 
-                sendBotMessage(ctx.channel.id, {
-                    content: "Looking up IP information..."
-                });
+                try {
+                    const info = await getIPInfo(ip);
 
-                const info = await getIPInfo(ip);
+                    if (!info) {
+                        sendBotMessage(channelId, {
+                            content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
+                        });
+                        return;
+                    }
 
-                if (!info) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: `Failed to retrieve information for **${ip}**\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error\n• Unsupported IP format`
-                    });
-                    return;
+                    sendBotMessage(channelId, { content: createIPMessage(info) });
+                } catch {
+                    sendBotMessage(channelId, { content: `An unexpected error occurred while looking up **${ip}**` });
                 }
-
-                sendBotMessage(ctx.channel.id, {
-                    content: createIPMessage(info)
-                });
             }
         },
         {
@@ -367,24 +359,23 @@ export default definePlugin({
             description: "Show your public IP address and geolocation",
             inputType: ApplicationCommandInputType.BUILT_IN,
             predicate: () => true,
-            options: [],
             execute: async (args: any[], ctx: any) => {
-                sendBotMessage(ctx.channel.id, {
-                    content: "Looking up your IP information..."
-                });
+                const channelId = ctx.channel.id;
 
-                const info = await getMyIP();
+                try {
+                    const info = await getMyIP();
 
-                if (!info) {
-                    sendBotMessage(ctx.channel.id, {
-                        content: "Failed to retrieve your IP information.\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error"
-                    });
-                    return;
+                    if (!info) {
+                        sendBotMessage(channelId, {
+                            content: "Failed to retrieve your IP information.\nPossible reasons:\n• Provider unavailable\n• Rate limit exceeded\n• Network error"
+                        });
+                        return;
+                    }
+
+                    sendBotMessage(channelId, { content: createIPMessage(info) });
+                } catch {
+                    sendBotMessage(channelId, { content: "An unexpected error occurred while retrieving your IP." });
                 }
-
-                sendBotMessage(ctx.channel.id, {
-                    content: createIPMessage(info)
-                });
             }
         }
     ]

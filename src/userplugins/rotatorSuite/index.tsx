@@ -269,12 +269,12 @@ function minutesToMs(raw: string): number {
 }
 
 type StatusType = "online" | "idle" | "dnd" | "invisible" | "auto";
-const STATUS_OPTIONS: { value: StatusType; label: string; color: string }[] = [
-    { value: "online",    label: "Online",    color: "#23a55a" },
-    { value: "idle",      label: "Idle",      color: "#f0b232" },
-    { value: "dnd",       label: "DND",       color: "#f23f43" },
-    { value: "invisible", label: "Invis",     color: "#80848e" },
-    { value: "auto",      label: "Auto",      color: "#9c67ff" },
+const STATUS_OPTIONS: { value: StatusType; label: string; color: string; hint: string }[] = [
+    { value: "online",    label: "Online",    color: "#23a55a", hint: "Sets your presence to Online - you appear active and available to everyone." },
+    { value: "idle",      label: "Idle",      color: "#f0b232", hint: "Sets your presence to Idle - shows you as away (crescent moon icon)." },
+    { value: "dnd",       label: "DND",       color: "#f23f43", hint: "Do Not Disturb - suppresses all notifications and marks you as busy." },
+    { value: "invisible", label: "Invis",     color: "#80848e", hint: "Invisible - you appear fully offline to others while still using Discord." },
+    { value: "auto",      label: "Auto",      color: "#9c67ff", hint: "Auto - keeps your current presence unchanged; only updates the status text/emoji." },
 ];
 
 type NickMode = "custom" | "global" | "both";
@@ -1478,7 +1478,7 @@ function EvalSnippetPanel({ setDraft }: { setDraft: (v: string) => void }) {
             <div style={{ marginTop: 6, borderTop: "1px solid rgba(255,167,38,.15)", paddingTop: 5 }}>
                 <button onClick={() => setBuilderOpen(o => !o)}
                     style={{ fontSize: 10, fontWeight: 800, color: builderOpen ? "#ffd580" : "#c8a050", background: "none", border: "none", cursor: "pointer", outline: "none", padding: 0 }}>
-                    {builderOpen ? "▾" : "▸"} Text builder — left text | dynamic | right text
+                    {builderOpen ? "▾" : "▸"} Text builder - left text | dynamic | right text
                 </button>
                 {builderOpen && (
                     <div style={{ marginTop: 5, display: "flex", flexDirection: "column" as const, gap: 5 }}>
@@ -1537,17 +1537,22 @@ function StatusLivePreview({ entry, statusType }: { entry: Pick<StatusEntry, "em
 }
 
 function StatusTypeSelector({ value, onChange }: { value: StatusType; onChange: (v: StatusType) => void }) {
+    const hint = STATUS_OPTIONS.find(s => s.value === value)?.hint ?? "";
     return (
-        <div className="rs-status-type-row">
-            {STATUS_OPTIONS.map(s => (
-                <button key={s.value}
-                    className={`rs-status-type-btn${value === s.value ? " active" : ""}`}
-                    style={value === s.value ? { color: s.color, borderColor: s.color } : {}}
-                    onClick={() => onChange(s.value)}>
-                    <span className="rs-status-type-dot" style={{ background: s.color }} />
-                    {s.label}
-                </button>
-            ))}
+        <div>
+            <div className="rs-status-type-row">
+                {STATUS_OPTIONS.map(s => (
+                    <button key={s.value}
+                        title={s.hint}
+                        className={`rs-status-type-btn${value === s.value ? " active" : ""}`}
+                        style={value === s.value ? { color: s.color, borderColor: s.color } : {}}
+                        onClick={() => onChange(s.value)}>
+                        <span className="rs-status-type-dot" style={{ background: s.color }} />
+                        {s.label}
+                    </button>
+                ))}
+            </div>
+            {hint && <div style={{ fontSize: 10, color: "#757575", marginTop: 3, lineHeight: 1.4, paddingLeft: 2 }}>{hint}</div>}
         </div>
     );
 }
@@ -1789,7 +1794,7 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); add(); } }} />
             <div style={{ margin: "4px 0 6px", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,167,38,.22)", background: "rgba(255,167,38,.04)", userSelect: "text" as const }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: "#faa61a", marginBottom: 4, letterSpacing: ".5px", textTransform: "uppercase" as const }}>
-                    ⚡ eval prefix — dynamic JS
+                    ⚡ eval prefix - dynamic JS
                 </div>
                 <div style={{ fontSize: 10, color: "#9e9e9e", marginBottom: 5 }}>
                     Prefix with <span style={{ fontFamily: "monospace", background: "rgba(255,167,38,.2)", padding: "0px 5px", borderRadius: 3, color: "#ffd580", userSelect: "all" as const, letterSpacing: 1 }}>eval&nbsp;</span> to evaluate JS live. Click snippet to insert:
@@ -2473,6 +2478,32 @@ function arGetExt(data: string): string {
 
 function arIsGif(data: string) { return /^data:image\/gif;/i.test(data); }
 
+function arStampGif(data: string): string {
+    try {
+        const b64 = data.split(",")[1];
+        if (!b64) return data;
+        const raw = atob(b64);
+        const n = raw.length;
+        const src = new Uint8Array(n);
+        for (let i = 0; i < n; i++) src[i] = raw.charCodeAt(i);
+        if (src[0] !== 0x47 || src[1] !== 0x49 || src[2] !== 0x46) return data;
+        let tp = n - 1;
+        while (tp > 6 && src[tp] !== 0x3B) tp--;
+        if (tp <= 6) return data;
+        const stamp = new TextEncoder().encode(Date.now().toString(36));
+        const sLen = Math.min(stamp.length, 255);
+        const ext = new Uint8Array(sLen + 4);
+        ext[0] = 0x21; ext[1] = 0xFE; ext[2] = sLen;
+        ext.set(stamp.subarray(0, sLen), 3); ext[sLen + 3] = 0x00;
+        const out = new Uint8Array(tp + ext.length + 1);
+        out.set(src.subarray(0, tp)); out.set(ext, tp); out[out.length - 1] = 0x3B;
+        const C = 0x8000;
+        let bin = "";
+        for (let i = 0; i < out.length; i += C) bin += String.fromCharCode(...out.subarray(i, Math.min(i + C, out.length)));
+        return "data:image/gif;base64," + btoa(bin);
+    } catch { return data; }
+}
+
 function arFmtSec(s: number): string {
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60), r = s % 60;
@@ -2496,7 +2527,8 @@ async function arBlobToDataUrl(blob: Blob): Promise<string> {
 
 async function arPrepareForDiscord(data: string): Promise<string> {
     const ext = arGetExt(data);
-    const okExts = ["png", "jpg", "jpeg", "gif", "webp"];
+    if (ext === "gif") return data;
+    const okExts = ["png", "jpg", "jpeg", "webp"];
     const bytes = (data.split(",")[1]?.length ?? 0) * 0.75;
     if (okExts.includes(ext) && bytes < 8_000_000) return data;
     return new Promise<string>((res, rej) => {
@@ -2515,10 +2547,11 @@ async function arPrepareForDiscord(data: string): Promise<string> {
 
 async function arApplyAvatar(entry: AvatarEntry): Promise<void> {
     try {
-        const data = await arPrepareForDiscord(entry.data);
+        let data = await arPrepareForDiscord(entry.data);
+        if (arIsGif(data)) data = arStampGif(data);
         if (!data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Image data is invalid or too small");
         await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
-        arToast(`Avatar - ${entry.label}`);
+        arToast(`Avatar → ${entry.label}`);
     } catch (e: any) {
         const msg = e?.body?.errors?.avatar?._errors?.[0]?.message ?? e?.body?.message ?? e?.message ?? "Unknown";
         arToast(`Failed: ${msg}`, Toasts.Type.FAILURE);
@@ -4497,6 +4530,7 @@ function RotatorSuiteModal({ modalProps }: { modalProps: ModalProps }) {
     );
 }
 
+
 function RSUserAreaButton() {
     const [active, setActive] = React.useState(false);
     React.useEffect(() => {
@@ -4528,6 +4562,12 @@ export default definePlugin({
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
+
+    toolboxActions: {
+        "Open Rotator Suite"() {
+            openModal(props => <RotatorSuiteModal modalProps={props} />);
+        },
+    },
 
     settingsAboutComponent: () => (
         <div style={{ marginTop: 10 }}>

@@ -77,6 +77,27 @@ function getExt(data: string): string {
 
 function isGif(data: string) { return /^data:image\/gif;/i.test(data); }
 
+function freshGif(data: string): string {
+    try {
+        const b64 = data.split(",")[1];
+        if (!b64) return data;
+        const bin = atob(b64);
+        const src = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) src[i] = bin.charCodeAt(i);
+        const tag = new TextEncoder().encode("ar-" + Date.now().toString(36));
+        const block = new Uint8Array(tag.length + 4);
+        block[0] = 0x21; block[1] = 0xFE; block[2] = tag.length;
+        block.set(tag, 3); block[tag.length + 3] = 0x00;
+        const merged = new Uint8Array(src.length + block.length - 1);
+        merged.set(src.subarray(0, src.length - 1));
+        merged.set(block, src.length - 1);
+        merged[merged.length - 1] = 0x3B;
+        let out = "";
+        merged.forEach(b => out += String.fromCharCode(b));
+        return "data:image/gif;base64," + btoa(out);
+    } catch { return data; }
+}
+
 function fmtSec(s: number): string {
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60), r = s % 60;
@@ -121,7 +142,8 @@ async function prepareForDiscord(data: string): Promise<string> {
 
 async function applyAvatar(entry: AvatarEntry): Promise<void> {
     try {
-        const data = await prepareForDiscord(entry.data);
+        let data = await prepareForDiscord(entry.data);
+        if (isGif(data)) data = freshGif(data);
         if (!data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Image data is invalid or too small");
         await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
         toast(`Avatar - ${entry.label}`);
