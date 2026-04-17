@@ -177,7 +177,7 @@ const settings = definePluginSettings({
     customJoinSound: {
         type: OptionType.STRING,
         default: "",
-        description: "JOIN fallback URL (https://...) — used only if no file is uploaded above. Empty = built-in custom MP3.",
+        description: "JOIN fallback URL (https://...) - used only if no file is uploaded above. Empty = built-in custom MP3.",
     },
     customJoinUpload: {
         type: OptionType.COMPONENT,
@@ -200,7 +200,7 @@ const settings = definePluginSettings({
     customLeaveSound: {
         type: OptionType.STRING,
         default: "",
-        description: "LEAVE fallback URL (https://...) — used only if no file is uploaded above. Empty = built-in custom MP3.",
+        description: "LEAVE fallback URL (https://...) - used only if no file is uploaded above. Empty = built-in custom MP3.",
     },
     customLeaveUpload: {
         type: OptionType.COMPONENT,
@@ -241,7 +241,7 @@ const settings = definePluginSettings({
     userIncludeIds: {
         type: OptionType.STRING,
         default: "",
-        description: "Track ONLY these user IDs (empty = all with matching perms). Overrides server filter and permission check — flagged even without staff permissions. Useful to track undercover staff alts. Accepts one or more IDs separated by comma, space, or dash.",
+        description: "Track ONLY these user IDs (empty = all with matching perms). Overrides server filter and permission check - flagged even without staff permissions. Useful to track undercover staff alts. Accepts one or more IDs separated by comma, space, or dash.",
     },
     userExcludeIds: {
         type: OptionType.STRING,
@@ -267,6 +267,21 @@ const settings = definePluginSettings({
     muteMembersPermission: { type: OptionType.BOOLEAN, default: true, description: "Mute Members" },
     deafenMembersPermission: { type: OptionType.BOOLEAN, default: true, description: "Deafen Members" },
 });
+
+const PERM_CHECKS: Array<[keyof typeof settings.store, bigint]> = [
+    ["adminPermission", PermissionsBits.ADMINISTRATOR],
+    ["manageGuildPermission", PermissionsBits.MANAGE_GUILD],
+    ["manageChannelsPermission", PermissionsBits.MANAGE_CHANNELS],
+    ["manageRolesPermission", PermissionsBits.MANAGE_ROLES],
+    ["manageNicknamesPermission", PermissionsBits.MANAGE_NICKNAMES],
+    ["manageMessagesPermission", PermissionsBits.MANAGE_MESSAGES],
+    ["kickMembersPermission", PermissionsBits.KICK_MEMBERS],
+    ["banMembersPermission", PermissionsBits.BAN_MEMBERS],
+    ["moderateMembersPermission", PermissionsBits.MODERATE_MEMBERS],
+    ["moveMembersPermission", PermissionsBits.MOVE_MEMBERS],
+    ["muteMembersPermission", PermissionsBits.MUTE_MEMBERS],
+    ["deafenMembersPermission", PermissionsBits.DEAFEN_MEMBERS],
+];
 
 function parseIds(raw: string): string[] {
     if (!raw) return [];
@@ -299,13 +314,6 @@ function isServerAllowedForUser(guildId: string, userId: string): boolean {
     return true;
 }
 
-function isUserTracked(userId: string): boolean {
-    const inc = parseIds(settings.store.userIncludeIds);
-    if (inc.length && !inc.includes(userId)) return false;
-    const exc = parseIds(settings.store.userExcludeIds);
-    return !exc.length || !exc.includes(userId);
-}
-
 function shouldFlag(userId: string, guildId: string): boolean {
     const exc = parseIds(settings.store.userExcludeIds);
     if (exc.length && exc.includes(userId)) return false;
@@ -315,67 +323,16 @@ function shouldFlag(userId: string, guildId: string): boolean {
     return isUserStaff(userId, guildId);
 }
 
-function memberHasPerm(guildId: string, userId: string, perm: bigint): boolean {
-    const guild = GuildStore.getGuild(guildId);
-    if (!guild) return false;
-    if (guild.ownerId === userId) return true;
-    
-    const member = GuildMemberStore.getMember(guildId, userId);
-    if (!member?.roles?.length) return false;
-    
-    const sortedRoles = GuildRoleStore.getSortedRoles(guildId);
-    if (!sortedRoles || sortedRoles.length === 0) return false;
-    
-    const userRoleIds = new Set(member.roles);
-    
-    for (let i = 0; i < sortedRoles.length; i++) {
-        const role = sortedRoles[i];
-        if (!role || !role.id || !userRoleIds.has(role.id)) continue;
-        
-        const perms = BigInt(role.permissions);
-        if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
-        if ((perms & perm) !== 0n) return true;
-    }
-    
-    const everyoneRole = GuildRoleStore.getRole(guildId, guildId);
-    if (everyoneRole) {
-        const perms = BigInt(everyoneRole.permissions);
-        if ((perms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
-        if ((perms & perm) !== 0n) return true;
-    }
-    
-    return false;
-}
-
-function getPermChecks(): Array<[keyof typeof settings.store, bigint]> {
-    return [
-        ["adminPermission", PermissionsBits.ADMINISTRATOR],
-        ["manageGuildPermission", PermissionsBits.MANAGE_GUILD],
-        ["manageChannelsPermission", PermissionsBits.MANAGE_CHANNELS],
-        ["manageRolesPermission", PermissionsBits.MANAGE_ROLES],
-        ["manageNicknamesPermission", PermissionsBits.MANAGE_NICKNAMES],
-        ["manageMessagesPermission", PermissionsBits.MANAGE_MESSAGES],
-        ["kickMembersPermission", PermissionsBits.KICK_MEMBERS],
-        ["banMembersPermission", PermissionsBits.BAN_MEMBERS],
-        ["moderateMembersPermission", PermissionsBits.MODERATE_MEMBERS],
-        ["moveMembersPermission", PermissionsBits.MOVE_MEMBERS],
-        ["muteMembersPermission", PermissionsBits.MUTE_MEMBERS],
-        ["deafenMembersPermission", PermissionsBits.DEAFEN_MEMBERS],
-    ];
-}
-
 function isUserStaff(userId: string, guildId: string): boolean {
     const guild = GuildStore.getGuild(guildId);
     if (!guild) return false;
-
     if (guild.ownerId === userId) return true;
 
     try {
         const computed: bigint | undefined = PermissionStore.getGuildPermissionsForUser?.(userId, guildId);
         if (computed !== undefined && computed !== null) {
-            const permChecks = getPermChecks();
-            for (let i = 0; i < permChecks.length; i++) {
-                const [key, perm] = permChecks[i];
+            for (let i = 0; i < PERM_CHECKS.length; i++) {
+                const [key, perm] = PERM_CHECKS[i];
                 if (settings.store[key] && (BigInt(computed) & perm) !== 0n) return true;
             }
             return false;
@@ -397,22 +354,19 @@ function isUserStaff(userId: string, guildId: string): boolean {
     }
 
     const userRoleIds = new Set(member.roles);
-    const permChecks = getPermChecks();
-    
-    for (let i = 0; i < permChecks.length; i++) {
-        const [key, perm] = permChecks[i];
+
+    for (let i = 0; i < PERM_CHECKS.length; i++) {
+        const [key, perm] = PERM_CHECKS[i];
         if (!settings.store[key]) continue;
-        
         for (let j = 0; j < sortedRoles.length; j++) {
             const role = sortedRoles[j];
             if (!role || !role.id || !userRoleIds.has(role.id)) continue;
-            
             const rolePerms = BigInt(role.permissions);
             if ((rolePerms & PermissionsBits.ADMINISTRATOR) !== 0n) return true;
             if ((rolePerms & perm) !== 0n) return true;
         }
     }
-    
+
     return false;
 }
 
@@ -424,144 +378,6 @@ function getAvatarUrl(userId: string): string {
     const user = UserStore.getUser(userId);
     if (!user?.avatar) return `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) % 5n)}.png`;
     return `https://cdn.discordapp.com/avatars/${userId}/${user.avatar}.png?size=128`;
-}
-
-function logVoiceChannelDetails(channelId: string): void {
-    if (!settings.store.enableLogs) return;
-
-    const channel = ChannelStore.getChannel(channelId);
-    if (!channel?.guild_id) return;
-
-    const guild = GuildStore.getGuild(channel.guild_id);
-    if (!guild) return;
-
-    const voiceStates = VoiceStateStore.getVoiceStatesForChannel(channelId);
-    if (!voiceStates) {
-        logger.info(`📋 Voice Channel: ${channel.name || channelId}`);
-        logger.info(`   Guild: ${guild.name} (${guild.id})`);
-        logger.info(`   No users in voice channel`);
-        return;
-    }
-
-    const userIds = Object.keys(voiceStates);
-    const myUserId = UserStore.getCurrentUser()?.id;
-
-    logger.info(`════════════════════════════════════════`);
-    logger.info(`   Voice Channel: ${channel.name || channelId}`);
-    logger.info(`   Guild: ${guild.name} (${guild.id})`);
-    logger.info(`   Users in voice: ${userIds.length}`);
-    logger.info(`════════════════════════════════════════`);
-
-    for (let i = 0; i < userIds.length; i++) {
-        const userId = userIds[i];
-        const user = UserStore.getUser(userId);
-        const username = user?.username ?? userId;
-        const discriminator = user?.discriminator ?? "0";
-        const isMe = userId === myUserId;
-
-        logger.info(``);
-        logger.info(`👤 User ${i + 1}: ${username}#${discriminator}${isMe ? ' (YOU)' : ''}`);
-        logger.info(`   ID: ${userId}`);
-
-        const member = GuildMemberStore.getMember(channel.guild_id, userId);
-        const nickname = member?.nick;
-        if (nickname) {
-            logger.info(`   Nickname: ${nickname}`);
-        }
-
-        if (guild.ownerId === userId) {
-            logger.info(`   ⭐ Server Owner`);
-        }
-
-        if (member?.roles && member.roles.length > 0) {
-            logger.info(`   Roles (${member.roles.length}):`);
-            for (let j = 0; j < member.roles.length; j++) {
-                const roleId = member.roles[j];
-                const role = GuildRoleStore.getRole(channel.guild_id, roleId);
-                if (role) {
-                    const rolePerms = BigInt(role.permissions);
-                    const isAdmin = (rolePerms & PermissionsBits.ADMINISTRATOR) !== 0n;
-                    logger.info(`     - ${role.name}${isAdmin ? ' ⚠️ [ADMIN]' : ''} (${roleId})`);
-                } else {
-                    logger.info(`     - Unknown Role (${roleId})`);
-                }
-            }
-        } else {
-            logger.info(`   Roles: None (or @everyone only)`);
-        }
-
-        logUserPermissions(userId, channel.guild_id);
-
-        logger.info(`────────────────────────────────────`);
-    }
-
-    logger.info(``);
-    logger.info(` End of voice channel user list`);
-    logger.info(`════════════════════════════════════════`);
-}
-
-function logUserPermissions(userId: string, guildId: string): void {
-    try {
-        const memberData = GuildMemberStore.getMember(guildId, userId);
-        if (!memberData || !memberData.roles || memberData.roles.length === 0) {
-            logger.info(`   User has no roles`);
-            return;
-        }
-
-        const sortedRoles = GuildRoleStore.getSortedRoles(guildId);
-        if (!sortedRoles || sortedRoles.length === 0) {
-            logger.info(`   No roles available in GuildRoleStore`);
-            return;
-        }
-
-        const userPerms = new Set<string>();
-        const userRoleIds = new Set(memberData.roles);
-        
-        for (let j = 0; j < sortedRoles.length; j++) {
-            const role = sortedRoles[j];
-            if (!role || !role.id || !userRoleIds.has(role.id)) continue;
-            
-            const rolePerms = BigInt(role.permissions);
-            extractPermissions(rolePerms, userPerms);
-        }
-        
-        if (userPerms.size > 0) {
-            logger.info(`   Permissions:`);
-            logPermissions(userPerms);
-        } else {
-            logger.info(`   No special permissions found`);
-        }
-    } catch (e) {
-        logger.info(`   Error retrieving permissions: ${e}`);
-    }
-}
-
-function extractPermissions(rolePerms: bigint, userPerms: Set<string>): void {
-    if ((rolePerms & PermissionsBits.ADMINISTRATOR) !== 0n) userPerms.add("Administrator");
-    if ((rolePerms & PermissionsBits.MANAGE_GUILD) !== 0n) userPerms.add("Manage Server");
-    if ((rolePerms & PermissionsBits.MANAGE_CHANNELS) !== 0n) userPerms.add("Manage Channels");
-    if ((rolePerms & PermissionsBits.MANAGE_ROLES) !== 0n) userPerms.add("Manage Roles");
-    if ((rolePerms & PermissionsBits.MANAGE_NICKNAMES) !== 0n) userPerms.add("Manage Nicknames");
-    if ((rolePerms & PermissionsBits.CHANGE_NICKNAME) !== 0n) userPerms.add("Change Nickname");
-    if ((rolePerms & PermissionsBits.MANAGE_MESSAGES) !== 0n) userPerms.add("Manage Messages");
-    if ((rolePerms & PermissionsBits.KICK_MEMBERS) !== 0n) userPerms.add("Kick Members");
-    if ((rolePerms & PermissionsBits.BAN_MEMBERS) !== 0n) userPerms.add("Ban Members");
-    if ((rolePerms & PermissionsBits.MODERATE_MEMBERS) !== 0n) userPerms.add("Timeout Members");
-    if ((rolePerms & PermissionsBits.MUTE_MEMBERS) !== 0n) userPerms.add("Mute Members");
-    if ((rolePerms & PermissionsBits.DEAFEN_MEMBERS) !== 0n) userPerms.add("Deafen Members");
-    if ((rolePerms & PermissionsBits.MOVE_MEMBERS) !== 0n) userPerms.add("Move Members");
-    if ((rolePerms & PermissionsBits.MANAGE_WEBHOOKS) !== 0n) userPerms.add("Manage Webhooks");
-    if ((rolePerms & PermissionsBits.MANAGE_GUILD_EXPRESSIONS) !== 0n) userPerms.add("Manage Emojis");
-}
-
-function logPermissions(userPerms: Set<string>): void {
-    for (const perm of userPerms) {
-        const isCritical = perm === "Administrator" || perm === "Manage Server" || 
-            perm === "Manage Roles" || perm === "Kick Members" || 
-            perm === "Ban Members" || perm === "Timeout Members" ||
-            perm === "Manage Nicknames";
-        logger.info(`     ✓ ${perm}${isCritical ? ' ⚠️' : ''}`);
-    }
 }
 
 function getChannelContext(channelId: string): string {
@@ -664,10 +480,6 @@ export default definePlugin({
             if (!channelId) return;
             const channel = ChannelStore.getChannel(channelId);
             if (!channel?.guild_id) return;
-            if (settings.store.enableLogs) {
-                logger.debug(`StaffDetector: joined VC ${channelId}`);
-                logVoiceChannelDetails(channelId);
-            }
             scanChannelStaff(channelId, true);
         },
 
