@@ -89,10 +89,12 @@ export default definePlugin({
         {
             find: ".tertiaryColor,roleStyle:\"username\",includeConvenienceGlow:!0",
             replacement: [
+                // Override message author role color
                 {
                     match: /(?<=let{author:\i,message:)(\i)(.*?)(?<=colorStrings:\i,colorRoleName:\i}=)(\i)/,
                     replace: "$1$2$self.getColorsForMessages($1,$3)"
                 },
+                // Always enable gradient roles
                 {
                     match: /\(0,\i\.\i\)\(null!=\i\?\i:\i,"BaseUsername"\)/,
                     replace: "true"
@@ -102,15 +104,18 @@ export default definePlugin({
         {
             find: ".name,roleColors:",
             replacement: [
+                // Override member list role color
                 {
                     match: /(?<=let{colorRoleName.*?colorString:(\i).*?roleColorStrings:(\i).*?user:(\i).*?}=\i;)/,
                     replace: "let{colorString:_$1,roleColorStrings:_$2}=$self.getColorsForMemberList($3,$1,$2);$1=_$1;$2=_$2;"
                 }
             ]
         },
+        // @TODO: find a better `find` here ??? not sure how stable this is lmao
         {
             find: ".showThreadPromptOnReply&&",
             replacement: [
+                // Override reply role color, uses getColorsForMessage since the keys are the same
                 {
                     match: /(?<=message:(\i).*?colorString:(\i).*?,(\i)=\(0,\i\.\i\)\(\i,\i\)),/,
                     replace: ";let{colorString:_$2,colorStrings:_$3}=$self.getColorsForMessages($1,{colorString:$2,colorStrings:$3});$2=_$2;$3=_$3;let "
@@ -118,8 +123,9 @@ export default definePlugin({
             ]
         },
         {
-            find: "memberNameText},(0,",
+            find: "memberNameText}),(0,",
             replacement: [
+                // Override color in guild member search
                 {
                     match: /(?<=let{member:(\i),user:(\i).*(\i)=\(0,.*?colorStrings\);)/,
                     replace: "$1=$self.getColorsForMemberSearch($2,$1);$3=$1.colorStrings;"
@@ -166,6 +172,7 @@ export default definePlugin({
     },
 
     getColorsForMemberSearch(user: any, old: any) {
+        // can just call getColorsForMessages since keys are the same
         return this.getColorsForMessages({ author: user }, old);
     }
 });

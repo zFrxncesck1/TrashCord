@@ -10,10 +10,13 @@ import { Flex } from "@components/Flex";
 import { openUserProfile } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { closeModal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
+import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { findByPropsLazy, findComponentByCodeLazy } from "@webpack";
 import { FluxDispatcher, GuildMemberStore, Menu, PresenceStore, ScrollerThin, Text, useEffect, UserStore, useStateFromStores } from "@webpack/common";
-import { cl } from "@plugins/memberCount";
+import { classNameFactory } from "@utils/css";
+
+const cl = classNameFactory("vc-membercount-");
 
 const logger = new Logger("showBoostCounts");
 const { getToken } = findByPropsLazy("setToken");
@@ -32,7 +35,7 @@ async function openViewBoosters(guild: string) {
                     <UserList guildId={guild} boosters={boosters} />
                 </ModalContent >
                 <ModalFooter>
-                    <Flex cellSpacing={10}>
+                    <Flex >
                     </Flex>
                 </ModalFooter>
             </ModalRoot >
@@ -109,11 +112,8 @@ async function fetchBoosters(authorization: string, guildId: string) {
         else
             boosters[boost.user.id] = 1;
     }
-    logger.info(boosters);
     return boosters;
 }
-
-const FriendRow = findComponentByCodeLazy(".listName,discriminatorClass");
 
 
 function UserList({ guildId, boosters }: { guildId: string, boosters: any; }) {
@@ -132,33 +132,62 @@ function UserList({ guildId, boosters }: { guildId: string, boosters: any; }) {
         [GuildMemberStore],
         () => GuildMemberStore.getMemberIds(guildId),
         null,
-        (old, curr) => old.length === curr.length
+        (old, curr) => old?.length === curr?.length
     );
 
     useEffect(() => {
-        FluxDispatcher.dispatch({
-            type: "GUILD_MEMBERS_REQUEST",
-            guildIds: [guildId],
-            userIds: missing
-        });
+        if (missing.length > 0) {
+            FluxDispatcher.dispatch({
+                type: "GUILD_MEMBERS_REQUEST",
+                guildIds: [guildId],
+                userIds: missing
+            });
+        }
     }, []);
 
     return (
         <ScrollerThin fade className={cl("scroller")}>
-            {members.map(id =>
-                <Flex style={{ alignItems: "center" }}>
-                    <Text>{boosters[id]}</Text>
-                    <FriendRow
-                        user={UserStore.getUser(id)}
-                        status={PresenceStore.getStatus(id) || "offline"}
-                        onSelect={() => openUserProfile(id)}
-                        onContextMenu={() => { }}
-                    />
-                </Flex>
-            )}
-        </ScrollerThin >
+            {members.map(id => {
+                const user = UserStore.getUser(id);
+                if (!user) {
+                    logger.info('No user');
+                    return null;
+                }
+
+                // Fallback avatar logic in case getAvatarURL is stubborn
+                const avatarUrl = user.getAvatarURL?.()
+                    ?? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png`;
+
+                return (
+                    <Flex key={id} style={{ alignItems: "center", marginBottom: "10px", gap: "12px" }}>
+                        {/* Boost Count */}
+                        <Text variant="text-md/bold" style={{ minWidth: "24px", textAlign: "center" }}>
+                            {boosters[id]}x
+                        </Text>
+
+                        {/* Custom User Row */}
+                        <Flex
+                            style={{ alignItems: "center", cursor: "pointer", gap: "10px" }}
+                            onClick={() => openUserProfile(id)}
+                        >
+                            <img
+                                src={avatarUrl}
+                                width={32}
+                                height={32}
+                                style={{ borderRadius: "50%" }}
+                                alt={`${user.username}'s avatar`}
+                            />
+                            <Text variant="text-md/medium">
+                                {user.globalName ?? user.username}
+                            </Text>
+                        </Flex>
+                    </Flex>
+                );
+            })}
+        </ScrollerThin>
     );
 }
+
 
 function BoostIcon() {
     return (

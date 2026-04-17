@@ -1,26 +1,20 @@
 /*
  * Vencord, a Discord client mod
- * Copyright (c) 2026 shxdes69 - zFry (Fixxed)
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
-/*
- * Vencord, a Discord client mod
  * Copyright (c) 2026 shxdes69
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import "./index.css";
-import { UserAreaButton } from "@api/UserArea";
+
+import { HeaderBarButton } from "@api/HeaderBar";
 import { definePluginSettings } from "@api/Settings";
 import { getUserSettingLazy } from "@api/UserSettings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Switch } from "@components/Switch";
-import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import { classNameFactory } from "@utils/css";
+import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-
-import { Button, Forms, TextInput, Toasts, TabBar, Text, useEffect, useMemo, useRef, useState } from "@webpack/common";
+import { Button, Forms, TabBar, Text, TextInput, Toasts, useEffect, useMemo, useRef, useState } from "@webpack/common";
 import { UserStore } from "@webpack/common";
 
 const cl = classNameFactory("vc-as-");
@@ -38,17 +32,17 @@ interface StatusStep { text: string; emojiName?: string; emojiId?: string; anima
 interface Preset { id: string; name: string; emojiName?: string; emojiId?: string; animated?: boolean; }
 
 const I = {
-    Clock: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75 1.23-4.25-2.58V7z"/></svg>,
-    Play: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>,
-    Stop: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>,
-    Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>,
-    Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>,
-    Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>,
-    Info: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>,
-    List: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>,
-    Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>,
-    Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>,
-    Folder: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 20c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 14H4v-8h16v8z"/></svg>
+    Clock: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75 1.23-4.25-2.58V7z" /></svg>,
+    Play: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>,
+    Stop: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z" /></svg>,
+    Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>,
+    Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>,
+    Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>,
+    Info: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>,
+    List: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" /></svg>,
+    Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" /></svg>,
+    Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" /></svg>,
+    Folder: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 20c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 14H4v-8h16v8z" /></svg>
 };
 
 const parseEmoji = (input: string): Omit<StatusStep, "preset" | "status"> => {
@@ -68,41 +62,12 @@ const parseInterval = (input: string): number => {
     const numMatch = total === 0 ? lowerInput.match(/^(\d+)$/) : null;
     return Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, total !== 0 ? total : numMatch ? parseInt(numMatch[1]) : DEFAULT_INTERVAL));
 };
-const resolveField = async (value: string): Promise<string> => {
-    const EVAL_PREFIX = "eval ";
-    if (!value.startsWith(EVAL_PREFIX)) return value;
-    try {
-        // Indirect eval via globalThis.eval — avoids esbuild direct-eval warning
-        // and correctly handles both expressions and multi-statement code (let, const, etc.)
-        const _eval = globalThis.eval;
-        const result = _eval(value.slice(EVAL_PREFIX.length));
-        return String(result ?? "");
-    } catch (e: any) {
-        Toasts.show({ message: `AnimatedStatus eval error: ${e?.message ?? e}`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
-        return "";
-    }
-};
 const IconButton = ({ onClick, children, className = "" }: { onClick: () => void; children: React.ReactNode; className?: string; }) => <div onClick={onClick} className={cl("icon-btn", className)}>{children}</div>;
-const StatusIndicator = ({ type }: { type: StatusType }) => <span className={cl("status-indicator", type)} />;
+const StatusIndicator = ({ type }: { type: StatusType; }) => <span className={cl("status-indicator", type)} />;
 
 const CustomStatus = getUserSettingLazy<{ text: string; emojiId: string; emojiName: string; }>("status", "customStatus")!;
 const StatusSetting = getUserSettingLazy<string>("status", "status")!;
 const settings = definePluginSettings({
-    openModal: {
-        type: OptionType.COMPONENT,
-        description: "Open the Animated Status panel",
-        component: () => (
-            <Button
-                color={Button.Colors.BRAND}
-                size={Button.Sizes.MEDIUM}
-                onClick={() => openModal(modalProps => <SettingsModal {...modalProps} />)}
-                style={{ display: "flex", alignItems: "center", gap: "8px", width: "fit-content" }}
-            >
-                <I.Clock /> Open Animated Status
-            </Button>
-        )
-    },
-    showButton: { type: OptionType.BOOLEAN, description: "Show the clock button in the user panel (bottom left)", default: true },
     interval: { type: OptionType.NUMBER, description: "Interval between status changes (seconds)", default: DEFAULT_INTERVAL, minimum: MIN_INTERVAL, maximum: MAX_INTERVAL },
     statuses: { type: OptionType.STRING, description: "JSON array of statuses", default: JSON.stringify([{ text: "Hey there!" }]) },
     presets: { type: OptionType.STRING, description: "JSON array of presets", default: "[]" },
@@ -110,15 +75,25 @@ const settings = definePluginSettings({
     autoStart: { type: OptionType.BOOLEAN, description: "Start automatically when Discord loads", default: false }
 });
 
-
 const state = { currentIndex: 0, interval: null as NodeJS.Timeout | null, isRunning: false, _started: false };
 
-function AnimatedStatusButton() {
-    if (!settings.store.showButton) return null;
+function AnimatedStatusIcon({ color = "currentColor" }: { color?: string; }) {
     return (
-        <UserAreaButton
-            tooltipText={state.isRunning ? "Running - Click for settings" : "Animated Status - Click for settings"}
-            icon={<I.Clock />}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill={color}>
+            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75 1.23-4.25-2.58V7z" />
+        </svg>
+    );
+}
+
+function AnimatedStatusButton() {
+    const { isRunning } = state;
+
+    return (
+        <HeaderBarButton
+            icon={AnimatedStatusIcon}
+            tooltip={isRunning ? "Animated Status: Running" : "Animated Status: Stopped"}
+            aria-label="Toggle Animated Status"
+            selected={isRunning}
             onClick={() => openModal(modalProps => <SettingsModal {...modalProps} />)}
         />
     );
@@ -126,16 +101,17 @@ function AnimatedStatusButton() {
 
 export default definePlugin({
     name: "AnimatedStatus", description: "Cycle through status messages automatically", authors: [{ id: 705545572299571220n, name: "shxdes69" }], settings,
-    dependencies: ["UserAreaAPI"],
+    dependencies: ["HeaderBarAPI"],
+    headerBarButton: {
+        icon: AnimatedStatusIcon,
+        render: AnimatedStatusButton,
+        priority: 1337
+    },
     _lastSignal: 0,
     async setStatus(step: StatusStep): Promise<boolean> {
         if (!CustomStatus) return false;
         try {
-            const [resolvedText, resolvedEmojiName] = await Promise.all([
-                resolveField(step.text ?? ""),
-                resolveField(step.emojiName ?? "")
-            ]);
-            await CustomStatus.updateSetting({ text: resolvedText, emojiName: resolvedEmojiName, emojiId: step.emojiId ?? "0", createdAtMs: Date.now().toString(), expiresAtMs: "0" });
+            await CustomStatus.updateSetting({ text: step.text ?? "", emojiName: step.emojiName ?? "", emojiId: step.emojiId ?? "0", createdAtMs: Date.now().toString(), expiresAtMs: "0" });
             if (step.status && StatusSetting) await StatusSetting.updateSetting(step.status);
             return true;
         } catch { return false; }
@@ -162,21 +138,19 @@ export default definePlugin({
     updateInterval(newInterval: number) {
         if (!state.interval) return;
         clearInterval(state.interval);
-        state.interval = setInterval(() => this.next().catch(() => {}), Math.max(newInterval * 1000, MIN_INTERVAL * 1000));
+        state.interval = setInterval(() => this.next().catch(() => { }), Math.max(newInterval * 1000, MIN_INTERVAL * 1000));
     },
     forceUpdate() { this.buttonUpdateSignal = Date.now(); },
     buttonUpdateSignal: 0,
     start() {
         state._started = false;
-        Vencord.Api.UserArea.addUserAreaButton("animated-status", () => <AnimatedStatusButton />);
         if (settings.store.autoStart) {
-            setTimeout(() => this.begin().catch(() => {}), START_DELAY);
+            setTimeout(() => this.begin().catch(() => { }), START_DELAY);
         }
     },
     stop() {
         if (state.interval) clearInterval(state.interval);
         state.currentIndex = 0; state.isRunning = false; state._started = true; this.forceUpdate();
-        Vencord.Api.UserArea.removeUserAreaButton("animated-status");
     },
     getIsRunning: () => state.isRunning,
 });
@@ -243,9 +217,9 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
     const saveEdit = (index: number) => {
         const card = document.querySelector(`[data-status-index="${index}"]`);
         if (!card) return;
-        const textInput = card.querySelector(`[data-edit-input="text"]`) as HTMLInputElement;
-        const presetSelect = card.querySelector(`[data-edit-input="preset"]`) as HTMLSelectElement;
-        const statusBtn = card.querySelector(`[data-edit-input="status"][data-selected="true"]`) as HTMLElement;
+        const textInput = card.querySelector("[data-edit-input=\"text\"]") as HTMLInputElement;
+        const presetSelect = card.querySelector("[data-edit-input=\"preset\"]") as HTMLSelectElement;
+        const statusBtn = card.querySelector("[data-edit-input=\"status\"][data-selected=\"true\"]") as HTMLElement;
         if (!textInput) return;
         const parsed = parseEmoji(textInput.value);
         if (!parsed.text.trim().length && !(parsed.emojiId || parsed.emojiName)) return Toasts.show({ message: "Please enter some text or an emoji!", type: Toasts.Type.FAILURE, id: Toasts.genId() });
@@ -290,7 +264,7 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
                         <PresetsTab statuses={statuses} setStatuses={setStatuses} presetNames={presetNames} running={running} runningPreset={runningPreset} onStart={startAnimation} onStop={stopAnimation} onPresetChange={() => setPresetListTrigger(t => t + 1)} />
                     )}
                     {currentTab === Tab.SETTINGS && (
-                        <SettingsTab statuses={statuses} interval={settings.store.interval} randomize={settings.store.randomize} autoStart={settings.store.autoStart} onIntervalChange={(val) => { settings.store.interval = val; plugin?.updateInterval(val); }} onRandomizeChange={(v) => settings.store.randomize = v} onAutoStartChange={(v) => settings.store.autoStart = v} onClearAll={() => { settings.store.statuses = "[]"; setStatuses([]); Toasts.show({ message: "All statuses cleared", type: Toasts.Type.SUCCESS, id: Toasts.genId() }); }} />
+                        <SettingsTab statuses={statuses} interval={settings.store.interval} randomize={settings.store.randomize} autoStart={settings.store.autoStart} onIntervalChange={val => { settings.store.interval = val; plugin?.updateInterval(val); }} onRandomizeChange={v => settings.store.randomize = v} onAutoStartChange={v => settings.store.autoStart = v} onClearAll={() => { settings.store.statuses = "[]"; setStatuses([]); Toasts.show({ message: "All statuses cleared", type: Toasts.Type.SUCCESS, id: Toasts.genId() }); }} />
                     )}
                     {currentTab === Tab.INFO && <InfoTab />}
                 </ModalContent>
@@ -303,7 +277,7 @@ interface StatusesTabProps {
     statuses: StatusStep[]; filteredStatuses: StatusStep[]; presetNames: string[]; presets: Preset[];
     filterPreset: string | null; inputText: string; setInputText: (v: string) => void; preset: string; setPreset: (v: string) => void;
     selectedStatus: StatusType; setSelectedStatus: (v: StatusType) => void; running: boolean; editingIndex: number | null;
-    previewData: Omit<StatusStep, "preset"> & { status: StatusType }; onAddStatus: () => void; onDeleteStatus: (index: number) => void;
+    previewData: Omit<StatusStep, "preset"> & { status: StatusType; }; onAddStatus: () => void; onDeleteStatus: (index: number) => void;
     onEditStart: (index: number) => void; onEditSave: (index: number) => void; onEditCancel: () => void;
     onStart: (preset: string | null) => void; onStop: () => void; onFilterChange: (preset: string | null) => void;
 }
@@ -319,7 +293,7 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                 <div className={cl("row", "gap-sm")}>
                     <div className={cl("col", "flex-1")}>
                         <Text className={cl("label")} variant="text-sm/semibold">Preset (optional)</Text>
-                        <select value={preset || ""} onChange={(e) => setPreset(e.target.value)} className={cl("native-select")}><option value="">None</option>{presets.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</select>
+                        <select value={preset || ""} onChange={e => setPreset(e.target.value)} className={cl("native-select")}><option value="">None</option>{presets.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}</select>
                     </div>
                 </div>
                 <div>
@@ -354,7 +328,7 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                     </div>
                 ) : (
                     <div className={cl("status-list")}>
-                        {filteredStatuses.map((status) => {
+                        {filteredStatuses.map(status => {
                             const actualIndex = statuses.indexOf(status);
                             const isEditing = editingIndex === actualIndex;
                             return (
@@ -365,7 +339,7 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                                                 <TextInput data-edit-input="text" defaultValue={status.text} placeholder="Status text..." className={cl("edit-input")} />
                                                 <select data-edit-input="preset" defaultValue={status.preset || ""} className={cl("native-select", "edit-input")}><option value="">None</option>{presetNames.map(c => <option key={c} value={c}>{c}</option>)}</select>
                                                 <div className={cl("status-selector")}>{STATUS_OPTIONS.map(s => (
-                                                    <button key={s.value} data-edit-input="status" data-value={s.value} data-selected={s.value === status.status} className={cl("status-btn", { active: s.value === status.status })} onClick={(e) => { const btn = e.currentTarget; btn.parentElement?.querySelectorAll('[data-edit-input="status"]').forEach(b => (b as HTMLElement).dataset.selected = "false"); btn.dataset.selected = "true"; }}>
+                                                    <button key={s.value} data-edit-input="status" data-value={s.value} data-selected={s.value === status.status} className={cl("status-btn", { active: s.value === status.status })} onClick={e => { const btn = e.currentTarget; btn.parentElement?.querySelectorAll('[data-edit-input="status"]').forEach(b => (b as HTMLElement).dataset.selected = "false"); btn.dataset.selected = "true"; }}>
                                                         <span className={cl("status-dot")} style={{ background: s.color }} />{s.label}
                                                     </button>
                                                 ))}</div>
@@ -492,8 +466,8 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
                                     <div className={cl("preset-item", { running: isRunningThisPreset })}>
                                         <div className={cl("preset-expandable")} onClick={() => !isEditing && toggleExpanded(preset.id)}>
                                             <div className={cl("preset-emoji-wrapper")}>
-                                                <button className={cl("preset-expand-btn", { expanded: isExpanded })} onClick={(e) => { e.stopPropagation(); toggleExpanded(preset.id); }}>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                                                <button className={cl("preset-expand-btn", { expanded: isExpanded })} onClick={e => { e.stopPropagation(); toggleExpanded(preset.id); }}>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z" /></svg>
                                                 </button>
                                                 {preset.emojiId ? <img src={getEmojiUrl(preset.emojiId, preset.animated!)} alt="" className={cl("preset-emoji-img")} /> : preset.emojiName ? <span className={cl("preset-emoji-text")}>{preset.emojiName}</span> : <div className={cl("preset-emoji")}><I.List /></div>}
                                                 {isRunningThisPreset && <span className={cl("status-indicator", "online")} style={{ position: "absolute", bottom: "-3px", right: "-3px", width: "14px", height: "14px", borderRadius: "50%", border: "2px solid var(--background-secondary)", backgroundColor: "#23a55a" }} />}
@@ -526,7 +500,7 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
                                     </div>
                                     {isExpanded && presetStatuses.length > 0 && (
                                         <div className={cl("preset-statuses")}>
-                                            {presetStatuses.map((status) => {
+                                            {presetStatuses.map(status => {
                                                 const actualIndex = statuses.indexOf(status);
                                                 return (
                                                     <div key={actualIndex} className={cl("preset-status-item")}>
@@ -579,7 +553,7 @@ function SettingsTab({ statuses, interval, randomize, autoStart, onIntervalChang
                         <Text className={cl("setting-desc")} variant="text/sm/normal">How long to wait before changing to the next status (5s - 5min, default 10s)</Text>
                     </div>
                     <div className={cl("interval-input-wrapper")}>
-                        <TextInput value={intervalText} onChange={(v) => { setIntervalText(v); if (!v || /[sm]/i.test(v)) onIntervalChange(parseInterval(v)); }} onBlur={() => { const current = parseInterval(intervalText); if (current < MIN_INTERVAL) { setIntervalText(formatInterval(MIN_INTERVAL)); onIntervalChange(MIN_INTERVAL); } }} placeholder="10s or 1m 30s" className={cl("interval-input")} />
+                        <TextInput value={intervalText} onChange={v => { setIntervalText(v); if (!v || /[sm]/i.test(v)) onIntervalChange(parseInterval(v)); }} onBlur={() => { const current = parseInterval(intervalText); if (current < MIN_INTERVAL) { setIntervalText(formatInterval(MIN_INTERVAL)); onIntervalChange(MIN_INTERVAL); } }} placeholder="10s or 1m 30s" className={cl("interval-input")} />
                     </div>
                 </div>
                 {interval < 10 && (
@@ -635,20 +609,6 @@ function InfoTab() {
                 <div className={cl("section", "danger")} style={{ marginTop: "12px", background: "rgba(237, 66, 69, 0.1)", border: "1px solid var(--text-danger)", padding: "16px", borderRadius: "8px" }}>
                     <Text className={cl("section-title", "danger")} variant="heading-md/bold">Warning: Short Intervals</Text>
                     <Text className={cl("section-desc")} variant="text-md/normal">Intervals below 10 seconds are <strong>not recommended</strong>. Rapid status changes may not display correctly on all Discord clients and could trigger rate limits.</Text>
-                </div>
-                <Forms.FormDivider />
-                <Text className={cl("section-title")} variant="heading-md/bold">Dynamic Status with eval</Text>
-                <Text className={cl("section-desc")} variant="text-md/normal">You can use JavaScript expressions in any text or emoji field by prefixing with <code>eval </code>. The expression is evaluated every time the status cycles, so it always shows current data.</Text>
-                <div className={cl("example-box")}>
-                    <Text className={cl("example-title")} variant="text-sm/semibold">🕐 Clock emoji (Emoji field):</Text>
-                    <Text className={cl("example-code")} variant="text-sm/normal">{"eval ['🕛','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚'][((new Date()).getHours()%12)]"}</Text>
-                    <Text className={cl("example-title")} variant="text-sm/semibold" style={{ marginTop: "8px" }}>🕐 Clock with time text (Text field):</Text>
-                    <Text className={cl("example-code")} variant="text-sm/normal">{"eval let f=t=>(t<10?'0':'')+t,d=new Date();`${f(d.getHours())}:${f(d.getMinutes())}:${f(d.getSeconds())}`"}</Text>
-                    <Text className={cl("example-title")} variant="text-sm/semibold" style={{ marginTop: "8px" }}>📅 Current date (Text field):</Text>
-                    <Text className={cl("example-code")} variant="text-sm/normal">{"eval new Date().toLocaleDateString()"}</Text>
-                </div>
-                <div style={{ marginTop: "8px", padding: "10px 14px", background: "rgba(237, 66, 69, 0.08)", border: "1px solid var(--text-danger)", borderRadius: "8px" }}>
-                    <Text variant="text-sm/normal" style={{ color: "var(--text-danger)" }}><strong>⚠️ Warning:</strong> eval executes real JavaScript. Only use code you trust.</Text>
                 </div>
                 <Forms.FormDivider />
                 <Text className={cl("section-title")} variant="heading-md/bold">Presets</Text>
