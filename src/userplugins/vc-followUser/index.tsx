@@ -380,7 +380,7 @@ export default definePlugin({
         if (Array.isArray(e.toolbar)) {
             return e.toolbar.unshift(
                 <ErrorBoundary noop={true} key="follow-indicator">
-                    <this.FollowIndicator/>
+                    <this.FollowIndicator />
                 </ErrorBoundary>
             );
         }
