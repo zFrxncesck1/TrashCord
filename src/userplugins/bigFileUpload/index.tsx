@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
@@ -1591,6 +1591,7 @@ export default definePlugin({
     description: "Bypass Discord's upload limit by uploading to external file uploaders via drag-drop, paste, or the Upload button.",
     authors: [Devs.ScattrdBlade],
     settings,
+    managedStyle,
     dependencies: ["CommandsAPI"],
 
     start() {

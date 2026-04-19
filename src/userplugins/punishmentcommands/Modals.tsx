@@ -5,7 +5,7 @@ import { classNameFactory } from "@utils/css";
 import { SelectedChannelStore, useState } from "@webpack/common";
 
 const cl = classNameFactory("vc-membercount-");
-import "./style.css";
+// import "./style.css";
 import { sendMessage } from "@utils/discord";
 
 export function showPrefefinedDurationModal(duration: string, id: string) {

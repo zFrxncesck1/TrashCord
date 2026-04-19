@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import managedStyle from "./components/QuestButton.css?managed";
+
 import definePlugin from "@utils/types";
 import { findByCodeLazy, findByPropsLazy } from "@webpack";
 import { FluxDispatcher, RestAPI } from "@webpack/common";
@@ -31,6 +33,7 @@ export default definePlugin({
         id: 257900031351193600n
     }],
     settings,
+    managedStyle,
     patches: [
         {
             find: ".PlatformTypes.WEB",

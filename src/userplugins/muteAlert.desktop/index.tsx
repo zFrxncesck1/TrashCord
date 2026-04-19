@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
@@ -74,6 +74,7 @@ export default definePlugin({
         id: 228825096360296448n
     }],
     settings,
+    managedStyle,
 
     flux: {
         VOICE_CHANNEL_SELECT: onVoiceChannelSelect

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Flex } from "@components/Flex";
@@ -147,6 +147,7 @@ export default definePlugin({
     authors: [Devs.nin0dev],
     settingsAboutComponent: () => <Challenge />,
     settings,
+    managedStyle,
     start() {
         (0, eval)(ace);
         (0, eval)(theme);

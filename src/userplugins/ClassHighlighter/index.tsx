@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
@@ -466,6 +466,7 @@ export default definePlugin({
     description: "Highlight and inspect elements easily, with focus on class names.",
     authors: [Devs.x2b],
     settings,
+    managedStyle,
 
     start() {
         document.addEventListener("keydown", onToggle);

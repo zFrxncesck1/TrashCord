@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./misc/style.css";
+import managedStyle from "./misc/style.css?managed";
 
 import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
@@ -37,6 +37,7 @@ export const settings = definePluginSettings({
 export default definePlugin({
     name: "UserpluginInstallerCustom",
     description: "Install userplugins with a simple button click",
+    managedStyle,
     async checkPluginUpdates() {
         for (const p of this.plugins.value()) {
             if (await Native.isUpdateAvailableForPlugin(p.directory!)) {

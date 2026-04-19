@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { DataStore } from "@api/index";
 import { Flex } from "@components/Flex";
@@ -662,6 +662,7 @@ export default definePlugin({
     name: "PasswordManager",
     description: "Securely store and manage your passwords",
     authors: [Devs.x2b],
+    managedStyle,
 
     passwordManager: null as PasswordManager | null,
     ui: null as PasswordManagerUI | null,

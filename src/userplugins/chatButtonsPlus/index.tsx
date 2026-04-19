@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { ChatBarButton } from "@api/ChatButtons";
 import { DataStore } from "@api/index";
@@ -269,6 +269,7 @@ export default definePlugin({
     description: "Add custom chat buttons with personalized + messages and SVG icons",
     authors: [Devs.x2b],
     settings,
+    managedStyle,
 
     renderChatBarButton: ({ isMainChat }) => {
         if (!isMainChat) return null;
@@ -322,8 +323,3 @@ export default definePlugin({
         buttonEntries = storedEntries;
     }
 });
-
-
-
-
-

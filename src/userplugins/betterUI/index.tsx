@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import managedStyle from "./styles.css?managed";
+
 import SettingsPlugin from "@plugins/_core/settings";
 import { Devs } from "@utils/constants";
 import definePlugin, { StartAt } from "@utils/types";
@@ -44,6 +46,7 @@ export default definePlugin( {
     authors: [ Devs.LSDZaddi ],
     dependencies: [ "Settings" ],
     startAt: StartAt.WebpackReady,
+    managedStyle,
     toolboxActions: {
         "Open Better UI"()
         {

@@ -5,6 +5,7 @@ import definePlugin from "@utils/types";
 import { showCustomDurationModal, showPrefefinedDurationModal } from "./Modals";
 import { GuildMemberStore, i18n, IconUtils, Menu, SelectedGuildStore } from "@webpack/common";
 import { UserContextProps } from "plugins/biggerStreamPreview";
+import managedStyle from "./style.css?managed";
 
 /**** BEGIN CONFIG  ****/
 const GUILD_ID = "1274790619146879108"; // SERVER ID
@@ -57,6 +58,7 @@ export default definePlugin({
     name: "PunishmentCommands",
     description: "Allows you to send a command in chat to punish someone, right from the context menu",
     authors: [Devs.nin0dev],
+    managedStyle,
     contextMenus: {
         "user-context": UserContext
     }

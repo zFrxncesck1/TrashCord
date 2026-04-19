@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
 import { Devs } from "@utils/constants";
@@ -74,8 +74,9 @@ export default definePlugin({
     name: "PurgeMessages",
     description: "Purges messages from a channel",
     authors: [Devs.x2b],
+    managedStyle,
     settingsAboutComponent: () => <>
-        <Forms.FormText className="plugin-warning">
+        <Forms.FormText className="purge-warning">
             We can't guarantee this plugin won't get you warned or banned.
         </Forms.FormText>
     </>,
@@ -135,8 +136,3 @@ export default definePlugin({
         }
     ],
 });
-
-
-
-
-

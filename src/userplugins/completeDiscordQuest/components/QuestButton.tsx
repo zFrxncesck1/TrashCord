@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./QuestButton.css";
+// import "./QuestButton.css";
 
 import { Flex } from "@components/Flex";
 import { findByCodeLazy, findByPropsLazy, findComponentByCodeLazy } from "@webpack";

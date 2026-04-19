@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { getUserSettingLazy } from "@api/UserSettings";
@@ -51,6 +51,7 @@ export default definePlugin({
             id: 984392761929256980n,
         },
     , Devs.x2b],
+    managedStyle,
     contextMenus: {
         "guild-settings-role-context": MakeContextCallback("settings"),
         "dev-context": MakeContextCallback("other")
@@ -60,7 +61,3 @@ export default definePlugin({
         DeveloperMode.updateSetting(true);
     }
 });
-
-
-
-

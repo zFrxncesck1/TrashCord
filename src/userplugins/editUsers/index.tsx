@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
@@ -20,6 +20,7 @@ export default definePlugin({
     authors: [Devs.x2b],
 
     settings,
+    managedStyle,
 
     contextMenus: {
         "user-context"(children, { user }: { user?: User; }) {
@@ -123,8 +124,3 @@ export default definePlugin({
         return hasFlag(flags, OverrideFlags.DisableNicks);
     }
 });
-
-
-
-
-

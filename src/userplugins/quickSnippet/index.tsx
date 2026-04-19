@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
@@ -80,6 +80,7 @@ export default definePlugin({
     description: "append css snippets quickly to quickCss with one click!",
     authors: [Devs.x2b],
     settings: settings,
+    managedStyle,
     patches: [
         {
             find: "codeBlock:{react(",
@@ -91,8 +92,3 @@ export default definePlugin({
     ],
     AppendButton: (code: CodeBlock, context: Context) => <AppendButton code={code} context={context} />
 });
-
-
-
-
-

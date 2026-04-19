@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
@@ -16,6 +16,7 @@ export default definePlugin({
     name: "BetterForwardMeta",
     description: "Access server profile under forwarded messages (if available) and always show time",
     authors: [Devs.x2b],
+    managedStyle,
     ForwardFooter(message: any) {
         const { guild_id, channel_id, message_id } = message.message.messageReference;
         const guild = useStateFromStores([GuildStore], () => GuildStore.getGuild(guild_id));
@@ -96,8 +97,3 @@ export default definePlugin({
         }
     ]
 });
-
-
-
-
-

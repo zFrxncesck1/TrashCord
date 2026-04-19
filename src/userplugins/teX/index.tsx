@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { Devs } from "@utils/constants";
 import { classes } from "@utils/misc";
@@ -17,6 +17,7 @@ export default definePlugin({
     name: "TeX",
     description: "Typesets math in messages, written as `$x$` or `$$x$$`.",
     authors: [Devs.x2b],
+    managedStyle,
 
     patches: [
         {

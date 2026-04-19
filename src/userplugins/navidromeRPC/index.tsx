@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
@@ -62,6 +62,7 @@ export default definePlugin({
     description: "Show the currently playing song on your Navidrome server in your Rich Presence",
     authors: [Devs.nin0dev],
     settings,
+    managedStyle,
     interval: -1,
     start() {
         (0, eval)(smd5);

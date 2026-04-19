@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { DataStore } from "@api/index";
 import { Flex } from "@components/Flex";
@@ -207,6 +207,7 @@ export default definePlugin({
     name: "TokenLoginManager",
     description: "Manage and login with user tokens",
     authors: [Devs.x2b],
+    managedStyle,
 
     tokenLoginManager: null as TokenLoginManager | null,
     ui: null as TokenLoginManagerUI | null,

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
@@ -34,6 +34,7 @@ export default definePlugin({
     description: "Enables the Social Proofing Message Nitro Badge experiment",
     authors: [Devs.x2b],
     settings,
+    managedStyle,
     dependencies: ["Experiments"],
 
     settingsAboutComponent: () => <>
@@ -46,6 +47,3 @@ export default definePlugin({
     start: () => Flux.dispatch({ ...options, experimentBucket: Number(settings.store.experimentTreatment) }),
     stop: () => Flux.dispatch({ ...options, experimentBucket: null }),
 });
-
-
-

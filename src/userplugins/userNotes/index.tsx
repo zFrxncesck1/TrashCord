@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { copyText } from "@utils/misc";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
@@ -78,6 +78,7 @@ export default definePlugin({
     description: "Allows you to write unlimited notes for users, unlike Discord, which restricts saved notes to a maximum of 500 users and removes older notes when this limit is exceeded",
     authors: [Devs.x2b],
     settings,
+    managedStyle,
     patches: [
         {
             predicate: () => {

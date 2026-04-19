@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./Ping.css";
+// import "./Ping.css";
 
 import { FluxEvent, TextVariant } from "@vencord/discord-types";
 import { FluxDispatcher, useEffect, useState } from "@webpack/common";

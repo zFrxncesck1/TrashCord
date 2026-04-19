@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { copyToClipboard } from "@utils/clipboard";
 import { Devs } from "@utils/constants";
@@ -100,6 +100,7 @@ export default definePlugin({
     name: "ServerProfilesToolbox",
     authors: [Devs.x2b],
     description: "Adds a copy/paste/reset button to the server profiles editor",
+    managedStyle,
 
     patchServerProfiles(guild: Guild) {
         const guildId = guild.id;
@@ -223,8 +224,3 @@ export default definePlugin({
     ],
 
 });
-
-
-
-
-

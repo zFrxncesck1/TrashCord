@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import managedStyle from "./components/Ping.css?managed";
+
 import definePlugin from "@utils/types";
 import { React } from "@webpack/common";
 
@@ -23,6 +25,7 @@ export default definePlugin({
         id: 257900031351193600n
     }],
     settings,
+    managedStyle,
     patches: [
         {
             find: ".hoverableStatus),hoverText:",
@@ -58,5 +61,3 @@ export default definePlugin({
         </div>;
     }
 });
-
-

@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { MessageObject } from "@api/MessageEvents";
 import definePlugin, { OptionType } from "@utils/types";
@@ -167,6 +167,7 @@ export default definePlugin({
     description: "Changes links to make embeds work properly.",
     authors: [{ name: "Yoshoness", id: 206081832289042432n }],
     settings,
+    managedStyle,
 
     chatBarButton: {
         icon: EmbedIcon,

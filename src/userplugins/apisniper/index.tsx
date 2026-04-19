@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 
 import { showNotification } from "@api/Notifications/Notifications";
 import { Devs } from "@utils/constants";
@@ -270,6 +270,7 @@ export default definePlugin({
     authors: [Devs.x2b],
 
     settings,
+    managedStyle,
 
     flux: {
         MESSAGE_CREATE: messageCreateHandler,

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./index.css";
+import managedStyle from "./index.css?managed";
 
 import { HeaderBarButton } from "@api/HeaderBar";
 import { definePluginSettings } from "@api/Settings";
@@ -14,8 +14,7 @@ import { Switch } from "@components/Switch";
 import { classNameFactory } from "@utils/css";
 import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, Forms, TabBar, Text, TextInput, Toasts, useEffect, useMemo, useRef, useState } from "@webpack/common";
-import { UserStore } from "@webpack/common";
+import { Button, Forms, TabBar, Text, TextInput, Toasts, useEffect, useMemo, useRef, useState, UserStore } from "@webpack/common";
 
 const cl = classNameFactory("vc-as-");
 const MIN_INTERVAL = 5, MAX_INTERVAL = 300, DEFAULT_INTERVAL = 10, START_DELAY = 3000;
@@ -38,7 +37,7 @@ const I = {
     Plus: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>,
     Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>,
     Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>,
-    Info: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>,
+    Info: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.47 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" /></svg>,
     List: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" /></svg>,
     Settings: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.16 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" /></svg>,
     Check: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" /></svg>,
@@ -86,8 +85,11 @@ function AnimatedStatusIcon({ color = "currentColor" }: { color?: string; }) {
 }
 
 function AnimatedStatusButton() {
-    const { isRunning } = state;
-
+    const [isRunning, setIsRunning] = useState(state.isRunning);
+    useEffect(() => {
+        const id = setInterval(() => setIsRunning(state.isRunning), 500);
+        return () => clearInterval(id);
+    }, []);
     return (
         <HeaderBarButton
             icon={AnimatedStatusIcon}
@@ -102,6 +104,7 @@ function AnimatedStatusButton() {
 export default definePlugin({
     name: "AnimatedStatus", description: "Cycle through status messages automatically", authors: [{ id: 705545572299571220n, name: "shxdes69" }], settings,
     dependencies: ["HeaderBarAPI"],
+    managedStyle,
     headerBarButton: {
         icon: AnimatedStatusIcon,
         render: AnimatedStatusButton,
@@ -111,7 +114,7 @@ export default definePlugin({
     async setStatus(step: StatusStep): Promise<boolean> {
         if (!CustomStatus) return false;
         try {
-            await CustomStatus.updateSetting({ text: step.text ?? "", emojiName: step.emojiName ?? "", emojiId: step.emojiId ?? "0", createdAtMs: Date.now().toString(), expiresAtMs: "0" });
+            await CustomStatus.updateSetting({ text: step.text ?? "", emojiName: step.emojiName ?? "", emojiId: step.emojiId ?? "", createdAtMs: Date.now().toString(), expiresAtMs: "0" });
             if (step.status && StatusSetting) await StatusSetting.updateSetting(step.status);
             return true;
         } catch { return false; }
@@ -132,7 +135,13 @@ export default definePlugin({
         const all = safeParse<StatusStep[]>(settings.store.statuses, []);
         const items = preset ? all.filter(s => s.preset === preset) : all;
         if (!items.length) return this.stop();
-        state.currentIndex = settings.store.randomize ? Math.floor(Math.random() * items.length) : (state.currentIndex + 1) % items.length;
+        if (settings.store.randomize && items.length > 1) {
+            let next: number;
+            do { next = Math.floor(Math.random() * items.length); } while (next === state.currentIndex);
+            state.currentIndex = next;
+        } else {
+            state.currentIndex = (state.currentIndex + 1) % items.length;
+        }
         await this.setStatus(items[state.currentIndex]);
     },
     updateInterval(newInterval: number) {
@@ -177,8 +186,44 @@ function StatusPreview({ emojiId, emojiName, animated, text, statusType }: { emo
     );
 }
 
+function EditableStatusCard({ status, presetNames, onSave, onCancel }: { status: StatusStep; presetNames: string[]; onSave: (updated: StatusStep) => void; onCancel: () => void; }) {
+    const [editText, setEditText] = useState(status.text);
+    const [editPreset, setEditPreset] = useState(status.preset || "");
+    const [editStatus, setEditStatus] = useState<StatusType>(status.status || "online");
+
+    const handleSave = () => {
+        const parsed = parseEmoji(editText);
+        if (!parsed.text.trim().length && !(parsed.emojiId || parsed.emojiName)) return Toasts.show({ message: "Please enter some text or an emoji!", type: Toasts.Type.FAILURE, id: Toasts.genId() });
+        onSave({ ...parsed, preset: editPreset.trim() || undefined, status: editStatus });
+    };
+
+    return (
+        <div className={cl("edit-mode")}>
+            <div className={cl("edit-inputs")}>
+                <TextInput value={editText} onChange={setEditText} placeholder="Status text..." className={cl("edit-input")} />
+                <select value={editPreset} onChange={e => setEditPreset(e.target.value)} className={cl("native-select", "edit-input")}>
+                    <option value="">None</option>
+                    {presetNames.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className={cl("status-selector")}>
+                    {STATUS_OPTIONS.map(s => (
+                        <button key={s.value} className={cl("status-btn", { active: s.value === editStatus })} onClick={() => setEditStatus(s.value)}>
+                            <span className={cl("status-dot")} style={{ background: s.color }} />{s.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className={cl("edit-actions")}>
+                <Button onClick={handleSave} color={Button.Colors.GREEN} size={Button.Sizes.SMALL}><I.Check />Save</Button>
+                <Button onClick={onCancel} color={Button.Colors.SECONDARY} size={Button.Sizes.SMALL}>Cancel</Button>
+            </div>
+        </div>
+    );
+}
+
 function SettingsModal({ onClose, transitionState }: { onClose: () => void; transitionState: any; }) {
     const scrollerRef = useRef<HTMLDivElement>(null);
+    const startTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [currentTab, setCurrentTab] = useState(Tab.STATUSES);
     const [statuses, setStatuses] = useState<StatusStep[]>(() => safeParse(settings.store.statuses, []));
     const [inputText, setInputText] = useState("");
@@ -214,19 +259,11 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
         if (editingIndex === index) setEditingIndex(null);
         Toasts.show({ message: "Status deleted", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
     };
-    const saveEdit = (index: number) => {
-        const card = document.querySelector(`[data-status-index="${index}"]`);
-        if (!card) return;
-        const textInput = card.querySelector("[data-edit-input=\"text\"]") as HTMLInputElement;
-        const presetSelect = card.querySelector("[data-edit-input=\"preset\"]") as HTMLSelectElement;
-        const statusBtn = card.querySelector("[data-edit-input=\"status\"][data-selected=\"true\"]") as HTMLElement;
-        if (!textInput) return;
-        const parsed = parseEmoji(textInput.value);
-        if (!parsed.text.trim().length && !(parsed.emojiId || parsed.emojiName)) return Toasts.show({ message: "Please enter some text or an emoji!", type: Toasts.Type.FAILURE, id: Toasts.genId() });
-        const updated = [...statuses];
-        updated[index] = { ...parsed, preset: presetSelect?.value?.trim() || undefined, status: (statusBtn?.dataset?.value as StatusType) || "online" };
-        setStatuses(updated);
-        settings.store.statuses = JSON.stringify(updated);
+    const saveEdit = (index: number, updated: StatusStep) => {
+        const all = [...statuses];
+        all[index] = updated;
+        setStatuses(all);
+        settings.store.statuses = JSON.stringify(all);
         setEditingIndex(null);
         Toasts.show({ message: "Status saved!", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
     };
@@ -235,7 +272,8 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
         setFilterPreset(preset);
         setRunningPreset(preset);
         plugin?.stop();
-        setTimeout(() => plugin?.begin(preset ?? undefined), 100);
+        if (startTimeoutRef.current) clearTimeout(startTimeoutRef.current);
+        startTimeoutRef.current = setTimeout(() => plugin?.begin(preset ?? undefined), 100);
         setRunning(true);
     };
     const stopAnimation = () => {
@@ -278,7 +316,7 @@ interface StatusesTabProps {
     filterPreset: string | null; inputText: string; setInputText: (v: string) => void; preset: string; setPreset: (v: string) => void;
     selectedStatus: StatusType; setSelectedStatus: (v: StatusType) => void; running: boolean; editingIndex: number | null;
     previewData: Omit<StatusStep, "preset"> & { status: StatusType; }; onAddStatus: () => void; onDeleteStatus: (index: number) => void;
-    onEditStart: (index: number) => void; onEditSave: (index: number) => void; onEditCancel: () => void;
+    onEditStart: (index: number) => void; onEditSave: (index: number, updated: StatusStep) => void; onEditCancel: () => void;
     onStart: (preset: string | null) => void; onStop: () => void; onFilterChange: (preset: string | null) => void;
 }
 function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterPreset, inputText, setInputText, preset, setPreset, selectedStatus, setSelectedStatus, running, editingIndex, previewData, onAddStatus, onDeleteStatus, onEditStart, onEditSave, onEditCancel, onStart, onStop, onFilterChange }: StatusesTabProps) {
@@ -332,23 +370,14 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                             const actualIndex = statuses.indexOf(status);
                             const isEditing = editingIndex === actualIndex;
                             return (
-                                <div key={actualIndex} className={cl("status-card", { editing: isEditing })} data-status-index={actualIndex}>
+                                <div key={actualIndex} className={cl("status-card", { editing: isEditing })}>
                                     {isEditing ? (
-                                        <div className={cl("edit-mode")}>
-                                            <div className={cl("edit-inputs")}>
-                                                <TextInput data-edit-input="text" defaultValue={status.text} placeholder="Status text..." className={cl("edit-input")} />
-                                                <select data-edit-input="preset" defaultValue={status.preset || ""} className={cl("native-select", "edit-input")}><option value="">None</option>{presetNames.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                                                <div className={cl("status-selector")}>{STATUS_OPTIONS.map(s => (
-                                                    <button key={s.value} data-edit-input="status" data-value={s.value} data-selected={s.value === status.status} className={cl("status-btn", { active: s.value === status.status })} onClick={e => { const btn = e.currentTarget; btn.parentElement?.querySelectorAll('[data-edit-input="status"]').forEach(b => (b as HTMLElement).dataset.selected = "false"); btn.dataset.selected = "true"; }}>
-                                                        <span className={cl("status-dot")} style={{ background: s.color }} />{s.label}
-                                                    </button>
-                                                ))}</div>
-                                            </div>
-                                            <div className={cl("edit-actions")}>
-                                                <Button onClick={() => onEditSave(actualIndex)} color={Button.Colors.GREEN} size={Button.Sizes.SMALL}><I.Check />Save</Button>
-                                                <Button onClick={onEditCancel} color={Button.Colors.SECONDARY} size={Button.Sizes.SMALL}>Cancel</Button>
-                                            </div>
-                                        </div>
+                                        <EditableStatusCard
+                                            status={status}
+                                            presetNames={presetNames}
+                                            onSave={updated => onEditSave(actualIndex, updated)}
+                                            onCancel={onEditCancel}
+                                        />
                                     ) : (
                                         <>
                                             <div className={cl("status-avatar-wrapper")}>

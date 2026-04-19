@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Devs } from "@utils/constants";
@@ -520,6 +520,7 @@ export default definePlugin({
     description: "Advanced character counter with statistics, typing speed, alerts, and customization",
     authors: [{ name: "Equicord Team", id: 123n }, Devs.Panniku, Devs.thororen, Devs.Mifu],
     settings,
+    managedStyle,
 
     patches: [
         {

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
 import * as DataStore from "@api/DataStore";
@@ -198,6 +198,7 @@ export default definePlugin({
     authors: [Devs.x2b],
     reporterTestable: ReporterTestable.Patches,
     settings,
+    managedStyle,
     commands: [{
         inputType: ApplicationCommandInputType.BUILT_IN,
         name: "download",
@@ -337,8 +338,3 @@ async function download(channel: Channel, {
     // See petpet
     setTimeout(() => UploadHandler.promptToUpload([file], channel, DraftType.ChannelMessage), 10);
 }
-
-
-
-
-

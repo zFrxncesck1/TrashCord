@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+import managedStyle from "./styles.css?managed";
 import { copyText } from "@utils/misc";
 import { Devs } from "@utils/constants";
 import { openModal } from "@utils/modal";
@@ -174,6 +174,7 @@ export default definePlugin({
     name: "ZipPreview",
     description: "Preview and navigate inside zip files without extracting.",
     authors: [Devs.justjxke],
+    managedStyle,
 
     patches: [
         {

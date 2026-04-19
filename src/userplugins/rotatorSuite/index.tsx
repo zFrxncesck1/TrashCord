@@ -10,6 +10,7 @@ import { Button, Forms, React, RestAPI, TextInput, Toasts, UserStore } from "@we
 
 const SK = "RS_v1";
 const AR_SK = "AvatarRotator_v6";
+const RS_CLOSE_SK = "RS_closeConfig_v1";
 const AR_DEFAULT_S = 300;
 const AR_WARN_S = 60;
 const AR_CIRC_R = 115;
@@ -35,7 +36,8 @@ const AR_EXT_COLORS: Record<string, string> = {
     png: "#5865f2", jpg: "#43b581", jpeg: "#43b581", jfif: "#4a9e70",
     gif: "#faa61a", webp: "#9c67ff", avif: "#00b0f4",
 };
-interface AvatarEntry { id: string; label: string; data: string; }
+interface CropParams { ox: number; oy: number; zoom: number; rot: number; flipH: boolean; flipV: boolean; }
+interface AvatarEntry { id: string; label: string; data: string; cropParams?: CropParams; previewData?: string; }
 interface ArStoreData { avatars: AvatarEntry[]; seqIndex: number; shuffleQueue: number[]; }
 let arAvatars: AvatarEntry[] = [];
 let arSeqIndex = 0;
@@ -217,8 +219,8 @@ async function bcrApplyColor(hex: string): Promise<void> {
         if (settings.store.bannerShowToast) Toasts.show({ message: `Banner failed: ${e?.body?.message ?? "Unknown"}`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
     }
 }
-async function bcrRotateNext(): Promise<void> { if (!pluginActive) return; await bcrApplyColor(await bcrPickNextColor()); bcrSchedule(); }
-function bcrSchedule() { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); if (!pluginActive) return; bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000); }
+async function bcrRotateNext(): Promise<void> { if (!pluginActive || isManualStop || wasInvisible) return; await bcrApplyColor(await bcrPickNextColor()); bcrSchedule(); }
+function bcrSchedule() { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); if (!pluginActive || isManualStop || wasInvisible) return; bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000); }
 function bcrStartRotator(immediate = false) {
     if (!pluginActive) return;
     if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer);
@@ -364,31 +366,41 @@ let invisibleWatchInterval: ReturnType<typeof setInterval> | null = null;
 let wasInvisible = false;
 let cachedPresenceStore: any = null;
 
+let closeStatusEnabled = false;
+let closeStatusText = "";
+let closeStatusEmoji = "";
+let closeStatusType: StatusType = "auto";
+let closeClanEnabled = false;
+let closeClanId = "";
+let closeBannerEnabled = false;
+let closeBannerColor = "#111214";
+
+const saveCloseConfig = () => DataStore.set(RS_CLOSE_SK, { closeStatusEnabled, closeStatusText, closeStatusEmoji, closeStatusType, closeClanEnabled, closeClanId, closeBannerEnabled, closeBannerColor });
+
 async function applyCloseStatus(): Promise<void> {
-    if (!settings.store.closeStatusEnabled) return;
-    const raw = settings.store.closeStatusText.trim();
-    const emojiRaw = settings.store.closeStatusEmoji.trim();
+    if (!closeStatusEnabled) return;
+    const raw = closeStatusText.trim();
+    const emojiRaw = closeStatusEmoji.trim();
     if (!raw && !emojiRaw) return;
     const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
-    const statusType = settings.store.closeStatusType as StatusType;
     const entry: StatusEntry = {
         ...parsed,
-        status: statusType === "auto" ? undefined : statusType,
+        status: closeStatusType === "auto" ? undefined : closeStatusType,
         clearAfter: undefined,
     };
     await applyStatus(entry);
 }
 
 async function applyCloseBanner(): Promise<void> {
-    if (!settings.store.closeBannerEnabled) return;
-    const hex = settings.store.closeBannerColor.trim();
+    if (!closeBannerEnabled) return;
+    const hex = closeBannerColor.trim();
     if (!bcrIsValidHex(hex)) return;
     await bcrApplyColor(hex);
 }
 
 async function applyCloseClan(): Promise<void> {
-    if (!settings.store.closeClanEnabled) return;
-    const id = settings.store.closeClanId.trim();
+    if (!closeClanEnabled) return;
+    const id = closeClanId.trim();
     if (!id || !/^\d{17,20}$/.test(id)) return;
     await applyClan(id);
 }
@@ -1027,6 +1039,63 @@ function stopInvisibleWatcher() {
     wasInvisible = false;
 }
 
+function startNitroWatcher() {
+    stopNitroWatcher();
+    if (!settings.store.bannerNitroCheck) return;
+    let bcrWasStopped = false;
+    const check = () => {
+        if (!pluginActive || !settings.store.bannerNitroCheck) return;
+        if (arHasNitro()) {
+            if (!bcrWasStopped && bcrRotatorTimer !== null) {
+                bcrWasStopped = true;
+                bcrStopRotator();
+                (settings.store as any).bannerEnabled = false;
+                closeBannerEnabled = false;
+                void saveCloseConfig();
+                arToast("Nitro detected - ColorBanner paused. Disable Nitro Check in Banner tab to override.", Toasts.Type.FAILURE);
+            }
+        } else {
+            if (bcrWasStopped) {
+                bcrWasStopped = false;
+                bcrStartRotator(false);
+                (settings.store as any).bannerEnabled = true;
+                arToast("Nitro no longer detected - ColorBanner resumed.");
+            }
+        }
+    };
+    check();
+    UserStore.addChangeListener(check);
+    (startNitroWatcher as any)._cleanup = () => UserStore.removeChangeListener(check);
+}
+
+function startAvatarNitroWatcher() {
+    stopAvatarNitroWatcher();
+    if (!settings.store.avatarNitroCheck) return;
+    const check = () => {
+        if (!pluginActive || !settings.store.avatarNitroCheck) return;
+        const excl = arGetExcluded();
+        const hasGifExcl = excl.includes("gif");
+        if (!arHasNitro() && !hasGifExcl) {
+            arSetExcluded([...excl, "gif"]);
+            arToast("No Nitro detected - GIFs excluded from avatar rotation.", Toasts.Type.FAILURE);
+        } else if (arHasNitro() && hasGifExcl && (settings.store.avatarNitroCheck)) {
+            arSetExcluded(excl.filter(e => e !== "gif"));
+            arToast("Nitro detected - GIFs re-included in avatar rotation.");
+        }
+    };
+    check();
+    UserStore.addChangeListener(check);
+    (startAvatarNitroWatcher as any)._cleanup = () => UserStore.removeChangeListener(check);
+}
+
+function stopAvatarNitroWatcher() {
+    if ((startAvatarNitroWatcher as any)._cleanup) { (startAvatarNitroWatcher as any)._cleanup(); delete (startAvatarNitroWatcher as any)._cleanup; }
+}
+
+function stopNitroWatcher() {
+    if ((startNitroWatcher as any)._cleanup) { (startNitroWatcher as any)._cleanup(); delete (startNitroWatcher as any)._cleanup; }
+}
+
 function SettingsSep({ title, color = "#9c67ff" }: { title: string; color?: string }) {
     return (
         <div style={{ margin: "14px 0 2px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -1061,14 +1130,6 @@ const settings = definePluginSettings({
     statusRandomize: { type: OptionType.BOOLEAN, default: true, description: "Status randomize (configure in Status tab)." },
     statusRunMode: { type: OptionType.STRING, default: "all", description: "Status run mode: all | presets | none (configure in Status tab)." },
     statusSelectedPresets: { type: OptionType.STRING, default: "[]", description: "JSON array of preset names to include when run mode is presets." },
-    _sCloseGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="On Close Status" color="#64b5f6" /> },
-    closeStatusEnabled: { type: OptionType.BOOLEAN, default: false, description: "Apply a default status when Discord closes (beforeunload). Does not fire on crash/kill." },
-    closeStatusText: { type: OptionType.STRING, default: "", description: "Status text to apply on close." },
-    closeStatusEmoji: { type: OptionType.STRING, default: "", description: "Emoji prefix for on-close status (unicode or <:name:id>)." },
-    closeStatusType: { type: OptionType.STRING, default: "auto", description: "Presence type on close: online | idle | dnd | invisible | auto." },
-    _sCloseClanGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="On Close Clan" color={C.clan} /> },
-    closeClanEnabled: { type: OptionType.BOOLEAN, default: false, description: "Switch to a specific clan when Discord closes (beforeunload)." },
-    closeClanId: { type: OptionType.STRING, default: "", description: "Clan server ID to apply on close." },
     _sClanGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Clan" color={C.clan} /> },
     clanEnabled: { type: OptionType.BOOLEAN, default: false, description: "Clan switcher enabled (configure in Clan tab)." },
     clanIntervalSeconds: { type: OptionType.STRING, default: "5", description: "Clan interval seconds (configure in Clan tab)." },
@@ -1090,6 +1151,7 @@ const settings = definePluginSettings({
     avatarIntervalSeconds: { type: OptionType.NUMBER, default: AR_DEFAULT_S, description: "Seconds between avatar changes (min 60 recommended - Discord rate-limits)." },
     avatarRandom: { type: OptionType.BOOLEAN, default: true, description: "Random avatar order - no repeats until all shown once." },
     avatarShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast notifications for avatar changes." },
+    avatarNitroCheck: { type: OptionType.BOOLEAN, default: true, description: "Skip GIF avatars automatically if no Nitro detected. Toggle in the Avatar tab." },
     avatarExcludedExtensions: { type: OptionType.STRING, default: "", description: "Comma-separated extensions to skip during avatar rotation (e.g. gif,avif)." },
     _sBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Banner Color" color="#c084fc" /> },
     bannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Banner color rotator enabled (configure in Banner tab)." },
@@ -1099,9 +1161,7 @@ const settings = definePluginSettings({
     bannerCustomBaseColor: { type: OptionType.STRING, default: "#c084fc", description: "Base color for shade/mono modes (configure in Banner tab)." },
     bannerShowToast: { type: OptionType.BOOLEAN, default: false, description: "Show toast on each banner color change." },
     bannerShowCurrentColor: { type: OptionType.BOOLEAN, default: false, description: "Show active color hex+swatch in the footer next to ColorBanner (updates live)." },
-    _sCloseBannerGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="On Close Banner" color="#c084fc" /> },
-    closeBannerEnabled: { type: OptionType.BOOLEAN, default: false, description: "Apply a fixed banner color when Discord closes (beforeunload)." },
-    closeBannerColor: { type: OptionType.STRING, default: "#111214", description: "Banner hex color to apply on close (e.g. #111214)." },
+    bannerNitroCheck: { type: OptionType.BOOLEAN, default: true, description: "Auto-pause ColorBanner cycle when Nitro is detected (you can use animated banners instead). Toggle in the Banner tab." },
     _sServerProfilesGroup: { type: OptionType.COMPONENT, description: "", component: () => <SettingsSep title="Server Profiles" color={C.nick} /> },
     nickEnabled: { type: OptionType.BOOLEAN, default: false, description: "Server nicknames master switch - when OFF, no nick timers run even if servers are toggled on." },
     nickIntervalSeconds: { type: OptionType.STRING, default: "30", description: "Seconds between server nickname changes (Server Profiles tab)." },
@@ -1649,26 +1709,24 @@ function StatusRunModeSelector({ presets, forceUpdate }: { presets: StatusPreset
 }
 
 function OnCloseStatusPanel({ forceUpdate }: { forceUpdate: () => void }) {
-    const enabled = settings.store.closeStatusEnabled;
-    const [text, setText] = React.useState(settings.store.closeStatusText);
-    const [emoji, setEmoji] = React.useState(settings.store.closeStatusEmoji);
-    const [type, setType] = React.useState<StatusType>((settings.store.closeStatusType as StatusType) || "auto");
+    const [enabled, setEnabled] = React.useState(closeStatusEnabled);
+    const [text, setText] = React.useState(closeStatusText);
+    const [emoji, setEmoji] = React.useState(closeStatusEmoji);
+    const [type, setType] = React.useState<StatusType>(closeStatusType);
 
     const save = () => {
-        settings.store.closeStatusText = text.trim();
-        settings.store.closeStatusEmoji = emoji.trim();
-        settings.store.closeStatusType = type;
-        forceUpdate();
+        closeStatusText = text.trim(); closeStatusEmoji = emoji.trim(); closeStatusType = type;
+        void saveCloseConfig(); forceUpdate();
     };
 
     return (
         <div>
             <PanelToggle label="On-Close Status" description="Apply a fixed status when Discord closes (beforeunload - not fired on crash/kill)"
                 value={enabled} color="#64b5f6"
-                onChange={v => { settings.store.closeStatusEnabled = v; forceUpdate(); }} />
+                onChange={v => { closeStatusEnabled = v; setEnabled(v); void saveCloseConfig(); forceUpdate(); }} />
             {enabled && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 10px", border: "1px solid rgba(100,181,246,.2)", borderRadius: 7, background: "rgba(10,20,50,.5)", marginTop: 3 }}>
-                    <StatusTypeSelector value={type} onChange={v => { setType(v); settings.store.closeStatusType = v; }} />
+                    <StatusTypeSelector value={type} onChange={v => { setType(v); closeStatusType = v; void saveCloseConfig(); }} />
                     <div style={{ display: "flex", gap: 6 }}>
                         <input value={emoji} onChange={e => setEmoji(e.target.value)} onBlur={save}
                             placeholder="Emoji (opt.)"
@@ -1679,7 +1737,7 @@ function OnCloseStatusPanel({ forceUpdate }: { forceUpdate: () => void }) {
                             style={{ flex: 1, background: "rgba(10,0,30,.7)", border: "1px solid rgba(124,77,255,.35)", borderRadius: 5, color: "#f0eaff", fontSize: 11, padding: "3px 7px", outline: "none" }} />
                     </div>
                     <div style={{ fontSize: 10, color: "#64b5f6", opacity: .7 }}>
-                        <b>Auto</b> = mantieni la presenza attuale, aggiorna solo il testo. Leave text empty to clear the status entirely on close.
+                        <b>Auto</b> = keep current presence, only update text. Leave text empty to clear status on close.
                     </div>
                 </div>
             )}
@@ -1945,10 +2003,10 @@ function StatusTab({ forceUpdate }: { forceUpdate: () => void }) {
 }
 
 function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
-    const enabled = settings.store.closeClanEnabled;
-    const [id, setId] = React.useState(settings.store.closeClanId);
+    const [enabled, setEnabled] = React.useState(closeClanEnabled);
+    const [id, setId] = React.useState(closeClanId);
 
-    const save = () => { settings.store.closeClanId = id.trim(); forceUpdate(); };
+    const save = () => { closeClanId = id.trim(); void saveCloseConfig(); forceUpdate(); };
 
     const resolved = React.useMemo((): { name: string; tag: string | null } | null => {
         const v = id.trim();
@@ -1972,7 +2030,7 @@ function OnCloseClanPanel({ forceUpdate }: { forceUpdate: () => void }) {
         <div>
             <PanelToggle label="On-Close Clan" description="Switch to a specific clan server when Discord closes (beforeunload - not fired on crash/kill)"
                 value={enabled} color={C.clan}
-                onChange={v => { settings.store.closeClanEnabled = v; forceUpdate(); }} />
+                onChange={v => { closeClanEnabled = v; setEnabled(v); void saveCloseConfig(); forceUpdate(); }} />
             {enabled && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 10px", border: `1px solid ${C.clan}33`, borderRadius: 7, background: "rgba(10,20,50,.5)", marginTop: 3 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -2545,11 +2603,91 @@ async function arPrepareForDiscord(data: string): Promise<string> {
     });
 }
 
+
+async function arGifFirstFramePng(data: string, cropParams?: CropParams): Promise<string> {
+    const S = AR_EXP_S;
+    return new Promise<string>((res, rej) => {
+        const img = new Image();
+        img.onload = () => {
+            const c = document.createElement("canvas"); c.width = S; c.height = S;
+            const ctx = c.getContext("2d")!;
+            if (cropParams) {
+                const ratio = S / AR_CIRC_D;
+                ctx.save();
+                ctx.translate(S / 2 + cropParams.ox * ratio, S / 2 + cropParams.oy * ratio);
+                ctx.rotate(cropParams.rot * Math.PI / 180);
+                ctx.scale((cropParams.flipH ? -1 : 1) * cropParams.zoom * ratio, (cropParams.flipV ? -1 : 1) * cropParams.zoom * ratio);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                ctx.restore();
+            } else {
+                ctx.drawImage(img, 0, 0, S, S);
+            }
+            res(c.toDataURL("image/png"));
+        };
+        img.onerror = rej;
+        img.src = data;
+    });
+}
+
+async function arGenPreview(data: string, cropParams?: CropParams): Promise<string> {
+    const S = 76;
+    return new Promise<string>((res) => {
+        const img = new Image();
+        img.onload = () => {
+            const c = document.createElement("canvas"); c.width = S; c.height = S;
+            const ctx = c.getContext("2d")!;
+            if (cropParams) {
+                const ratio = S / AR_CIRC_D;
+                ctx.save();
+                ctx.translate(S / 2 + cropParams.ox * ratio, S / 2 + cropParams.oy * ratio);
+                ctx.rotate(cropParams.rot * Math.PI / 180);
+                ctx.scale((cropParams.flipH ? -1 : 1) * cropParams.zoom * ratio, (cropParams.flipV ? -1 : 1) * cropParams.zoom * ratio);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                ctx.restore();
+            } else { ctx.drawImage(img, 0, 0, S, S); }
+            res(c.toDataURL("image/png"));
+        };
+        img.onerror = () => res(data);
+        img.src = data;
+    });
+}
+
+function arHasNitro(): boolean {
+    try {
+        const u = UserStore.getCurrentUser() as any;
+        return (u?.premiumType ?? 0) >= 1 || u?.premium === true;
+    } catch { return false; }
+}
+
 async function arApplyAvatar(entry: AvatarEntry): Promise<void> {
     try {
-        let data = await arPrepareForDiscord(entry.data);
-        if (arIsGif(data)) data = arStampGif(data);
-        if (!data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Image data is invalid or too small");
+        let data: string;
+        const isGif = arIsGif(entry.data);
+        if (isGif && entry.cropParams) {
+            data = await arGifFirstFramePng(entry.data, entry.cropParams);
+            if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
+            await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
+            arToast(`Avatar → ${entry.label} (cropped, static)`);
+            return;
+        }
+        if (isGif) {
+            try {
+                await RestAPI.patch({ url: "/users/@me", body: { avatar: entry.data } });
+                arToast(`Avatar → ${entry.label}`);
+                return;
+            } catch (gifErr: any) {
+                const code = gifErr?.body?.code ?? gifErr?.status;
+                const isNitroErr = code === 50035 || code === 10002 || String(gifErr?.body?.message ?? "").toLowerCase().includes("nitro");
+                if (!isNitroErr) throw gifErr;
+                data = await arGifFirstFramePng(entry.data);
+            }
+            if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
+            await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
+            arToast(`Avatar → ${entry.label} (static - Nitro required for animated)`);
+            return;
+        }
+        data = await arPrepareForDiscord(entry.data);
+        if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
         await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
         arToast(`Avatar → ${entry.label}`);
     } catch (e: any) {
@@ -2652,7 +2790,8 @@ function ArExtFilterSection({ excluded, onChange }: { excluded: string[]; onChan
     );
 }
 
-function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply: (d: string) => void; onSkip: () => void; modalProps: any; }) {
+
+function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply: (d: string, cropParams?: CropParams) => void; onSkip: () => void; modalProps: any; }) {
     const [loaded, setLoaded] = React.useState(false);
     const [imgNat, setImgNat] = React.useState({ w: 1, h: 1 });
     const [minZoom, setMinZoom] = React.useState(1);
@@ -2702,6 +2841,11 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
     }, []);
 
     const doApply = async () => {
+        if (gif) {
+            onApply(src, { ox: offR.current.x, oy: offR.current.y, zoom: zoomR.current, rot: rotR.current, flipH, flipV });
+            modalProps.onClose();
+            return;
+        }
         const img = new Image();
         img.crossOrigin = "anonymous";
         await new Promise<void>(r => { img.onload = () => r(); img.src = src; });
@@ -2733,8 +2877,7 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
                     </div>
                     <div>
                         <div style={{ fontSize: 15, fontWeight: 700, color: AR.text }}>Edit Avatar</div>
-                        <div style={{ fontSize: 11, color: AR.sub }}>Drag to move - Zoom - Rotate - Flip{gif ? " - GIF animates here" : ""}</div>
-                    </div>
+                        <div style={{ fontSize: 11, color: AR.sub }}>Drag to move · Zoom · Rotate · Flip</div>                    </div>
                 </div>
             </ModalHeader>
             <ModalContent style={{ padding: 0, overflow: "hidden" }}>
@@ -2797,8 +2940,8 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
                         </button>
                     </div>
                     {gif && (
-                        <div style={{ padding: "8px 11px", borderRadius: 7, background: `${AR.warn}12`, border: `1px solid ${AR.warn}33`, fontSize: 11, color: AR.warn, lineHeight: 1.5 }}>
-                            🎞 <b>GIF animates above.</b> <b>Apply</b> exports the current frame as static PNG. <b>Skip</b> keeps the original GIF.
+                        <div style={{ padding: "8px 11px", borderRadius: 7, background: `${AR.warn}15`, border: `1px solid ${AR.warn}40`, fontSize: 11, color: AR.warn, lineHeight: 1.5 }}>
+                            🎞 <b>GIF:</b> Apply saves crop settings (first frame used as static PNG on upload). Skip keeps the original animated GIF unchanged.
                         </div>
                     )}
                 </div>
@@ -2825,7 +2968,7 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
     );
 }
 
-function arOpenCropFor(data: string, onDone: (d: string) => void) {
+function arOpenCropFor(data: string, onDone: (d: string, cropParams?: CropParams) => void) {
     openModal(p => <ArCropModal src={data} onApply={onDone} onSkip={() => onDone(data)} modalProps={p} />);
 }
 
@@ -2864,7 +3007,7 @@ function ArAvatarCard({
                 <rect y="9" width="12" height="1.8" rx="0.9"/>
             </svg>
             <div style={{ position: "relative", flexShrink: 0 }}>
-                <img src={entry.data} alt="" draggable={false} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? AR.warn : AR.accent}`, display: "block" }} />
+                <img src={entry.previewData ?? entry.data} alt="" draggable={false} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? AR.warn : AR.accent}`, display: "block" }} />
                 {isExcluded && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: 14 }}>⛔</span></div>}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2940,8 +3083,12 @@ function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
     const toggleEnabled = () => {
         const next = !running;
         settings.store.avatarEnabled = next;
-        if (next && activeCount > 0) { arStartRotator(false); setRunning(true); }
-        else { arStopRotator(); setRunning(false); }
+        if (next && activeCount > 0) {
+            if (settings.store.avatarNitroCheck) startAvatarNitroWatcher();
+            arStartRotator(false); setRunning(true);
+        } else {
+            stopAvatarNitroWatcher(); arStopRotator(); setRunning(false);
+        }
         forceUpdate();
     };
 
@@ -2978,7 +3125,7 @@ function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
             if (!data.startsWith("data:image/")) throw new Error("Could not read image data");
             arToast("Image loaded", Toasts.Type.SUCCESS);
             setLoading(false);
-            arOpenCropFor(data, cropped => { commit([...arAvatars, { id: arUid(), label, data: cropped }]); setUrlInput(""); setLabelInput(""); arToast(`Added "${label}"`); });
+            arOpenCropFor(data, async (cropped, cropParams) => { const previewData = await arGenPreview(cropped, cropParams); commit([...arAvatars, { id: arUid(), label, data: cropped, cropParams, previewData }]); setUrlInput(""); setLabelInput(""); arToast(`Added "${label}"`); });
         } catch (e: any) {
             arToast(e?.name === "AbortError" ? "Request timed out (15s)" : `Failed: ${e.message ?? "Unknown"}`, Toasts.Type.FAILURE);
             setLoading(false);
@@ -2993,7 +3140,7 @@ function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
             try {
                 const data = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(files[0]); });
                 setLoading(false);
-                arOpenCropFor(data, cropped => { commit([...arAvatars, { id: arUid(), label: files[0].name.replace(/\.[^.]+$/, ""), data: cropped }]); arToast("Added"); });
+                arOpenCropFor(data, async (cropped, cropParams) => { const previewData = await arGenPreview(cropped, cropParams); commit([...arAvatars, { id: arUid(), label: files[0].name.replace(/\.[^.]+$/, ""), data: cropped, cropParams, previewData }]); arToast("Added"); });
             } catch { arToast("Failed to read file", Toasts.Type.FAILURE); setLoading(false); }
         } else {
             const entries: AvatarEntry[] = [];
@@ -3093,6 +3240,22 @@ function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
                         <div style={{ position: "absolute", top: 2, left: lToast ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff" }} />
                     </div>
                 </div>
+                <div className="ar-card-row">
+                    <span style={{ fontSize: 13, color: AR.text }}>
+                        🔍 Nitro Check - skip GIFs if no Nitro
+                        <span style={{ fontSize: 10, color: arHasNitro() ? "#23a55a" : "#faa61a", marginLeft: 6 }}>
+                            {settings.store.avatarNitroCheck ? (arHasNitro() ? "Nitro ✓ - GIFs included" : "No Nitro - GIFs auto-skipped") : "disabled"}
+                        </span>
+                    </span>
+                    <div onClick={() => {
+                        const n = !settings.store.avatarNitroCheck;
+                        (settings.store as any).avatarNitroCheck = n;
+                        if (running) { if (n) startAvatarNitroWatcher(); else { stopAvatarNitroWatcher(); const excl = arGetExcluded(); if (excl.includes("gif")) arSetExcluded(excl.filter(e => e !== "gif")); } }
+                        forceUpdate();
+                    }} style={{ width: 34, height: 18, borderRadius: 9, flexShrink: 0, cursor: "pointer", background: settings.store.avatarNitroCheck ? AR.accent : "rgba(255,255,255,.13)", position: "relative", userSelect: "none" as const }}>
+                        <div style={{ position: "absolute", top: 2, left: settings.store.avatarNitroCheck ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff" }} />
+                    </div>
+                </div>
             </div>
 
             <div style={{ background: AR.bg1, border: `1px solid ${AR.line}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
@@ -3159,7 +3322,7 @@ function AvatarTab({ forceUpdate }: { forceUpdate: () => void }) {
                             onDragLeave={onDL} onDrop={e => onDP(e, i)} onDragEnd={onDE}
                             onRemove={() => removeEntry(entry.id)}
                             onApplyNow={() => void arApplyAvatar(entry)}
-                            onCrop={() => arOpenCropFor(entry.data, d => { commit(arAvatars.map(a => a.id === entry.id ? { ...a, data: d } : a)); arToast("Updated"); })}
+                            onCrop={() => arOpenCropFor(entry.data, async (d, cropParams) => { const previewData = await arGenPreview(d, cropParams); commit(arAvatars.map(a => a.id === entry.id ? { ...a, data: d, cropParams, previewData } : a)); arToast("Updated"); })}
                             onRename={l => commit(arAvatars.map(a => a.id === entry.id ? { ...a, label: l } : a))}
                         />
                     ))
@@ -4094,14 +4257,14 @@ function DataTab({ forceUpdate }: { forceUpdate: () => void }) {
 }
 
 function OnCloseBannerPanel({ forceUpdate }: { forceUpdate: () => void }) {
-    const enabled = settings.store.closeBannerEnabled;
-    const [color, setColor] = React.useState(settings.store.closeBannerColor ?? "#111214");
-    const save = () => { settings.store.closeBannerColor = color.trim(); forceUpdate(); };
+    const [enabled, setEnabled] = React.useState(closeBannerEnabled);
+    const [color, setColor] = React.useState(closeBannerColor);
+    const save = () => { closeBannerColor = color.trim(); void saveCloseConfig(); forceUpdate(); };
     return (
         <div>
             <PanelToggle label="On-Close Banner" description="Apply a fixed banner color when Discord closes (beforeunload - not fired on crash/kill)"
                 value={enabled} color="#c084fc"
-                onChange={v => { settings.store.closeBannerEnabled = v; forceUpdate(); }} />
+                onChange={v => { closeBannerEnabled = v; setEnabled(v); void saveCloseConfig(); forceUpdate(); }} />
             {enabled && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 10px", border: "1px solid rgba(192,132,252,.25)", borderRadius: 7, background: "rgba(10,0,30,.5)", marginTop: 3 }}>
                     <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
@@ -4111,7 +4274,7 @@ function OnCloseBannerPanel({ forceUpdate }: { forceUpdate: () => void }) {
                             placeholder="#rrggbb"
                             maxLength={7}
                             style={{ flex: 1, background: "rgba(10,0,30,.7)", border: `1px solid ${bcrIsValidHex(color) ? "rgba(192,132,252,.44)" : "rgba(239,83,80,.5)"}`, borderRadius: 5, color: "#f0eaff", fontSize: 12, padding: "3px 7px", outline: "none", fontFamily: "monospace" }} />
-                        <button onClick={() => { setColor(bcrCurrentColor ?? "#111214"); settings.store.closeBannerColor = bcrCurrentColor ?? "#111214"; forceUpdate(); }}
+                        <button onClick={() => { const c = bcrCurrentColor ?? "#111214"; setColor(c); closeBannerColor = c; void saveCloseConfig(); forceUpdate(); }}
                             style={{ padding: "3px 9px", borderRadius: 5, border: "1px solid rgba(192,132,252,.3)", background: "rgba(192,132,252,.12)", color: "#c084fc", cursor: "pointer", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                             Use current
                         </button>
@@ -4278,7 +4441,7 @@ function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
     const [applying, setApplying] = React.useState(false);
     const [liveColor, setLive] = React.useState<string | null>(bcrCurrentColor);
 
-    React.useEffect(() => { bcrOnColorApplied = hex => setLive(hex); return () => { bcrOnColorApplied = null; }; }, []);
+    React.useEffect(() => { bcrOnColorApplied = hex => { setLive(hex); forceUpdate(); }; return () => { bcrOnColorApplied = null; }; }, []);
 
     const PRESET_HEX = ["#111214", "#5865f2", "#3ba55c", "#ed4245", "#faa61a", "#c084fc", "#00b0f4", "#ff6b6b", "#1e3a5f", "#2d1b69", "#701a75", "#065f46"];
     const PRESET_S = [30, 60, 120, 300, 600, 1800, 3600];
@@ -4288,7 +4451,16 @@ function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
     const handleSecBlur = (raw: string) => { const v = Math.max(5, parseInt(raw) || BCR_DEFAULT_S); setSec(v); setSecStr(String(v)); (settings.store as any).bannerIntervalSeconds = v; if (running) { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); bcrRotatorTimer = setTimeout(bcrRotateNext, v * 1000); } };
     const handleHueRChange = (v: number) => { setHueR(v); (settings.store as any).bannerHueRadius = v; bcrRandomBatch = []; };
     const handleBaseChange = (hex: string) => { setBase(hex); (settings.store as any).bannerCustomBaseColor = hex; bcrRandomBatch = []; bcrSeqBatch = []; bcrMonoBaseHue = null; bcrShadeStep = 0; bcrShadeDir = 1; };
-    const handleToggle = () => { if (running) { bcrStopRotator(); (settings.store as any).bannerEnabled = false; setRunning(false); } else { bcrStartRotator(true); (settings.store as any).bannerEnabled = true; setRunning(true); } forceUpdate(); };
+    const handleToggle = () => {
+        if (running) {
+            bcrStopRotator(); (settings.store as any).bannerEnabled = false; setRunning(false);
+            if (settings.store.bannerNitroCheck) stopNitroWatcher();
+        } else {
+            bcrStartRotator(true); (settings.store as any).bannerEnabled = true; setRunning(true);
+            if (settings.store.bannerNitroCheck) startNitroWatcher();
+        }
+        forceUpdate();
+    };
     const applyNow = async () => { if (applying || !bcrIsValidHex(preview)) return; setApplying(true); await bcrApplyColor(preview); setApplying(false); };
     const skipNow = async () => { const color = await bcrPickNextColor(); setPreview(color); await bcrApplyColor(color); if (running) { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, sec) * 1000); } };
 
@@ -4392,6 +4564,23 @@ function BannerTab({ forceUpdate }: { forceUpdate: () => void }) {
                                 <BcrToggle value={!!(settings.store as any)[key]} onChange={() => { (settings.store as any)[key] = !(settings.store as any)[key]; void bcrSaveData(); forceUpdate(); }} />
                             </div>
                         ))}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: "#f0e6ff" }}>
+                                🔍 Nitro Check - pause banner if Nitro detected
+                                <span style={{ fontSize: 9, color: arHasNitro() ? "#ef9a9a" : "#23a55a", marginLeft: 5 }}>
+                                    {settings.store.bannerNitroCheck
+                                        ? (arHasNitro() ? "Nitro detected - banner paused ⚠" : "No Nitro - banner running ✓")
+                                        : "disabled - banner runs regardless"}
+                                </span>
+                            </span>
+                            <BcrToggle value={!!settings.store.bannerNitroCheck} onChange={() => {
+                                const n = !settings.store.bannerNitroCheck;
+                                (settings.store as any).bannerNitroCheck = n;
+                                if (n) { startNitroWatcher(); }
+                                else { stopNitroWatcher(); }
+                                forceUpdate();
+                            }} />
+                        </div>
                     </div>
                     <BcrHr />
                     <OnCloseBannerPanel forceUpdate={forceUpdate} />
@@ -4649,15 +4838,30 @@ export default definePlugin({
         bcrCurrentColor = bcrStored.currentColor ?? null;
         if (bcrStored.wasRunning || settings.store.bannerEnabled) bcrStartRotator(false);
 
+        const closeStored = (await DataStore.get(RS_CLOSE_SK)) ?? {};
+        closeStatusEnabled  = closeStored.closeStatusEnabled  ?? false;
+        closeStatusText     = closeStored.closeStatusText     ?? "";
+        closeStatusEmoji    = closeStored.closeStatusEmoji    ?? "";
+        closeStatusType     = closeStored.closeStatusType     ?? "auto";
+        closeClanEnabled    = closeStored.closeClanEnabled    ?? false;
+        closeClanId         = closeStored.closeClanId         ?? "";
+        closeBannerEnabled  = closeStored.closeBannerEnabled  ?? false;
+        closeBannerColor    = closeStored.closeBannerColor    ?? "#111214";
+
         Vencord.Api.UserArea.addUserAreaButton("rotator-suite", () => <RSUserAreaButton />);
 
         if (settings.store.autoStart) {
             startAllRotators();
         }
 
-        onCloseHandler = () => { applyCloseStatus(); applyCloseClan(); applyCloseBanner(); };
-        window.addEventListener("beforeunload", onCloseHandler);
+        onCloseHandler = () => { void applyCloseStatus(); void applyCloseClan(); void applyCloseBanner(); };
+        if (!window._rsCloseHandlerRegistered) {
+            window.addEventListener("beforeunload", () => { if (onCloseHandler) onCloseHandler(); });
+            (window as any)._rsCloseHandlerRegistered = true;
+        }
         if (settings.store.stopOnInvisible) startInvisibleWatcher();
+        if (settings.store.bannerNitroCheck) startNitroWatcher();
+        if (settings.store.avatarEnabled && settings.store.avatarNitroCheck) startAvatarNitroWatcher();
     },
 
     stop() {
@@ -4669,12 +4873,13 @@ export default definePlugin({
         if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
         globalStopEndTime = null; cachedPresenceStore = null;
         stopInvisibleWatcher();
+        stopNitroWatcher();
+        stopAvatarNitroWatcher();
         stopAllRotators();
         arAvatars = []; arSeqIndex = 0; arShuffleQueue = [];
         bcrFavorites = []; bcrUsedFavs = []; bcrRandomBatch = []; bcrSeqBatch = [];
         bcrCachedHue = null; bcrGradientState = null; bcrMonoBaseHue = null;
         bcrCurrentColor = null; bcrOnColorApplied = null;
-        if (onCloseHandler) { window.removeEventListener("beforeunload", onCloseHandler); onCloseHandler = null; }
         Vencord.Api.UserArea.removeUserAreaButton("rotator-suite");
         document.getElementById("rs-css")?.remove();
     },

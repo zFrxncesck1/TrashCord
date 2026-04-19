@@ -1,4 +1,4 @@
-import "../styles.css";
+// import "../styles.css";
 
 import { Heading } from "@components/Heading";
 import { SettingsTab, wrapTab } from "@components/settings";

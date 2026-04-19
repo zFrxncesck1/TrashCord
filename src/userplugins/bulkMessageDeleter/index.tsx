@@ -7,7 +7,7 @@ import { classNameFactory } from "@utils/css";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, Constants, FluxDispatcher, Menu, MessageStore, React, RestAPI, Toasts, UserStore, useEffect, useReducer, useState } from "@webpack/common";
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 const cl = classNameFactory("vc-bmd-");
 
@@ -392,6 +392,7 @@ export default definePlugin({
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     dependencies: ["CommandsAPI", "MessagePopoverAPI", "ContextMenuAPI"],
     settings,
+    managedStyle,
 
     commands: [{
         name: "bulkdelete",
