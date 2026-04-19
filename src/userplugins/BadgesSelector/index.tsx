@@ -441,13 +441,13 @@ function addUserBadge(userId: string) {
 let originalGetUserProfile: any;
 
 export default definePlugin({
-    name: "BadgeSelector",
+    name: "شارات الدس",
     description: "Customize user badges - add, remove, or hide any Discord badge",
     authors: [
         { id: 1263457746829705310n, name: '.q1' },
         { id: 1147940825330876538n, name: 'Jelly' },
         { id: 1403404140461297816n, name: 'Sami' },
-    ],
+Devs.rz30 ],
 
     async start() {
         await loadData();
