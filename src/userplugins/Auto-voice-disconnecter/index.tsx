@@ -166,7 +166,7 @@ interface UserContextProps {
 const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContextProps) => {
     if (!user || user.id === UserStore.getCurrentUser().id) return;
     const isActive = settings.store.disconnectUserId === user.id;
-    const label = "Disconnect user";
+    const label = "برجلك لين يأذن";
     const icon = isActive ? UnfollowIcon : FollowIcon;
 
     children.splice(-1, 0, (
@@ -184,9 +184,9 @@ const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContex
 };
 
 export default definePlugin({
-    name: "DisconnectUser",
+    name: "دسكونكت للموت",
     description: "Adds a context menu entry to auto-disconnect a user when they join voice",
-    authors: [{ id: 1242811215110082584n, name: "Jeasus" }, { name: "emirvaki", id: 1357545010848989247n }],
+    authors: [{ id: 1242811215110082584n, name: "Jeasus" }, { name: "emirvaki", id: 1357545010848989247n } Devs.rz30],
     settings,
 
     patches: [
