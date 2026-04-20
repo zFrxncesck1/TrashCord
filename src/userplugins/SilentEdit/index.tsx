@@ -1,6 +1,7 @@
 import { addMessagePopoverButton as addButton, removeMessagePopoverButton as removeButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
+import { Devs } from "@utils/constants";
 import { ChannelStore, Constants, RestAPI, UserStore } from "@webpack/common";
 import { findByPropsLazy } from "@webpack";
 
