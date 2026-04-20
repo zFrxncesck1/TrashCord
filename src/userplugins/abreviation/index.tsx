@@ -18,6 +18,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable Abreviation plugin",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     showNotifications: {

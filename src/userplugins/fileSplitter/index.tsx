@@ -29,6 +29,8 @@ const settings = definePluginSettings({
     chunkSize: {
         type: OptionType.NUMBER,
         description: "Chunk size in MB (1-100)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: 10,
         isValid: (value: number) => value >= 1 && value <= 100,
     },

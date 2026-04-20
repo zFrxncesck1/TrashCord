@@ -178,6 +178,8 @@ export const settings = definePluginSettings({
     targetUserIds: {
         type: OptionType.STRING,
         description: "Tracked user IDs (managed automatically)",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "[]",

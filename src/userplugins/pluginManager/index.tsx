@@ -297,6 +297,8 @@ function keybind(e: KeyboardEvent) {
 export default definePlugin({
     name: "pluginManager",
     description: "Manage custom plugins",
+    tags: ["Utility", "Developers"],
+    enabledByDefault: false,
     authors: [Devs.dot],
     start() {
         document.addEventListener('keydown', keybind);

@@ -17,6 +17,8 @@ const settings = definePluginSettings({
     filterEnabled: {
         type: OptionType.BOOLEAN,
         description: "Enable filtering (censor/replace/block). When off, messages pass through freely.",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: true,
     },
     actionOnViolation: {

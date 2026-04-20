@@ -12,6 +12,8 @@ import { checkUpdate } from "./versionCheck";
 export default definePlugin({
     name: "PluginRepo",
     description: "Adds a repo containing Third-Party Plugins to download.",
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.ScattrdBlade],
     required: false,
     patches: [

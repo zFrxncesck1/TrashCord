@@ -39,6 +39,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable DecibelLimiter",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         default: true
     },
     thresholdPercent: {

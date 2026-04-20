@@ -58,6 +58,8 @@ export default definePlugin({
     name: "AntiDéconnexion",
     description:
         "Automatically reconnects to voice channel in case of forced disconnection",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
 
     // Using the flux system to listen to voice events

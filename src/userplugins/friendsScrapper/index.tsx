@@ -19,6 +19,8 @@ const settings = definePluginSettings({
     whitelist: {
         type: OptionType.STRING,
         description: "Comma-separated user IDs to keep (whitelist)",
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
         default: ""
     }
 });

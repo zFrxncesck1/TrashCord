@@ -104,6 +104,8 @@ const settings = definePluginSettings({
     keymap: {
         type: OptionType.COMPONENT,
         description: "the keybind that you want to save on",
+    tags: ["Chat", "Shortcuts"],
+    enabledByDefault: false,
         component: props => <KeymapElement {...props}></KeymapElement>
     }
 });

@@ -950,6 +950,8 @@ const settings = definePluginSettings({
     messages: {
         type: OptionType.COMPONENT,
         description: "Messages to repeat - leave empty and enable Random Words for random-only mode",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         component: MessageEntries,
     },
     randomWordsEnabled: {

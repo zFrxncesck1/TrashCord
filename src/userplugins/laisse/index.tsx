@@ -43,6 +43,8 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Enable laisse plugin",
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
     },
     onlyWhenInVoice: {
         type: OptionType.BOOLEAN,

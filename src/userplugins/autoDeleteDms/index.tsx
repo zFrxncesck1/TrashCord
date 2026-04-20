@@ -31,6 +31,8 @@ const settings = definePluginSettings({
     deleteAfterValue: {
         type: OptionType.NUMBER,
         description: "Delete messages after (value)",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: 24
     },
     timeUnit: {

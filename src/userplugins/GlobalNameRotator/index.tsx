@@ -49,6 +49,8 @@ const settings = definePluginSettings({
     intervalSeconds: {
         type: OptionType.NUMBER,
         description: "Rotation interval in seconds. Min 360 recommended!",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         default: 360,
     },
     randomMode: {

@@ -15,6 +15,8 @@ const settings = definePluginSettings({
     os: {
         type: OptionType.SELECT,
         description: "Operating system to spoof",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         restartNeeded: true,
         options: [
             { label: "Linux", value: "linux", default: true },

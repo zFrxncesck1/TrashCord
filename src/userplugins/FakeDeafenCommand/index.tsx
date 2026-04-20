@@ -19,6 +19,8 @@ const settings = definePluginSettings({
     mute: {
         type: OptionType.BOOLEAN,
         description: "Keep mute state when fake deafened",
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
         default: true
     },
     deafen: {

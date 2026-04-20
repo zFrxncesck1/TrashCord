@@ -192,6 +192,8 @@ const ChatBarIcon: ChatBarButtonFactory = ({ isMainChat }) => {
 export default definePlugin({
     name: "Encryptcord",
     description: "End-to-end encryption in Discord!",
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
     authors: [Devs.Inbestigator],
     dependencies: ["CommandsAPI"],
     patches: [

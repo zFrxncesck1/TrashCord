@@ -14,6 +14,8 @@ export default definePlugin({
     name: "everytwo",
     authors: [{ name: "Death", id: 1003477997728313405n }],
     description: "mentions everyone but a lot. your account will be flagged as spam. i'm not responsible for stupidity.",
+    tags: ["Fun", "Chat"],
+    enabledByDefault: false,
     patches: [
         {
             find: ".LAUNCHABLE_APPLICATIONS;",

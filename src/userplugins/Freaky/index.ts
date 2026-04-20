@@ -30,6 +30,8 @@ function makeFreaky(text: string) {
 export default definePlugin({
     name: "Freaky",
     description: "freaky.",
+    tags: ["Fun", "Chat"],
+    enabledByDefault: false,
     authors: [Devs.nyx],
     commands: [
         {

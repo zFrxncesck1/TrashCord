@@ -23,6 +23,8 @@ const settings = definePluginSettings({
     friends: {
         type: OptionType.BOOLEAN,
         description: "Include friends in mass DM",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     onlyFriends: {

@@ -37,6 +37,8 @@ const settings = definePluginSettings({
     enableLogging: {
         type: OptionType.BOOLEAN,
         description: "Enable debug logging",
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
         default: false
     },
     availableCommands: {

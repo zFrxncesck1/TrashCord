@@ -123,6 +123,8 @@ const settings = definePluginSettings({
     backend: {
         type: OptionType.SELECT,
         description: "Translation backend",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         options: [
             { label: "AnythingTranslate (free, no setup required)", value: "anythingtranslate", default: true },
             { label: "Local Claude Code (requires Claude Code installed)", value: "claude" },

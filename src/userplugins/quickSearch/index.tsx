@@ -151,6 +151,8 @@ export default definePlugin({
     name: "QuickSearch",
     authors: [{ name: "x2b", id: 0n }],
     description: "Adds a context menu to quickly search within Discord",
+    tags: ["Shortcuts", "Utility"],
+    enabledByDefault: false,
 
     start() {
         addContextMenuPatch("message", contextMenuPath);

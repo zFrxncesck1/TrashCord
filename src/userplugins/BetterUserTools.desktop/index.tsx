@@ -41,6 +41,8 @@ const settings = definePluginSettings({
     },
     micLoopbackEnabled: {
         description: "Enable the Mic Test Loopback feature",
+    tags: ["Utility", "Developers"],
+    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true
     },

@@ -11,6 +11,8 @@ const settings = definePluginSettings({
     autoAcceptQuests: {
         type: OptionType.BOOLEAN,
         description: "Automatically accept all available quests",
+    tags: ["Utility", "Chat"],
+    enabledByDefault: false,
         default: true,
         restartNeeded: false
     },

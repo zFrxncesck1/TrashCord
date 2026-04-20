@@ -25,6 +25,8 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Include GIFs in the gallery",
+    tags: ["Chat", "Media"],
+    enabledByDefault: false,
     },
     includeEmbeds: {
         type: OptionType.BOOLEAN,

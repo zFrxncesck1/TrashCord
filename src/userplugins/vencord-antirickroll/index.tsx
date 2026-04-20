@@ -20,6 +20,8 @@ const MessageDisplayCompact = getUserSettingLazy("textAndImages", "messageDispla
 const settings = definePluginSettings({
     customLinks: {
         description: "Custom links to check for (separated by commas)",
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
         type: OptionType.STRING,
         default: "",
         restartNeeded: true

@@ -19,6 +19,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable LeaveAllGroups",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     showNotifications: {

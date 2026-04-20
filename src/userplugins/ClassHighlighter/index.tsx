@@ -95,6 +95,8 @@ function KeybindRecorder() {
 const settings = definePluginSettings({
     keybind: {
         description: "Toggle Highlighter",
+    tags: ["Chat", "Appearance"],
+    enabledByDefault: false,
         type: OptionType.COMPONENT,
         default: DEFAULT_KEYBIND,
         component: KeybindRecorder

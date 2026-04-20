@@ -161,6 +161,8 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
 export default definePlugin({
     name: "LocalMessageEditor",
     description: "Edit and delete any message locally to demonstrate Discord security vulnerabilities",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.Nobody],
 
     patches: [

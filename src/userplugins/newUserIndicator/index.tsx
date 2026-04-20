@@ -50,6 +50,8 @@ const badge: ProfileBadge = {
 const settings = definePluginSettings({
     badges: {
         description: "Enable on badges.",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true,
     },

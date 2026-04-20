@@ -13,6 +13,7 @@ import { Devs } from "@utils/constants";
 const settings = definePluginSettings({
     threshold: {
         description: "Number of emojis that are allowed to be jumbo",
+    enabledByDefault: false,
         type: OptionType.SLIDER,
         markers: makeRange(0, 200, 10),
         default: 50,
@@ -32,7 +33,7 @@ export default definePlugin({
     name: "MoreJumboEmoji",
     description: "Unlock the maximum amount of jumbo emoji",
     authors: [Devs.x2b],
-    tags: ["wumboji"],
+    tags: ["Emotes", "Fun"],
     settings,
     patches: [{
         find: ".jumboable=",

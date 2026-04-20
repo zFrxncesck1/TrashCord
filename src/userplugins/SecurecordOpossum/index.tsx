@@ -376,6 +376,8 @@ const settings = definePluginSettings({
     pluginActivated: {
         type: OptionType.BOOLEAN,
         description: "Activate/deactivate the Securecord Opossum plugin",
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
         default: false
     },
     encryptionPassword: {

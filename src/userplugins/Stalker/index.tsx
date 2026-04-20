@@ -121,6 +121,8 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Send a notification when a user joins a voice channel.",
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
     },
 
     notifyCallLeave: {

@@ -79,6 +79,8 @@ const settings = definePluginSettings({
     antiDisconnect: {
         type: OptionType.BOOLEAN,
         description: "Automatically rejoin the voice channel if you get disconnected by someone else.",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default: false,
     },
     rejoinDelay: {

@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     users: {
         type: OptionType.STRING,
         description: "User list separated by /",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
         default: "",
     },
     store: {

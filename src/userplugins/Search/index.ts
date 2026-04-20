@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     customSearchEngine: {
         type: OptionType.STRING,
         description: "Full base URL for custom search engine (must support ?q= parameter)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: "https://google.com/search?q=",
         restartNeeded: false,
     },

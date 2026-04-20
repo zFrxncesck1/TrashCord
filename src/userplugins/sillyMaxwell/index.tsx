@@ -15,6 +15,8 @@ import { Devs } from "@utils/constants";
 export default definePlugin({
     name: "Maxwell :3",
     description: "Silly Silly Silly",
+    tags: ["Fun", "Chat"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     dependencies: ["CommandsAPI"],
     settings,

@@ -30,6 +30,8 @@ export const settings = definePluginSettings({
     notifyIfUpdate: {
         type: OptionType.BOOLEAN,
         description: "Show a Vencord notification if UserPlugins need to be updated",
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
         default: true
     }
 });

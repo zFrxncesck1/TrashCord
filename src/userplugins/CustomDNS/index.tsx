@@ -21,6 +21,8 @@ const settings = definePluginSettings({
     dnsProvider: {
         type: OptionType.SELECT,
         description: "Choose which DNS provider to use",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         options: [
             { label: "DNS.SB", value: DnsProvider.DNS_SB },
             { label: "Quad9", value: DnsProvider.QUAD9 },

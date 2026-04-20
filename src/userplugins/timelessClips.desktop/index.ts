@@ -11,6 +11,8 @@ import definePlugin, { makeRange, OptionType, } from "@utils/types";
 const settings = definePluginSettings({
     clipLength: {
         description: "Add clip length option in minutes",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         type: OptionType.SLIDER,
         markers: makeRange(3, 30, 1),
         default: 5,

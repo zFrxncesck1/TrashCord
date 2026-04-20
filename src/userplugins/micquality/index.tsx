@@ -39,6 +39,8 @@ const settings = definePluginSettings({
     qualityEnabled: {
         type: OptionType.BOOLEAN,
         description: "Override microphone quality/bitrate.",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         default: true,
         restartNeeded: false,
         onChange: triggerLiveUpdate,

@@ -13,6 +13,8 @@ import { UserStore } from "@webpack/common";
 export default definePlugin({
     name: "ProfileCommand",
     description: "Adds a /profile command to open someone's profile",
+    tags: ["Appearance", "Commands"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     dependencies: ["CommandsAPI"],
     commands: [

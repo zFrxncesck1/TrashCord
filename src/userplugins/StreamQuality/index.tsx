@@ -29,6 +29,8 @@ const settings = definePluginSettings({
     fpsEnabled: {
         type: OptionType.BOOLEAN,
         description: "Override the stream frame rate.",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         default: true,
         restartNeeded: false,
         onChange: triggerLiveUpdate,

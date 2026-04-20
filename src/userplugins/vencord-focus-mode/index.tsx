@@ -12,6 +12,8 @@ const settings = definePluginSettings({
     language: {
         type: OptionType.SELECT,
         description: "Language / Idioma",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
         default: "en",
         options: [
             { label: "English", value: "en" },

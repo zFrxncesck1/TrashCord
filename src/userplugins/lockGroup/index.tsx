@@ -21,6 +21,8 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show notifications for actions",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: true,
     },
     debugMode: {

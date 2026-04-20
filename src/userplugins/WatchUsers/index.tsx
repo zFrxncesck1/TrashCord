@@ -113,6 +113,8 @@ export const settings = definePluginSettings({
     watchUserId: {
         type: OptionType.STRING,
         description: "User ID of the watched user",
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "",

@@ -79,6 +79,8 @@ export const settings = definePluginSettings({
         type: OptionType.SELECT,
         default: "relay",
         description: "ICE transport policy. Relay forces TURN relay only (best privacy), public allows public IP discovery.",
+    tags: ["Privacy", "Voice"],
+    enabledByDefault: false,
         options: [
             { label: "Relay Only (Best Privacy)", value: "relay", default: true },
             { label: "Public (Default Discord)", value: "all" },

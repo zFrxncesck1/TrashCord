@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     maxZoom: {
         type: OptionType.SLIDER,
         description: "Maximum zoom level",
+    tags: ["Voice", "Media"],
+    enabledByDefault: false,
         default: 5,
         markers: [2, 3, 4, 5, 8, 10],
     },

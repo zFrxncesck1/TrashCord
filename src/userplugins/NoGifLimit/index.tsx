@@ -70,6 +70,8 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show notifications when adding items",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     allowTenor: {

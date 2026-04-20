@@ -40,6 +40,8 @@ const settings = definePluginSettings({
     serverType: {
         type: OptionType.SELECT,
         description: "What media server are you using?",
+    tags: ["Media", "Appearance"],
+    enabledByDefault: false,
         options: [
             { label: "Jellyfin", value: ServiceType.JELLYFIN, default: true },
             { label: "Plex", value: ServiceType.PLEX }

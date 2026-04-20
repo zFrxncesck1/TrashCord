@@ -31,6 +31,8 @@ const { PreloadedUserSettingsActionCreators } = UserSettingsActionCreators;
 export default definePlugin({
     name: "AutoSwitchStatus",
     description: "Automatically switches your discord status to 'away' when you are muted inside a server or 'invisible' when disconnected from a server.",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     authors: [{
         name: "nicola02nb",
         id: 257900031351193600n

@@ -18,6 +18,8 @@ export const settings = definePluginSettings({
   maxResults: {
     type: OptionType.NUMBER,
     description: "Maximum number of results to display",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     default: 100,
   },
   searchTimeout: {

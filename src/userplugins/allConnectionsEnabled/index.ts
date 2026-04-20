@@ -12,6 +12,8 @@ import { Connection } from "./connection-types";
 export default definePlugin({
     name: "AllConnectionsEnabled",
     description: "Enables all connections",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     patches: [
         {

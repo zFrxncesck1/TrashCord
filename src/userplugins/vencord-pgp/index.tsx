@@ -81,6 +81,8 @@ export const settings = definePluginSettings({
     privateKey: {
         type: OptionType.STRING,
         description: "Your PGP private key (armored format)",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default: "",
         hidden: true,
     },

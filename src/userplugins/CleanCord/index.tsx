@@ -37,6 +37,8 @@ const settings = definePluginSettings({
     // CleanCord : Options CATEGORY
     showOptions: {
         description: "Display the options upon right-clicking a server/folder",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true,
     },

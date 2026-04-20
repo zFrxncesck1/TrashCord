@@ -105,6 +105,8 @@ function handleLinkClick(e: MouseEvent): void {
 export default definePlugin({
     name: "AntiScamLinks",
     description: "Warns you before opening scam or phishing links detected in Discord messages.",
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
     authors: [
         { name: "Irritably", id: 928787166916640838n },
         { name: "zFrxncesck1", id: 456195985404592149n },

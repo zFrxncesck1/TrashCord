@@ -13,6 +13,8 @@ const settings = definePluginSettings({
     currentVC: {
         type: OptionType.BOOLEAN,
         description: "Always show you are typing in your current voice channel",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: true
     },
     threshold: {

@@ -15,6 +15,8 @@ import { useAuditLogPermission } from "./hooks";
 export default definePlugin({
     name: "AuditLogChannel",
     description: "Adds an audit log channel",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     patches: [
         {

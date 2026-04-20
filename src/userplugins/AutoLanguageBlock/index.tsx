@@ -163,6 +163,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable or disable automatic blocking",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     bannedLanguage: {

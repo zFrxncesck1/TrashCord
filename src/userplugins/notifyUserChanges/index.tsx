@@ -176,6 +176,8 @@ export const settings = definePluginSettings({
     notifyStatus: {
         type: OptionType.BOOLEAN,
         description: "Notify on status changes",
+    tags: ["Friends", "Notification"],
+    enabledByDefault: false,
         restartNeeded: false,
         default: true,
     },

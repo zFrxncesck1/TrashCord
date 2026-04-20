@@ -16,6 +16,8 @@ import { useKatex } from "./katexLoader";
 export default definePlugin({
     name: "TeX",
     description: "Typesets math in messages, written as `$x$` or `$$x$$`.",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     managedStyle,
 

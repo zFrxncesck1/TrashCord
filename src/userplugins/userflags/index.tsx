@@ -98,6 +98,8 @@ export default definePlugin({
         {
             name: "flag set",
             description: "Set a flag on a user",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
             inputType: ApplicationCommandInputType.BOT,
             options: [
                 {

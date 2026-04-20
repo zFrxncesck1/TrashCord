@@ -70,6 +70,8 @@ const settings = definePluginSettings({
     isEnabled: {
         type: OptionType.BOOLEAN,
         description: "Whether the plugin will automatically mute you after being silent for too long or not",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         default: true,
         onChange() {
             updateAutoMute();

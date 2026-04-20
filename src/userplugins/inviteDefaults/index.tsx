@@ -11,6 +11,8 @@ const settings = definePluginSettings({
     inviteDuration: {
         type: OptionType.SELECT,
         description: "Invite Duration",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
         options: [
             { label: "30 minutes", value: 1800 },
             { label: "1 hour", value: 3600 },

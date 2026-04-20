@@ -13,6 +13,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable the frequent quick switcher to prioritize your most used channels",
+    tags: ["Shortcuts", "Utility"],
+    enabledByDefault: false,
         default: true
     },
     maxResults: {

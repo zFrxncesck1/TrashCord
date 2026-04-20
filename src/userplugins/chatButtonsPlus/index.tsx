@@ -259,6 +259,8 @@ const settings = definePluginSettings({
     buttons: {
         type: OptionType.COMPONENT,
         description: "Manage your custom chat buttons",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         component: () => <ButtonEntries />
     }
 });

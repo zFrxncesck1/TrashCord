@@ -90,6 +90,8 @@ let loggedMessages: Record<string, Message> = {};
 const _plugin: PluginDef & Record<string, any> = {
     name: "StalkerOld",
     description: "This plugin allows you to stalk users, made for delusional people like myself.",
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
     authors: [
         {
             id: 253302259696271360n,

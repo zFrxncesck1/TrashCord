@@ -30,6 +30,8 @@ const settings = definePluginSettings({
     scanMode: {
         type: OptionType.SELECT,
         description: "Where to scan for GIFs",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         options: [
             { label: "Current channel only", value: "channel", default: true },
             { label: "Entire server", value: "server" },

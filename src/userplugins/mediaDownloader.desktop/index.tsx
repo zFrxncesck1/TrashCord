@@ -144,6 +144,8 @@ async function openDependencyModal() {
 const settings = definePluginSettings({
     supportedWebsites: {
         description: "See the link for a list of supported websites.",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         type: OptionType.COMPONENT,
         default: "none",
         component: () => (

@@ -12,6 +12,8 @@ const settings = definePluginSettings({
     password: {
         type:          OptionType.STRING,
         description:   "Unlock password",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default:       "1337",
         restartNeeded: false,
     },

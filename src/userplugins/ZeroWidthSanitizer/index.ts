@@ -13,6 +13,8 @@ const settings = definePluginSettings({
     sanitizeOutgoing: {
         type: OptionType.BOOLEAN,
         description: "Sanitize outgoing messages (before sending)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true
     },
     sanitizeEdits: {

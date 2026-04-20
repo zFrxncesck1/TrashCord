@@ -28,6 +28,8 @@ const fakeApplications = new Map();
 export default definePlugin({
     name: "CompleteDiscordQuest",
     description: "A plugin that completes multiple discord quests in background simultaneously.",
+    tags: ["Utility", "Fun"],
+    enabledByDefault: false,
     authors: [{
         name: "nicola02nb",
         id: 257900031351193600n

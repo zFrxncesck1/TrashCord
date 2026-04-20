@@ -16,6 +16,8 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: false,
         description: "Show an icon for toggling the plugin",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     },
     contextMenu: {
         type: OptionType.BOOLEAN,

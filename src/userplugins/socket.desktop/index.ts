@@ -14,6 +14,8 @@ const settings = definePluginSettings({
     port: {
         type: OptionType.NUMBER,
         description: "self explanatory",
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
         default: 3009
     },
     host: {

@@ -151,6 +151,8 @@ async function exportChannel(channelId: string) {
 export default definePlugin({
     name: "Exporter",
     description: "Right-click DM/Group -> Export full chat as HTML with unlimited pagination.",
+    tags: ["Utility", "Chat"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
     settings,
     renderChatBarButton: ({ channel, isMainChat }) => {

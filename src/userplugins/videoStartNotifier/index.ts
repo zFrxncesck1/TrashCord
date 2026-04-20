@@ -45,6 +45,8 @@ const settings = definePluginSettings({
     playInPrivate: {
         type: OptionType.BOOLEAN,
         description: "Play notification sound in private voice calls (DMs)",
+    tags: ["Voice", "Notification"],
+    enabledByDefault: false,
         default: true
     },
     playInServer: {

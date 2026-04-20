@@ -122,6 +122,8 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "In-app toast alert on staff join/leave.",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     },
     showNotifications: {
         type: OptionType.BOOLEAN,

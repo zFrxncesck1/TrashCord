@@ -25,6 +25,8 @@ const updateAsync = findByCodeLazy("updateAsync", "status"); // function that up
 var settings = definePluginSettings({
     statusToset: {
         description: "Status to set when one of the following happens",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "Do not disturb", value: "dnd", default: true },

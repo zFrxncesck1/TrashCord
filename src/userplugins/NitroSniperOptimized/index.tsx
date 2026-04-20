@@ -23,6 +23,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable NitroSniper",
+    tags: ["Utility", "Chat"],
+    enabledByDefault: false,
         default: true
     },
     scope: {

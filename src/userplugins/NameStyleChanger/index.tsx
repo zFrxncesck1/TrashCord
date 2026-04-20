@@ -35,6 +35,8 @@ const settings = definePluginSettings({
     font: {
         type: OptionType.SELECT,
         description: "Font style for your name",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         options: fontOptions
     }
 });

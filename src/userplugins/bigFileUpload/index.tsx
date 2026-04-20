@@ -812,6 +812,8 @@ export const settings = definePluginSettings({
             { label: "Custom Uploader", value: "Custom" },
         ],
         description: "Select the file uploader service",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         hidden: true
     },
     gofileToken: {

@@ -40,6 +40,8 @@ export default definePlugin({
     name: "BetterJoinedDate",
     authors: [Devs.x2b],
     description: "Add a tooltip to the joined date showing the exact time and how many days ago it was",
+    tags: ["Utility", "Servers"],
+    enabledByDefault: false,
     patches: [{
         find: ".USER_PROFILE_MEMBER_SINCE",
         replacement: [{

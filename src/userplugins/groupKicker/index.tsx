@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable GroupKicker",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     showNotifications: {

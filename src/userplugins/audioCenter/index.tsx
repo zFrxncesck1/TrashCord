@@ -28,6 +28,8 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: false,
         description: "Enable audio center",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     },
     primaryDevice: {
         type: OptionType.COMPONENT,

@@ -35,6 +35,8 @@ export const settings = definePluginSettings({
     autoMute: {
         type: OptionType.BOOLEAN,
         description: "Automatically mute when deafened.",
+    tags: ["Voice", "Privacy"],
+    enabledByDefault: false,
         default: false
     }
 });

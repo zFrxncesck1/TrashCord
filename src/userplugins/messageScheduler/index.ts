@@ -22,6 +22,8 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show notifications when scheduled messages are sent",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true
     }
 });

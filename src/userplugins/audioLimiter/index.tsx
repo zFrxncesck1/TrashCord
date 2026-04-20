@@ -20,6 +20,8 @@ const settings = definePluginSettings({
     type: OptionType.SLIDER,
     default: 80,
     description: "Volume maximum autorisé (%)",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     markers: [50, 60, 70, 80, 90, 100],
     stickToMarkers: false,
   },

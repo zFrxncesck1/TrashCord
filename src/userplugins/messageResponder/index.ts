@@ -15,6 +15,8 @@ const settings = definePluginSettings({
     targetUserId: {
         type: OptionType.STRING,
         description: "User ID to scan messages from",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: "",
     },
     targetChannelId: {

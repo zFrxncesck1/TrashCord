@@ -12,6 +12,8 @@ const settings = definePluginSettings({
     apiKey: {
         type: OptionType.STRING,
         description: "Your OpenAI API key (https://platform.openai.com/api-keys)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: "",
         placeholder: "sk-proj-...",
     },

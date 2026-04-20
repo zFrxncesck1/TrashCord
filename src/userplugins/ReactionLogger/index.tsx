@@ -17,6 +17,8 @@ const settings = definePluginSettings({
     delay: {
         type: OptionType.NUMBER,
         description: "Delay between notifications in seconds (the lower the more notifications will be sent)",
+    tags: ["Reactions", "Utility"],
+    enabledByDefault: false,
         default: 15,
     },
     ignoreSelf: {

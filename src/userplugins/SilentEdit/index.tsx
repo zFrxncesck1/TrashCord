@@ -10,6 +10,8 @@ const settings = definePluginSettings({
     deleteOriginalMessage: {
         type: OptionType.BOOLEAN,
         description: "Delete the original server-side message after silent edit. If disabled, the original message will reappear after client reload.",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: true
     },
     deleteDelay: {

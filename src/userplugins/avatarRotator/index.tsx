@@ -3,7 +3,7 @@ import { UserAreaButton }       from "@api/UserArea";
 import { definePluginSettings } from "@api/Settings";
 import { ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, React, RestAPI, Toasts } from "@webpack/common";
+import { Button, React, RestAPI, Toasts, UserStore } from "@webpack/common";
 
 const SK        = "AvatarRotator_v6";
 const DEFAULT_S = 300;
@@ -33,7 +33,8 @@ const extColors: Record<string, string> = {
     gif: "#faa61a", webp: "#9c67ff", avif: "#00b0f4",
 };
 
-interface AvatarEntry { id: string; label: string; data: string; }
+interface CropParams { ox: number; oy: number; zoom: number; rot: number; }
+interface AvatarEntry { id: string; label: string; data: string; cropParams?: CropParams; previewData?: string; }
 interface StoreData   { avatars: AvatarEntry[]; seqIndex: number; shuffleQueue: number[]; }
 
 let avatars:      AvatarEntry[] = [];
@@ -48,6 +49,7 @@ const settings = definePluginSettings({
     random:             { type: OptionType.BOOLEAN, description: "Random order - no repeats until every avatar is shown once",                                        default: true },
     showToast:          { type: OptionType.BOOLEAN, description: "Show toast notifications (errors included)",                                                        default: false },
     showButton:         { type: OptionType.BOOLEAN, description: "Show AvatarRotator button in the user area (bottom-left)",                                         default: true },
+    nitroCheck:         { type: OptionType.BOOLEAN, description: "Auto-skip GIF avatars when no Nitro is detected (re-includes them when Nitro is found)",            default: true },
     excludedExtensions: { type: OptionType.STRING,  description: "Comma-separated extensions to skip during rotation (e.g. gif,avif)",                               default: "" },
 });
 
@@ -77,24 +79,29 @@ function getExt(data: string): string {
 
 function isGif(data: string) { return /^data:image\/gif;/i.test(data); }
 
-function freshGif(data: string): string {
+function stampGif(data: string): string {
     try {
         const b64 = data.split(",")[1];
         if (!b64) return data;
-        const bin = atob(b64);
-        const src = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) src[i] = bin.charCodeAt(i);
-        const tag = new TextEncoder().encode("ar-" + Date.now().toString(36));
-        const block = new Uint8Array(tag.length + 4);
-        block[0] = 0x21; block[1] = 0xFE; block[2] = tag.length;
-        block.set(tag, 3); block[tag.length + 3] = 0x00;
-        const merged = new Uint8Array(src.length + block.length - 1);
-        merged.set(src.subarray(0, src.length - 1));
-        merged.set(block, src.length - 1);
-        merged[merged.length - 1] = 0x3B;
-        let out = "";
-        merged.forEach(b => out += String.fromCharCode(b));
-        return "data:image/gif;base64," + btoa(out);
+        const raw = atob(b64);
+        const n = raw.length;
+        const src = new Uint8Array(n);
+        for (let i = 0; i < n; i++) src[i] = raw.charCodeAt(i);
+        if (src[0] !== 0x47 || src[1] !== 0x49 || src[2] !== 0x46) return data;
+        let tp = n - 1;
+        while (tp > 6 && src[tp] !== 0x3B) tp--;
+        if (tp <= 6) return data;
+        const stamp = new TextEncoder().encode(Date.now().toString(36));
+        const sLen = Math.min(stamp.length, 255);
+        const ext = new Uint8Array(sLen + 4);
+        ext[0] = 0x21; ext[1] = 0xFE; ext[2] = sLen;
+        ext.set(stamp.subarray(0, sLen), 3); ext[sLen + 3] = 0x00;
+        const out = new Uint8Array(tp + ext.length + 1);
+        out.set(src.subarray(0, tp)); out.set(ext, tp); out[out.length - 1] = 0x3B;
+        const CH = 0x8000;
+        let bin = "";
+        for (let i = 0; i < out.length; i += CH) bin += String.fromCharCode(...out.subarray(i, Math.min(i + CH, out.length)));
+        return "data:image/gif;base64," + btoa(bin);
     } catch { return data; }
 }
 
@@ -119,12 +126,11 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
     return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result as string); r.onerror = rej; r.readAsDataURL(blob); });
 }
 
-async function fileToBase64(f: File): Promise<string> { return blobToDataUrl(f); }
-
 async function prepareForDiscord(data: string): Promise<string> {
-    const ext    = getExt(data);
-    const okExts = ["png", "jpg", "jpeg", "gif", "webp"];
-    const bytes  = (data.split(",")[1]?.length ?? 0) * 0.75;
+    const ext = getExt(data);
+    if (ext === "gif") return data;
+    const okExts = ["png", "jpg", "jpeg", "webp"];
+    const bytes = (data.split(",")[1]?.length ?? 0) * 0.75;
     if (okExts.includes(ext) && bytes < 8_000_000) return data;
     return new Promise<string>((res, rej) => {
         const img = new Image();
@@ -140,13 +146,229 @@ async function prepareForDiscord(data: string): Promise<string> {
     });
 }
 
+async function gifFirstFramePng(data: string, cp?: CropParams): Promise<string> {
+    return new Promise<string>((res, rej) => {
+        const img = new Image();
+        img.onload = () => {
+            const c = document.createElement("canvas"); c.width = EXP_S; c.height = EXP_S;
+            const ctx = c.getContext("2d")!;
+            if (cp) {
+                const ratio = EXP_S / CIRC_D;
+                ctx.save();
+                ctx.translate(EXP_S / 2 + cp.ox * ratio, EXP_S / 2 + cp.oy * ratio);
+                ctx.rotate(cp.rot * Math.PI / 180);
+                ctx.scale(cp.zoom * ratio, cp.zoom * ratio);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                ctx.restore();
+            } else { ctx.drawImage(img, 0, 0, EXP_S, EXP_S); }
+            res(c.toDataURL("image/png"));
+        };
+        img.onerror = rej; img.src = data;
+    });
+}
+
+async function genPreview(data: string, cp?: CropParams): Promise<string> {
+    const S = 76;
+    return new Promise<string>((res) => {
+        const img = new Image();
+        img.onload = () => {
+            const c = document.createElement("canvas"); c.width = S; c.height = S;
+            const ctx = c.getContext("2d")!;
+            if (cp) {
+                const ratio = S / CIRC_D;
+                ctx.save();
+                ctx.translate(S / 2 + cp.ox * ratio, S / 2 + cp.oy * ratio);
+                ctx.rotate(cp.rot * Math.PI / 180);
+                ctx.scale(cp.zoom * ratio, cp.zoom * ratio);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                ctx.restore();
+            } else { ctx.drawImage(img, 0, 0, S, S); }
+            res(c.toDataURL("image/png"));
+        };
+        img.onerror = () => res(data); img.src = data;
+    });
+}
+
+async function gifDecode(data: string): Promise<{ frames: Array<{ canvas: HTMLCanvasElement; delay: number }>; w: number; h: number; loops: number } | null> {
+    if (typeof (window as any).ImageDecoder === "undefined") return null;
+    try {
+        const b64 = data.split(",")[1]; if (!b64) return null;
+        const raw = atob(b64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        if (bytes[0] !== 0x47 || bytes[1] !== 0x49 || bytes[2] !== 0x46) return null;
+        const W = bytes[6] | (bytes[7] << 8), H = bytes[8] | (bytes[9] << 8);
+        const dec = new (window as any).ImageDecoder({ data: bytes.buffer, type: "image/gif" });
+        const frames: Array<{ canvas: HTMLCanvasElement; delay: number }> = [];
+        let fi = 0;
+        while (true) {
+            let r: any;
+            try { r = await dec.decode({ frameIndex: fi, completeFramesOnly: true }); fi++; } catch { break; }
+            const vf = r.image;
+            const delay = typeof vf.duration === "number" ? Math.max(20, Math.round(vf.duration / 1000)) : 100;
+            const fc = document.createElement("canvas"); fc.width = W; fc.height = H;
+            fc.getContext("2d")!.drawImage(vf, 0, 0, W, H);
+            vf.close();
+            frames.push({ canvas: fc, delay });
+            await new Promise<void>(r2 => setTimeout(r2, 0));
+        }
+        dec.close();
+        return frames.length ? { frames, w: W, h: H, loops: 0 } : null;
+    } catch { return null; }
+}
+
+function gifLZWEnc(indices: Uint8Array, minCodeSize: number): Uint8Array {
+    const cc = 1 << minCodeSize, eoi = cc + 1;
+    const out: number[] = [];
+    let buf = 0, bits = 0, cs = minCodeSize + 1, nxt = cc + 2;
+    const emit = (code: number) => { buf |= code << bits; bits += cs; while (bits >= 8) { out.push(buf & 0xFF); buf >>>= 8; bits -= 8; } };
+    const dict = new Map<number, number>();
+    emit(cc);
+    if (!indices.length) { emit(eoi); if (bits) out.push(buf & 0xFF); return new Uint8Array(out); }
+    let prev = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+        const sym = indices[i], key = prev * 256 + sym;
+        const found = dict.get(key);
+        if (found !== undefined) { prev = found; }
+        else {
+            emit(prev);
+            if (nxt <= 4095) { dict.set(key, nxt++); if (nxt === (1 << cs) && cs < 12) cs++; }
+            else { emit(cc); dict.clear(); nxt = cc + 2; cs = minCodeSize + 1; }
+            prev = sym;
+        }
+    }
+    emit(prev); emit(eoi); if (bits) out.push(buf & 0xFF);
+    return new Uint8Array(out);
+}
+
+function gifPackSubs(data: Uint8Array): Uint8Array {
+    const SZ = 255, out = new Uint8Array(data.length + Math.ceil(data.length / SZ) + 1);
+    let pos = 0;
+    for (let i = 0; i < data.length; i += SZ) {
+        const ch = data.subarray(i, Math.min(i + SZ, data.length));
+        out[pos++] = ch.length; out.set(ch, pos); pos += ch.length;
+    }
+    out[pos] = 0; return out;
+}
+
+function gifQuantize(imageData: ImageData): { palette: Uint8Array; indices: Uint8Array } {
+    const { data, width, height } = imageData, n = width * height;
+    const freq = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+        if (data[i * 4 + 3] < 128) continue;
+        const k = (data[i * 4] << 16) | (data[i * 4 + 1] << 8) | data[i * 4 + 2];
+        freq.set(k, (freq.get(k) ?? 0) + 1);
+    }
+    const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+    const nc = Math.min(sorted.length, 256);
+    const palette = new Uint8Array(256 * 3);
+    const cmap = new Map<number, number>();
+    for (let i = 0; i < nc; i++) {
+        const k = sorted[i][0];
+        palette[i * 3] = (k >> 16) & 0xFF; palette[i * 3 + 1] = (k >> 8) & 0xFF; palette[i * 3 + 2] = k & 0xFF;
+        cmap.set(k, i);
+    }
+    const lut = new Uint8Array(4096).fill(0xFF);
+    for (let i = nc - 1; i >= 0; i--) lut[((palette[i * 3] >> 4) << 8) | ((palette[i * 3 + 1] >> 4) << 4) | (palette[i * 3 + 2] >> 4)] = i;
+    const indices = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+        const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+        if (data[i * 4 + 3] < 128) { indices[i] = 0; continue; }
+        const ex = cmap.get((r << 16) | (g << 8) | b);
+        if (ex !== undefined) { indices[i] = ex; continue; }
+        const lv = lut[((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)];
+        if (lv !== 0xFF) { indices[i] = lv; continue; }
+        let best = 0, bestD = Infinity;
+        for (let j = 0; j < nc; j++) {
+            const dr = r - palette[j * 3], dg = g - palette[j * 3 + 1], db = b - palette[j * 3 + 2];
+            const d = dr * dr + dg * dg + db * db; if (d < bestD) { bestD = d; best = j; }
+        }
+        lut[((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)] = best; indices[i] = best;
+    }
+    return { palette, indices };
+}
+
+function gifEncode(frames: Array<{ imageData: ImageData; delay: number }>, w: number, h: number, loops: number): string {
+    const w16 = (a: Uint8Array, i: number, v: number) => { a[i] = v & 0xFF; a[i + 1] = (v >> 8) & 0xFF; };
+    const parts: Uint8Array[] = [];
+    parts.push(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]));
+    const lsd = new Uint8Array(7); w16(lsd, 0, w); w16(lsd, 2, h); parts.push(lsd);
+    parts.push(new Uint8Array([0x21, 0xFF, 0x0B, 0x4E, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2E, 0x30, 0x03, 0x01, loops & 0xFF, (loops >> 8) & 0xFF, 0x00]));
+    for (const { imageData, delay } of frames) {
+        const { palette, indices } = gifQuantize(imageData);
+        const dc = Math.max(2, Math.round(delay / 10));
+        parts.push(new Uint8Array([0x21, 0xF9, 0x04, 0x04, dc & 0xFF, (dc >> 8) & 0xFF, 0x00, 0x00]));
+        const imd = new Uint8Array(10); imd[0] = 0x2C; w16(imd, 5, w); w16(imd, 7, h); imd[9] = 0x87; parts.push(imd);
+        parts.push(palette);
+        parts.push(new Uint8Array([8]));
+        parts.push(gifPackSubs(gifLZWEnc(indices, 8)));
+    }
+    parts.push(new Uint8Array([0x3B]));
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const out = new Uint8Array(total); let pos = 0;
+    for (const p of parts) { out.set(p, pos); pos += p.length; }
+    const CH = 0x8000; let bin = "";
+    for (let i = 0; i < out.length; i += CH) bin += String.fromCharCode(...out.subarray(i, Math.min(i + CH, out.length)));
+    return "data:image/gif;base64," + btoa(bin);
+}
+
+async function gifApplyCrop(src: string, ox: number, oy: number, zoom: number, rot: number): Promise<string | null> {
+    const decoded = await gifDecode(src);
+    if (!decoded || !decoded.frames.length) return null;
+    const { frames, w: sw, h: sh, loops } = decoded;
+    const S = 256, ratio = S / CIRC_D;
+    const encFrames: Array<{ imageData: ImageData; delay: number }> = [];
+    for (let fi = 0; fi < frames.length; fi++) {
+        await new Promise<void>(r => setTimeout(r, 0));
+        const { canvas, delay } = frames[fi];
+        const oc = document.createElement("canvas"); oc.width = S; oc.height = S;
+        const ctx = oc.getContext("2d")!;
+        ctx.save();
+        ctx.translate(S / 2 + ox * ratio, S / 2 + oy * ratio);
+        ctx.rotate(rot * Math.PI / 180);
+        ctx.scale(zoom * ratio, zoom * ratio);
+        ctx.drawImage(canvas, -sw / 2, -sh / 2);
+        ctx.restore();
+        encFrames.push({ imageData: ctx.getImageData(0, 0, S, S), delay });
+    }
+    return stampGif(gifEncode(encFrames, S, S, loops));
+}
+
+function hasNitro(): boolean {
+    try {
+        const u = UserStore.getCurrentUser() as any;
+        return (u?.premiumType ?? 0) >= 1 || u?.premium === true;
+    } catch { return false; }
+}
+
 async function applyAvatar(entry: AvatarEntry): Promise<void> {
     try {
-        let data = await prepareForDiscord(entry.data);
-        if (isGif(data)) data = freshGif(data);
-        if (!data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Image data is invalid or too small");
+        if (isGif(entry.data)) {
+            let uploadData: string;
+            if (entry.cropParams && (entry.cropParams.ox !== 0 || entry.cropParams.oy !== 0 || entry.cropParams.rot !== 0)) {
+                const { ox, oy, zoom, rot } = entry.cropParams;
+                uploadData = (await gifApplyCrop(entry.data, ox, oy, zoom, rot)) ?? stampGif(entry.data);
+            } else {
+                uploadData = stampGif(entry.data);
+            }
+            try {
+                await RestAPI.patch({ url: "/users/@me", body: { avatar: uploadData } });
+                toast(`Avatar → ${entry.label}`);
+                return;
+            } catch (gifErr: any) {
+                const code = gifErr?.body?.code ?? gifErr?.status;
+                const isNitroErr = code === 50035 || code === 10002 || String(gifErr?.body?.message ?? "").toLowerCase().includes("nitro");
+                if (!isNitroErr) throw gifErr;
+                const fb = await gifFirstFramePng(entry.data, entry.cropParams);
+                await RestAPI.patch({ url: "/users/@me", body: { avatar: fb } });
+                toast(`Avatar → ${entry.label} (static - Nitro required for animated)`);
+                return;
+            }
+        }
+        const data = await prepareForDiscord(entry.data);
+        if (!data?.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
         await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
-        toast(`Avatar - ${entry.label}`);
+        toast(`Avatar → ${entry.label}`);
     } catch (e: any) {
         const msg = e?.body?.errors?.avatar?._errors?.[0]?.message ?? e?.body?.message ?? e?.message ?? "Unknown";
         toast(`Failed: ${msg}`, Toasts.Type.FAILURE);
@@ -189,6 +411,32 @@ function startRotator(immediate = false) {
 function stopRotator() {
     if (rotatorTimer) { clearTimeout(rotatorTimer); rotatorTimer = null; }
     toast("Avatar Rotator stopped", Toasts.Type.MESSAGE);
+}
+
+function startNitroWatcher() {
+    stopNitroWatcher();
+    if (!settings.store.nitroCheck) return;
+    const check = () => {
+        if (!pluginActive || !settings.store.nitroCheck) return;
+        const excl = getExcluded();
+        const gifExcl = excl.includes("gif");
+        if (!hasNitro() && !gifExcl) {
+            setExcluded([...excl, "gif"]);
+            if (rotatorTimer) { clearTimeout(rotatorTimer); rotatorTimer = null; schedule(); }
+            Toasts.show({ message: "No Nitro detected - GIFs excluded from rotation", type: Toasts.Type.FAILURE, id: Toasts.genId() });
+        } else if (hasNitro() && gifExcl && settings.store.nitroCheck) {
+            setExcluded(excl.filter(e => e !== "gif"));
+            if (rotatorTimer) { clearTimeout(rotatorTimer); rotatorTimer = null; schedule(); }
+            Toasts.show({ message: "Nitro detected - GIFs re-included in rotation", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+        }
+    };
+    check();
+    UserStore.addChangeListener(check);
+    (startNitroWatcher as any)._cleanup = () => UserStore.removeChangeListener(check);
+}
+
+function stopNitroWatcher() {
+    if ((startNitroWatcher as any)._cleanup) { (startNitroWatcher as any)._cleanup(); delete (startNitroWatcher as any)._cleanup; }
 }
 
 function exportJSON() {
@@ -279,15 +527,20 @@ function ExtFilterSection({ excluded, onChange }: { excluded: string[]; onChange
     );
 }
 
-function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply: (d: string) => void; onSkip: () => void; modalProps: any; }) {
-    const [loaded,   setLoaded]   = React.useState(false);
-    const [imgNat,   setImgNat]   = React.useState({ w: 1, h: 1 });
-    const [minZoom,  setMinZoom]  = React.useState(1);
-    const [zoom,     setZoomS]    = React.useState(1);
-    const [rotation, setRotS]     = React.useState(0);
-    const [flipH,    setFlipH]    = React.useState(false);
-    const [flipV,    setFlipV]    = React.useState(false);
-    const [offset,   setOffS]     = React.useState({ x: 0, y: 0 });
+function CropModal({ src, onApply, onSkip, modalProps }: {
+    src: string;
+    onApply: (d: string, cp?: CropParams) => void;
+    onSkip: () => void;
+    modalProps: any;
+}) {
+    const [loaded,   setLoaded]  = React.useState(false);
+    const [imgNat,   setImgNat]  = React.useState({ w: 1, h: 1 });
+    const [minZoom,  setMinZoom] = React.useState(1);
+    const [zoom,     setZoomS]   = React.useState(1);
+    const [rotation, setRotS]    = React.useState(0);
+    const [flipH,    setFlipH]   = React.useState(false);
+    const [flipV,    setFlipV]   = React.useState(false);
+    const [offset,   setOffS]    = React.useState({ x: 0, y: 0 });
 
     const zoomR  = React.useRef(1);
     const rotR   = React.useRef(0);
@@ -303,13 +556,9 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
         const rad = r * Math.PI / 180;
         const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
         const { w, h } = natR.current;
-        const bbW = (w * cos + h * sin) * z;
-        const bbH = (w * sin + h * cos) * z;
-        const mx = Math.max(0, bbW / 2 - CIRC_R);
-        const my = Math.max(0, bbH / 2 - CIRC_R);
-        const cx = Math.max(-mx, Math.min(mx, o.x));
-        const cy = Math.max(-my, Math.min(my, o.y));
-        return { x: cx, y: cy };
+        const bbW = (w * cos + h * sin) * z, bbH = (w * sin + h * cos) * z;
+        const mx = Math.max(0, bbW / 2 - CIRC_R), my = Math.max(0, bbH / 2 - CIRC_R);
+        return { x: Math.max(-mx, Math.min(mx, o.x)), y: Math.max(-my, Math.min(my, o.y)) };
     };
 
     const setAll = (o: { x: number; y: number }, z: number, r: number, fH = flipH, fV = flipV) => {
@@ -332,6 +581,8 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
     }, []);
 
     const doApply = async () => {
+        const cp: CropParams = { ox: offR.current.x, oy: offR.current.y, zoom: zoomR.current, rot: rotR.current };
+        if (gif) { onApply(src, cp); modalProps.onClose(); return; }
         const img = new Image();
         img.crossOrigin = "anonymous";
         await new Promise<void>(r => { img.onload = () => r(); img.src = src; });
@@ -340,12 +591,12 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
         const ctx = canvas.getContext("2d")!;
         const ratio = EXP_S / CIRC_D;
         ctx.save();
-        ctx.translate(EXP_S / 2 + offR.current.x * ratio, EXP_S / 2 + offR.current.y * ratio);
-        ctx.rotate(rotR.current * Math.PI / 180);
-        ctx.scale((flipH ? -1 : 1) * zoomR.current * ratio, (flipV ? -1 : 1) * zoomR.current * ratio);
+        ctx.translate(EXP_S / 2 + cp.ox * ratio, EXP_S / 2 + cp.oy * ratio);
+        ctx.rotate(cp.rot * Math.PI / 180);
+        ctx.scale((flipH ? -1 : 1) * cp.zoom * ratio, (flipV ? -1 : 1) * cp.zoom * ratio);
         ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
         ctx.restore();
-        onApply(canvas.toDataURL("image/png"));
+        onApply(canvas.toDataURL("image/png"), cp);
         modalProps.onClose();
     };
 
@@ -357,15 +608,11 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="9" stroke={C.accent} strokeWidth="2"/>
                             <circle cx="12" cy="12" r="4" fill={C.accent}/>
-                            <line x1="12" y1="1" x2="12" y2="4"   stroke={C.accent} strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="12" y1="20" x2="12" y2="23" stroke={C.accent} strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="1" y1="12" x2="4" y2="12"   stroke={C.accent} strokeWidth="2" strokeLinecap="round"/>
-                            <line x1="20" y1="12" x2="23" y2="12" stroke={C.accent} strokeWidth="2" strokeLinecap="round"/>
                         </svg>
                     </div>
                     <div>
                         <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Edit Avatar</div>
-                        <div style={{ fontSize: 11, color: C.sub }}>Drag to move - Zoom - Rotate - Flip{gif ? " - GIF animates here" : ""}</div>
+                        <div style={{ fontSize: 11, color: C.sub }}>Drag to move · Scroll or slider to zoom · Rotate · Flip{gif ? " · GIF animates here" : ""}</div>
                     </div>
                 </div>
             </ModalHeader>
@@ -382,58 +629,31 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
                     }}
                     onPointerMove={e => {
                         if (!drag.current) return;
-                        const dx = e.clientX - lastP.current.x;
-                        const dy = e.clientY - lastP.current.y;
+                        const dx = e.clientX - lastP.current.x, dy = e.clientY - lastP.current.y;
                         lastP.current = { x: e.clientX, y: e.clientY };
-                        const newOff = sync({ x: offR.current.x + dx, y: offR.current.y + dy }, zoomR.current, rotR.current);
-                        offR.current = newOff;
-                        setOffS({ ...newOff });
+                        const no = sync({ x: offR.current.x + dx, y: offR.current.y + dy }, zoomR.current, rotR.current);
+                        offR.current = no; setOffS({ ...no });
                     }}
                     onPointerUp={() => { drag.current = false; }}
                     onPointerCancel={() => { drag.current = false; }}
+                    onWheel={e => {
+                        if (!loaded) return;
+                        const z = Math.max(minZR.current, Math.min(minZR.current * 4, zoomR.current * (e.deltaY < 0 ? 1.08 : 0.92)));
+                        const c = sync(offR.current, z, rotR.current);
+                        zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c });
+                    }}
                 >
                     {loaded && (
-                        <div style={{
-                            position:    "absolute",
-                            left:        "50%",
-                            top:         "50%",
-                            width:       0,
-                            height:      0,
-                            transform:   `translate(${offset.x}px, ${offset.y}px)`,
-                        }}>
+                        <div style={{ position: "absolute", left: "50%", top: "50%", width: 0, height: 0, transform: `translate(${offset.x}px, ${offset.y}px)` }}>
                             <img
-                                src={src}
-                                draggable={false}
-                                style={{
-                                    position:       "absolute",
-                                    left:           0,
-                                    top:            0,
-                                    width:          imgNat.w,
-                                    height:         imgNat.h,
-                                    maxWidth:       "none",
-                                    transform:      `translate(-50%, -50%) rotate(${rotation}deg) scale(${flipH ? -zoom : zoom}, ${flipV ? -zoom : zoom})`,
-                                    transformOrigin:"center center",
-                                    pointerEvents:  "none",
-                                    userSelect:     "none",
-                                    imageRendering: "auto",
-                                }}
+                                src={src} draggable={false}
+                                style={{ position: "absolute", width: imgNat.w, height: imgNat.h, maxWidth: "none", transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${flipH ? -zoom : zoom}, ${flipV ? -zoom : zoom})`, transformOrigin: "center center", pointerEvents: "none", userSelect: "none" }}
                             />
                         </div>
                     )}
-
-                    {!loaded && (
-                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.sub, fontSize: 13 }}>
-                            Loading…
-                        </div>
-                    )}
-
+                    {!loaded && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.sub, fontSize: 13 }}>Loading…</div>}
                     <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                        <defs>
-                            <mask id={maskId.current}>
-                                <rect width="100%" height="100%" fill="white"/>
-                                <circle cx="50%" cy="50%" r={CIRC_R} fill="black"/>
-                            </mask>
-                        </defs>
+                        <defs><mask id={maskId.current}><rect width="100%" height="100%" fill="white"/><circle cx="50%" cy="50%" r={CIRC_R} fill="black"/></mask></defs>
                         <rect width="100%" height="100%" fill="rgba(0,0,0,.72)" mask={`url(#${maskId.current})`}/>
                         <circle cx="50%" cy="50%" r={CIRC_R} fill="none" stroke="rgba(255,255,255,.85)" strokeWidth="2.5"/>
                     </svg>
@@ -441,48 +661,34 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
 
                 <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill={C.sub}>
-                            <path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/>
-                        </svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill={C.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
                         <input
                             type="range" min={minZoom} max={minZoom * 4} step={0.0005} value={zoom} disabled={!loaded}
                             onChange={e => {
                                 const z = Math.max(minZR.current, parseFloat(e.target.value));
                                 const c = sync(offR.current, z, rotR.current);
-                                zoomR.current = z; offR.current = c;
-                                setZoomS(z); setOffS({ ...c });
+                                zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c });
                             }}
                             style={{ flex: 1, accentColor: C.accent, cursor: loaded ? "pointer" : "default" } as React.CSSProperties}
                         />
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill={C.sub}>
-                            <path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/>
-                        </svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill={C.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
                     </div>
-
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <Btn disabled={!loaded} color={C.accent} bg={C.aD} border={`1px solid ${C.accent}44`}
                             onClick={() => {
                                 const nr = (rotR.current + 90) % 360;
                                 rotR.current = nr;
                                 const c = sync(offR.current, zoomR.current, nr);
-                                offR.current = c;
-                                setRotS(nr); setOffS({ ...c });
-                            }}>
-                            ↻ 90°
-                        </Btn>
-                        <Btn disabled={!loaded} color={flipH ? C.accent : C.sub} bg={flipH ? C.aD : "transparent"} border={`1px solid ${flipH ? C.accent : C.sub}44`}
-                            onClick={() => setFlipH(f => !f)}>
-                            ↔ Flip H
-                        </Btn>
-                        <Btn disabled={!loaded} color={flipV ? C.accent : C.sub} bg={flipV ? C.aD : "transparent"} border={`1px solid ${flipV ? C.accent : C.sub}44`}
-                            onClick={() => setFlipV(f => !f)}>
-                            ↕ Flip V
-                        </Btn>
+                                offR.current = c; setRotS(nr); setOffS({ ...c });
+                            }}>↻ 90°</Btn>
+                        {!gif && <>
+                            <Btn disabled={!loaded} color={flipH ? C.accent : C.sub} bg={flipH ? C.aD : "transparent"} border={`1px solid ${flipH ? C.accent : C.sub}44`} onClick={() => setFlipH(f => !f)}>↔ Flip H</Btn>
+                            <Btn disabled={!loaded} color={flipV ? C.accent : C.sub} bg={flipV ? C.aD : "transparent"} border={`1px solid ${flipV ? C.accent : C.sub}44`} onClick={() => setFlipV(f => !f)}>↕ Flip V</Btn>
+                        </>}
                     </div>
-
                     {gif && (
                         <div style={{ padding: "8px 11px", borderRadius: 7, background: `${C.warn}12`, border: `1px solid ${C.warn}33`, fontSize: 11, color: C.warn, lineHeight: 1.5 }}>
-                            🎞 <b>GIF animates above.</b> <b>Apply</b> exports the current frame as static PNG. <b>Skip</b> keeps the original GIF - Nitro users see it animated; without Nitro Discord shows it static.
+                            🎞 <b>GIF:</b> Apply saves crop position - animated on upload with Nitro, static fallback without. Skip keeps original GIF unchanged.
                         </div>
                     )}
                 </div>
@@ -495,12 +701,8 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
                         Reset
                     </button>
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                        <Btn onClick={() => { onSkip(); modalProps.onClose(); }} color={C.sub} bg="transparent" border={`1px solid ${C.line}`}>
-                            Skip
-                        </Btn>
-                        <Btn disabled={!loaded} onClick={doApply} color="#fff" bg={loaded ? C.accent : "rgba(156,103,255,.3)"} border="none">
-                            Apply
-                        </Btn>
+                        <Btn onClick={() => { onSkip(); modalProps.onClose(); }} color={C.sub} bg="transparent" border={`1px solid ${C.line}`}>Skip</Btn>
+                        <Btn disabled={!loaded} onClick={doApply} color="#fff" bg={loaded ? C.accent : "rgba(156,103,255,.3)"} border="none">Apply</Btn>
                     </div>
                 </div>
             </ModalFooter>
@@ -508,7 +710,7 @@ function CropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply:
     );
 }
 
-function openCropFor(data: string, onDone: (d: string) => void) {
+function openCropFor(data: string, onDone: (d: string, cp?: CropParams) => void) {
     openModal(p => <CropModal src={data} onApply={onDone} onSkip={() => onDone(data)} modalProps={p} />);
 }
 
@@ -526,10 +728,12 @@ function AvatarCard({
     const [editing,  setEditing]  = React.useState(false);
     const [editText, setEditText] = React.useState(entry.label);
     const ext = getExt(entry.data);
+    const previewSrc = entry.previewData ?? entry.data;
+    const nitro = hasNitro();
 
     React.useEffect(() => { setEditText(entry.label); }, [entry.label]);
 
-    const commit = () => {
+    const commitEdit = () => {
         const t = editText.trim();
         if (t && t !== entry.label) onRename(t); else setEditText(entry.label);
         setEditing(false);
@@ -548,14 +752,15 @@ function AvatarCard({
                 <rect y="9" width="12" height="1.8" rx="0.9"/>
             </svg>
             <div style={{ position: "relative", flexShrink: 0 }}>
-                <img src={entry.data} alt="" draggable={false} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? C.warn : C.accent}`, display: "block" }} />
+                <img src={previewSrc} alt="" draggable={false}
+                    style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? C.warn : C.accent}`, display: "block" }} />
                 {isExcluded && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: 14 }}>⛔</span></div>}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {editing
                     ? <input autoFocus value={editText} onChange={e => setEditText(e.target.value)}
-                        onBlur={commit}
-                        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setEditText(entry.label); setEditing(false); } e.stopPropagation(); }}
+                        onBlur={commitEdit}
+                        onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") { setEditText(entry.label); setEditing(false); } e.stopPropagation(); }}
                         onClick={e => e.stopPropagation()}
                         style={{ ...iStyle, fontSize: 12, padding: "2px 6px", width: "100%" }} />
                     : (
@@ -565,7 +770,11 @@ function AvatarCard({
                                 {entry.label}
                             </span>
                             <ExtBadge ext={ext} excluded={isExcluded} />
-                            {ext === "gif" && !isExcluded && <span style={{ fontSize: 10, color: C.warn, flexShrink: 0 }}>⚠ Nitro</span>}
+                            {ext === "gif" && !isExcluded && (
+                                <span style={{ fontSize: 10, color: nitro ? C.green : C.warn, flexShrink: 0 }}>
+                                    {nitro ? "✓ Nitro" : "⚠ Nitro"}
+                                </span>
+                            )}
                             {isExcluded && <span style={{ fontSize: 10, color: C.sub, flexShrink: 0 }}>skipped</span>}
                         </div>
                     )
@@ -573,9 +782,9 @@ function AvatarCard({
             </div>
             <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
                 {[
-                    { color: C.accent, title: "Use now",   onClick: onApplyNow, icon: <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/> },
-                    { color: "#00b0f4", title: "Edit/Crop", onClick: onCrop,    icon: <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/> },
-                    { color: C.red,    title: "Remove",    onClick: onRemove,   icon: <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/> },
+                    { color: C.accent,  title: "Use now",   onClick: onApplyNow, icon: <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/> },
+                    { color: "#00b0f4", title: "Edit/Crop", onClick: onCrop,     icon: <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/> },
+                    { color: C.red,     title: "Remove",    onClick: onRemove,   icon: <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/> },
                 ].map(({ color, title, onClick, icon }) => (
                     <button key={title} onClick={e => { e.stopPropagation(); onClick(); }} title={title}
                         style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0, border: `1px solid ${color}33`, background: `${color}18`, color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", padding: 0 }}>
@@ -588,22 +797,24 @@ function AvatarCard({
 }
 
 function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggle: () => void }) {
-    const [list,       setList]        = React.useState<AvatarEntry[]>([...avatars]);
-    const [urlInput,   setUrlInput]    = React.useState("");
-    const [labelInput, setLabelInput]  = React.useState("");
-    const [loading,    setLoading]     = React.useState(false);
-    const [running,    setRunning]     = React.useState(() => rotatorTimer !== null);
-    const [lSecStr,    setLSecStr]     = React.useState(() => String(settings.store.intervalSeconds ?? DEFAULT_S));
-    const [lRandom,    setLRandom]     = React.useState(() => settings.store.random ?? true);
-    const [lToast,     setLToast]      = React.useState(() => settings.store.showToast ?? true);
-    const [excluded,   setExcludedS]   = React.useState(() => getExcluded());
-    const [draggedIdx, setDraggedIdx]  = React.useState<number | null>(null);
-    const [dragOverIdx,setDragOverIdx] = React.useState<number | null>(null);
+    const [list,       setList]       = React.useState<AvatarEntry[]>([...avatars]);
+    const [urlInput,   setUrlInput]   = React.useState("");
+    const [labelInput, setLabelInput] = React.useState("");
+    const [loading,    setLoading]    = React.useState(false);
+    const [running,    setRunning]    = React.useState(() => rotatorTimer !== null);
+    const [lSecStr,    setLSecStr]    = React.useState(() => String(settings.store.intervalSeconds ?? DEFAULT_S));
+    const [lRandom,    setLRandom]    = React.useState(() => settings.store.random ?? true);
+    const [lToast,     setLToast]     = React.useState(() => settings.store.showToast ?? false);
+    const [lNitro,     setLNitro]     = React.useState(() => settings.store.nitroCheck ?? true);
+    const [excluded,   setExcludedS]  = React.useState(() => getExcluded());
+    const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
+    const [dragOverIdx,setDragOverIdx]= React.useState<number | null>(null);
 
-    const sec        = parseInt(lSecStr) || DEFAULT_S;
+    const sec         = parseInt(lSecStr) || DEFAULT_S;
     const activeCount = list.filter(a => !excluded.includes(getExt(a.data))).length;
-    const warnSec    = sec > 0 && sec < WARN_S;
-    const hasGifs    = list.some(e => isGif(e.data) && !excluded.includes("gif"));
+    const warnSec     = sec > 0 && sec < WARN_S;
+    const hasGifs     = list.some(e => isGif(e.data) && !excluded.includes("gif"));
+    const nitro       = hasNitro();
 
     const commit = (next: AvatarEntry[]) => { avatars = next; setList([...next]); void saveData(); };
 
@@ -637,8 +848,14 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
         if (n) shuffleQueue = sfShuffle(activeCount);
     };
 
-    const toggleToast = () => {
-        const n = !lToast; setLToast(n); settings.store.showToast = n;
+    const toggleToast = () => { const n = !lToast; setLToast(n); settings.store.showToast = n; };
+
+    const toggleNitro = (n: boolean) => {
+        setLNitro(n); settings.store.nitroCheck = n;
+        if (running) {
+            if (n) startNitroWatcher();
+            else { stopNitroWatcher(); const excl = getExcluded(); if (excl.includes("gif")) { setExcluded(excl.filter(e => e !== "gif")); setExcludedS(excl.filter(e => e !== "gif")); } }
+        }
     };
 
     const handleAddUrl = async () => {
@@ -651,9 +868,9 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
         setLoading(true);
         toast("Fetching image…", Toasts.Type.MESSAGE);
         try {
-            const ctrl    = new AbortController();
+            const ctrl = new AbortController();
             const timeout = setTimeout(() => ctrl.abort(), 15000);
-            const res     = await fetch(url, { signal: ctrl.signal });
+            const res = await fetch(url, { signal: ctrl.signal });
             clearTimeout(timeout);
             if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
             const ct = res.headers.get("content-type") ?? "";
@@ -665,7 +882,11 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
             if (!data.startsWith("data:image/")) throw new Error("Could not read image data");
             toast("Image loaded", Toasts.Type.SUCCESS);
             setLoading(false);
-            openCropFor(data, cropped => { commit([...avatars, { id: uid(), label, data: cropped }]); setUrlInput(""); setLabelInput(""); toast(`Added "${label}"`); });
+            openCropFor(data, async (cropped, cp) => {
+                const previewData = await genPreview(cropped, cp);
+                commit([...avatars, { id: uid(), label, data: cropped, cropParams: cp, previewData }]);
+                setUrlInput(""); setLabelInput(""); toast(`Added "${label}"`);
+            });
         } catch (e: any) {
             toast(e?.name === "AbortError" ? "Request timed out (15s)" : `Failed: ${e.message ?? "Unknown"}`, Toasts.Type.FAILURE);
             setLoading(false);
@@ -678,13 +899,23 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
         setLoading(true);
         if (files.length === 1) {
             try {
-                const data = await fileToBase64(files[0]);
+                const data = await blobToDataUrl(files[0]);
                 setLoading(false);
-                openCropFor(data, cropped => { commit([...avatars, { id: uid(), label: files[0].name.replace(/\.[^.]+$/, ""), data: cropped }]); toast("Added"); });
+                openCropFor(data, async (cropped, cp) => {
+                    const previewData = await genPreview(cropped, cp);
+                    commit([...avatars, { id: uid(), label: files[0].name.replace(/\.[^.]+$/, ""), data: cropped, cropParams: cp, previewData }]);
+                    toast("Added");
+                });
             } catch { toast("Failed to read file", Toasts.Type.FAILURE); setLoading(false); }
         } else {
             const entries: AvatarEntry[] = [];
-            for (const f of files) { try { entries.push({ id: uid(), label: f.name.replace(/\.[^.]+$/, ""), data: await fileToBase64(f) }); } catch {} }
+            for (const f of files) {
+                try {
+                    const data = await blobToDataUrl(f);
+                    const previewData = await genPreview(data);
+                    entries.push({ id: uid(), label: f.name.replace(/\.[^.]+$/, ""), data, previewData });
+                } catch {}
+            }
             if (entries.length) { commit([...avatars, ...entries]); toast(`Added ${entries.length} avatar(s)`); }
             setLoading(false);
         }
@@ -730,7 +961,7 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                     </div>
                     <div>
                         <div style={{ fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>Avatar Rotator</div>
-                        <div style={{ fontSize: 11, color: C.sub }}>{list.length} total - {activeCount} active - by zFrxncesck1</div>
+                        <div style={{ fontSize: 11, color: C.sub }}>{list.length} total · {activeCount} active · by zFrxncesck1</div>
                     </div>
                     <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 100, background: running ? `${C.green}22` : "rgba(255,255,255,.08)", color: running ? C.green : C.sub, border: `1px solid ${running ? C.green + "44" : "rgba(255,255,255,.12)"}` }}>
                         {running ? "● RUNNING" : "○ STOPPED"}
@@ -743,7 +974,7 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                     <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: running ? C.green : C.text, marginBottom: 2 }}>{running ? "Rotation active" : "Rotation stopped"}</div>
                         <div style={{ fontSize: 12, color: C.sub }}>
-                            {running ? `Cycling every ${fmtSec(sec)} - ${lRandom ? "Random" : "Sequential"} - ${activeCount} active` : activeCount === 0 ? "Add avatars or unexclude extensions to start" : "Press Start to begin cycling"}
+                            {running ? `Cycling every ${fmtSec(sec)} · ${lRandom ? "Random" : "Sequential"} · ${activeCount} active` : activeCount === 0 ? "Add avatars or unexclude extensions to start" : "Press Start to begin cycling"}
                         </div>
                     </div>
                     <button onClick={toggleEnabled} disabled={!running && !activeCount}
@@ -790,10 +1021,21 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                             <Toggle value={lRandom} onChange={toggleRandom} />
                         </div>
                     </div>
-                    <div style={{ padding: "10px 14px" }}>
+                    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.line}` }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             <span style={{ fontSize: 13, color: C.text }}>Toast notifications</span>
                             <Toggle value={lToast} onChange={toggleToast} />
+                        </div>
+                    </div>
+                    <div style={{ padding: "10px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div>
+                                <span style={{ fontSize: 13, color: C.text }}>Nitro Check</span>
+                                <span style={{ fontSize: 10, color: nitro ? C.green : C.warn, marginLeft: 8 }}>
+                                    {lNitro ? (nitro ? "Nitro ✓ - GIFs included" : "No Nitro - GIFs auto-skipped") : "disabled"}
+                                </span>
+                            </div>
+                            <Toggle value={lNitro} onChange={() => toggleNitro(!lNitro)} />
                         </div>
                     </div>
                 </div>
@@ -828,13 +1070,13 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                 </div>
 
                 {hasGifs && (
-                    <div style={{ padding: "7px 11px", borderRadius: 8, marginBottom: 8, background: `${C.warn}12`, border: `1px solid ${C.warn}33`, fontSize: 12, color: C.warn }}>
-                        ⚠ GIF avatars require <b>Nitro</b> to animate on Discord. Without Nitro they appear static.
+                    <div style={{ padding: "7px 11px", borderRadius: 8, marginBottom: 8, background: nitro ? `${C.green}10` : `${C.warn}12`, border: `1px solid ${nitro ? C.green + "33" : C.warn + "33"}`, fontSize: 12, color: nitro ? C.green : C.warn }}>
+                        {nitro ? "✓ Nitro detected - GIF avatars will animate on Discord." : "⚠ No Nitro detected - GIF avatars appear static. Nitro required for animated avatars."}
                     </div>
                 )}
 
                 <div style={{ padding: "7px 11px", borderRadius: 8, marginBottom: 10, background: "rgba(88,101,242,.09)", border: "1px solid rgba(88,101,242,.22)", fontSize: 12, color: "#90caf9" }}>
-                    ✏️ Double-click a name to rename - ✏ to edit/crop - Drag ⠿ to reorder
+                    ✏️ Double-click a name to rename · ✏ to edit/crop · Drag ⠿ to reorder
                 </div>
 
                 <Hr />
@@ -860,9 +1102,11 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                                 onDragLeave={onDL} onDrop={e => onDP(e, i)} onDragEnd={onDE}
                                 onRemove={() => removeEntry(entry.id)}
                                 onApplyNow={() => void applyAvatar(entry)}
-                                onCrop={() => openModal(p => <CropModal src={entry.data}
-                                    onApply={d => { commit(avatars.map(a => a.id === entry.id ? { ...a, data: d } : a)); toast("Updated"); }}
-                                    onSkip={() => {}} modalProps={p} />)}
+                                onCrop={() => openCropFor(entry.data, async (d, cp) => {
+                                    const previewData = await genPreview(d, cp);
+                                    commit(avatars.map(a => a.id === entry.id ? { ...a, data: d, cropParams: cp, previewData } : a));
+                                    toast("Updated");
+                                })}
                                 onRename={l => commit(avatars.map(a => a.id === entry.id ? { ...a, label: l } : a))}
                             />
                         ))
@@ -876,7 +1120,7 @@ function AvatarRotatorModal({ modalProps, onToggle }: { modalProps: any; onToggl
                         style={{ padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 600, background: activeCount ? C.aD : "rgba(156,103,255,.1)", border: `1px solid ${C.accent}44`, color: activeCount ? C.accent : C.sub, cursor: !activeCount ? "not-allowed" : "pointer", opacity: !activeCount ? 0.5 : 1, outline: "none" }}>
                         ⏭ Skip
                     </button>
-                    <span style={{ fontSize: 11, color: C.sub }}>{running ? `● Cycling every ${fmtSec(sec)} - ${activeCount} active` : "○ Not running"}</span>
+                    <span style={{ fontSize: 11, color: C.sub }}>{running ? `● Cycling every ${fmtSec(sec)} · ${activeCount} active` : "○ Not running"}</span>
                     <button onClick={modalProps.onClose} style={{ marginLeft: "auto", padding: "8px 18px", borderRadius: 7, fontSize: 13, fontWeight: 500, background: "transparent", border: `1px solid ${C.line}`, color: C.sub, cursor: "pointer", outline: "none" }}>
                         Close
                     </button>
@@ -909,7 +1153,9 @@ function ARUserAreaButton() {
 
 export default definePlugin({
     name:         "AvatarRotator",
-    description:  "Cycles your Discord avatar through a list at a set interval. Random or sequential. Supports jpg/jpeg/jfif/png/gif/webp/avif. Extension filter, crop editor, drag to reorder, rename, import/export. Auto-saved to DataStore.",
+    description:  "Cycles your Discord avatar through a list at a set interval. Random or sequential. Supports jpg/jpeg/jfif/png/gif/webp/avif. Nitro check auto-skips GIFs when no Nitro (re-includes on detection). GIF-aware crop with frame-by-frame processing. Extension filter, crop editor, drag to reorder, rename, import/export. Auto-saved to DataStore.",
+    tags:         ["Appearance", "Customisation"],
+    enabledByDefault: false,
     authors:      [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
@@ -940,11 +1186,13 @@ export default definePlugin({
         seqIndex     = stored.seqIndex     ?? 0;
         shuffleQueue = stored.shuffleQueue ?? [];
         Vencord.Api.UserArea.addUserAreaButton("avatar-rotator", () => <ARUserAreaButton />);
+        if (settings.store.nitroCheck) startNitroWatcher();
         if (settings.store.enabled && getActive().length) startRotator(false);
     },
 
     stop() {
         pluginActive = false;
+        stopNitroWatcher();
         stopRotator();
         avatars = []; seqIndex = 0; shuffleQueue = [];
         Vencord.Api.UserArea.removeUserAreaButton("avatar-rotator");

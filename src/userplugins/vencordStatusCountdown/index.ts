@@ -21,6 +21,8 @@ const settings = definePluginSettings({
     date: {
         type: OptionType.STRING,
         description: "ISO date string (YYYY-MM-DD) for what day to count down to",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
         default: "2036-08-12",
         onChange: updateStatus,
     },

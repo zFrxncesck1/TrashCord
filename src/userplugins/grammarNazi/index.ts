@@ -12,6 +12,8 @@ const settings = definePluginSettings({
 	autoCapitalization: {
 		type: OptionType.BOOLEAN,
 		description: "Auto Capitalization to the first letter",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
 	},
 	autoPunctuation: {
 		type: OptionType.BOOLEAN,

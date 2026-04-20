@@ -58,6 +58,8 @@ const settings = definePluginSettings({
     hideSettingsIcon: {
         type: OptionType.BOOLEAN,
         description: "Hide the settings icon",
+    tags: ["Voice", "Customisation"],
+    enabledByDefault: false,
         default: true,
     }
 });

@@ -127,6 +127,8 @@ const settings = definePluginSettings({
     replaceEnabled: {
         type: OptionType.BOOLEAN,
         description: "Use custom preview instead of screen capture",
+    tags: ["Voice", "Media"],
+    enabledByDefault: false,
         default: true
     },
     slideshowEnabled: {

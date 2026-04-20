@@ -124,6 +124,8 @@ const settings = definePluginSettings({
     intensity: {
         type: OptionType.SLIDER,
         description: "How many languages the message is translated between- More for more distortion, less for minor changes",
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
         default: languages.length,
         markers: Array(languages.length - 2).fill(0).map((_, index) => index + 2),
         stickToMarkers: true,

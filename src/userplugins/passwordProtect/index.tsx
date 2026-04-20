@@ -24,6 +24,8 @@ interface NSFWBlockProps {
 export default definePlugin({
     name: "PasswordProtect",
     description: "Passcode protect servers, channels, and dms. WARNING: Disabling the plugin will allow anyone to open the channels!",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
 
     contextMenus: contextMenus,

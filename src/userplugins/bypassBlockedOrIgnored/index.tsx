@@ -16,6 +16,8 @@ const { getBlockedUsersForVoiceChannel, getIgnoredUsersForVoiceChannel } = findB
 export default definePlugin({
     name: "BypassBlockedOrIgnored",
     description: "Bypass the blocked or ignored user modal if is present in voice channels.",
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
     authors: [{
         name: "nicola02nb",
         id: 257900031351193600n

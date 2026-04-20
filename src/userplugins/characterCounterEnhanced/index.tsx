@@ -46,6 +46,8 @@ const settings = definePluginSettings({
     colorEffects: {
         type: OptionType.BOOLEAN,
         description: "Color effects when approaching character limit",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     showProgressBar: {

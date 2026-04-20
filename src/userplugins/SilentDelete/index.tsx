@@ -9,6 +9,8 @@ const settings = definePluginSettings({
     replacementText: {
         type: OptionType.STRING,
         description: "Text to replace the message with before deletion.",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: "** **"
     },
     deleteDelay: {

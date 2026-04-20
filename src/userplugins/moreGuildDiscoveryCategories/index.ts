@@ -12,6 +12,8 @@ export default definePlugin({
     name: "MoreGuildDiscoveryCategories",
     authors: [Devs.x2b],
     description: "Show all guild discovery categories in the sidebar",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     patches: [
         {
             find: "DISCOVERY_SIDEBAR_CATEGORIES.",

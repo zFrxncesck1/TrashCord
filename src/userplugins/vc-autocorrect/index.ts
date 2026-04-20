@@ -22,6 +22,8 @@ import definePlugin, { OptionType, PluginSettingDef } from "@utils/types";
 
 const settingsSharedProps: PluginSettingDef = {
     description: "",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     type: OptionType.BOOLEAN,
     default: true,
     restartNeeded: true,

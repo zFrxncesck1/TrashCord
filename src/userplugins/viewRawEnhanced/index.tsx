@@ -62,6 +62,8 @@ const SearchIcon: IconComponent = ({ height = 20, width = 20, className }) => {
 const settings = definePluginSettings({
     clickMethod: {
         description: "Button click behavior",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "Left Click to view raw", value: "Left", default: true },

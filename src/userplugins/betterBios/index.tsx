@@ -11,6 +11,8 @@ export default definePlugin({
     name: "BetterBios",
     authors: [Devs.x2b],
     description: "Improves Discord's bio redesign",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     patches: [{
         find: ".viewFullBio,",
         replacement: {

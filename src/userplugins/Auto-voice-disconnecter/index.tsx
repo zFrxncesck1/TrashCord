@@ -106,6 +106,8 @@ export const settings = definePluginSettings({
     disconnectUserId: {
         type: OptionType.STRING,
         description: "Target user ID to auto-disconnect",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "",

@@ -10,6 +10,8 @@ import { Devs } from "@utils/constants";
 export default definePlugin({
     name: "NewlinesInCommands",
     description: "Allows shift+enter to create new lines in command inputs.",
+    tags: ["Commands", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.x2b],
 
     patches: [

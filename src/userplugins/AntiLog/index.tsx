@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     enableAwaitDeletion: {
         type: OptionType.BOOLEAN,
         description: "enable/disable await for old and new message deletion. default as true",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     deleteInterval: {

@@ -12,6 +12,8 @@ const settings = definePluginSettings({
     audioBitrate: {
         type: OptionType.SLIDER,
         description: "Audio Bitrate (kbps) - 510kbps recommended for maximum quality",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         markers: [64, 96, 128, 192, 256, 320, 384, 448, 510],
         default: 510,
         stickToMarkers: true,

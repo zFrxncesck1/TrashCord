@@ -46,6 +46,8 @@ const settings = definePluginSettings({
     streamerEnabled: {
         type: OptionType.BOOLEAN,
         description: "Enable Streamer Mode",
+    tags: ["Voice", "Privacy"],
+    enabledByDefault: false,
         default: false,
         onChange: (v: boolean) => apply("enabled", v),
     },

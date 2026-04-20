@@ -18,6 +18,8 @@ const settings = definePluginSettings({
     rules: {
         type: OptionType.STRING,
         description: "Rules in format: word1:😀,😀|word2:<:name:id>,<a:name:id>",
+    tags: ["Reactions", "Fun"],
+    enabledByDefault: false,
         default: "",
     },
     enabled: {

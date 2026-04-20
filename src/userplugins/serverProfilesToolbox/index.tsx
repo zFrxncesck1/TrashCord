@@ -100,6 +100,8 @@ export default definePlugin({
     name: "ServerProfilesToolbox",
     authors: [Devs.x2b],
     description: "Adds a copy/paste/reset button to the server profiles editor",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     managedStyle,
 
     patchServerProfiles(guild: Guild) {

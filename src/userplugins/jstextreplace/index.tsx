@@ -144,6 +144,8 @@ async function applyRules(channelID: string, content: string) {
 export default definePlugin({
     name: "JSTextReplace",
     description: "TextReplace, with JavaScript replacements",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     authors: [Devs.nin0dev],
     settingsAboutComponent: () => <Challenge />,
     settings,

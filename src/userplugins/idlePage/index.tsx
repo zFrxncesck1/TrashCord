@@ -19,6 +19,8 @@ export const settings = definePluginSettings({
     BackgroundColor: {
         type: OptionType.STRING,
         description: "Hex code of the backgorund. needs #",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
         default: "#1a1b26"
     },
     onHomeClick: {

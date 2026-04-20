@@ -142,6 +142,8 @@ const settings = definePluginSettings({
     showProgress: {
         type: OptionType.BOOLEAN,
         description: "Send a Clyde message with the download progress.",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     showFfmpegWarning: {

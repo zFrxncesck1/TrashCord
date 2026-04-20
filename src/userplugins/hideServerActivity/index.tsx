@@ -3,6 +3,8 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "HideServerActivity",
     description: "Hides the 'Activity' from server members list.",
+    tags: ["Privacy", "Servers"],
+    enabledByDefault: false,
     authors: [{
         name: "zaher-neon",
         id: 495198426724564995n

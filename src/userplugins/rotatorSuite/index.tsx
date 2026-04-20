@@ -36,7 +36,7 @@ const AR_EXT_COLORS: Record<string, string> = {
     png: "#5865f2", jpg: "#43b581", jpeg: "#43b581", jfif: "#4a9e70",
     gif: "#faa61a", webp: "#9c67ff", avif: "#00b0f4",
 };
-interface CropParams { ox: number; oy: number; zoom: number; rot: number; flipH: boolean; flipV: boolean; }
+interface CropParams { ox: number; oy: number; zoom: number; rot: number; }
 interface AvatarEntry { id: string; label: string; data: string; cropParams?: CropParams; previewData?: string; }
 interface ArStoreData { avatars: AvatarEntry[]; seqIndex: number; shuffleQueue: number[]; }
 let arAvatars: AvatarEntry[] = [];
@@ -2616,7 +2616,7 @@ async function arGifFirstFramePng(data: string, cropParams?: CropParams): Promis
                 ctx.save();
                 ctx.translate(S / 2 + cropParams.ox * ratio, S / 2 + cropParams.oy * ratio);
                 ctx.rotate(cropParams.rot * Math.PI / 180);
-                ctx.scale((cropParams.flipH ? -1 : 1) * cropParams.zoom * ratio, (cropParams.flipV ? -1 : 1) * cropParams.zoom * ratio);
+                ctx.scale(cropParams.zoom * ratio, cropParams.zoom * ratio);
                 ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
                 ctx.restore();
             } else {
@@ -2641,7 +2641,7 @@ async function arGenPreview(data: string, cropParams?: CropParams): Promise<stri
                 ctx.save();
                 ctx.translate(S / 2 + cropParams.ox * ratio, S / 2 + cropParams.oy * ratio);
                 ctx.rotate(cropParams.rot * Math.PI / 180);
-                ctx.scale((cropParams.flipH ? -1 : 1) * cropParams.zoom * ratio, (cropParams.flipV ? -1 : 1) * cropParams.zoom * ratio);
+                ctx.scale(cropParams.zoom * ratio, cropParams.zoom * ratio);
                 ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
                 ctx.restore();
             } else { ctx.drawImage(img, 0, 0, S, S); }
@@ -2659,35 +2659,38 @@ function arHasNitro(): boolean {
     } catch { return false; }
 }
 
+function arHasCrop(cp: CropParams | undefined): boolean {
+    if (!cp) return false;
+    return cp.ox !== 0 || cp.oy !== 0 || cp.rot !== 0;
+}
+
 async function arApplyAvatar(entry: AvatarEntry): Promise<void> {
     try {
-        let data: string;
         const isGif = arIsGif(entry.data);
-        if (isGif && entry.cropParams) {
-            data = await arGifFirstFramePng(entry.data, entry.cropParams);
-            if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
-            await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
-            arToast(`Avatar → ${entry.label} (cropped, static)`);
-            return;
-        }
         if (isGif) {
+            let uploadData: string;
+            if (arHasCrop(entry.cropParams)) {
+                const { ox, oy, zoom, rot } = entry.cropParams!;
+                uploadData = (await gifApplyCrop(entry.data, ox, oy, zoom, rot)) ?? arStampGif(entry.data);
+            } else {
+                uploadData = arStampGif(entry.data);
+            }
             try {
-                await RestAPI.patch({ url: "/users/@me", body: { avatar: entry.data } });
+                await RestAPI.patch({ url: "/users/@me", body: { avatar: uploadData } });
                 arToast(`Avatar → ${entry.label}`);
                 return;
             } catch (gifErr: any) {
                 const code = gifErr?.body?.code ?? gifErr?.status;
                 const isNitroErr = code === 50035 || code === 10002 || String(gifErr?.body?.message ?? "").toLowerCase().includes("nitro");
                 if (!isNitroErr) throw gifErr;
-                data = await arGifFirstFramePng(entry.data);
+                const fb = await arGifFirstFramePng(entry.data, entry.cropParams);
+                await RestAPI.patch({ url: "/users/@me", body: { avatar: fb } });
+                arToast(`Avatar → ${entry.label} (static, Nitro required for animated)`);
+                return;
             }
-            if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
-            await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
-            arToast(`Avatar → ${entry.label} (static - Nitro required for animated)`);
-            return;
         }
-        data = await arPrepareForDiscord(entry.data);
-        if (!data || !data.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
+        const data = await arPrepareForDiscord(entry.data);
+        if (!data?.split(",")[1] || data.split(",")[1].length < 10) throw new Error("Invalid image data");
         await RestAPI.patch({ url: "/users/@me", body: { avatar: data } });
         arToast(`Avatar → ${entry.label}`);
     } catch (e: any) {
@@ -2794,12 +2797,10 @@ function ArExtFilterSection({ excluded, onChange }: { excluded: string[]; onChan
 function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onApply: (d: string, cropParams?: CropParams) => void; onSkip: () => void; modalProps: any; }) {
     const [loaded, setLoaded] = React.useState(false);
     const [imgNat, setImgNat] = React.useState({ w: 1, h: 1 });
-    const [minZoom, setMinZoom] = React.useState(1);
+    const [offset, setOffS] = React.useState({ x: 0, y: 0 });
     const [zoom, setZoomS] = React.useState(1);
     const [rotation, setRotS] = React.useState(0);
-    const [flipH, setFlipH] = React.useState(false);
-    const [flipV, setFlipV] = React.useState(false);
-    const [offset, setOffS] = React.useState({ x: 0, y: 0 });
+    const [minZoom, setMinZoom] = React.useState(1);
     const zoomR = React.useRef(1);
     const rotR = React.useRef(0);
     const offR = React.useRef({ x: 0, y: 0 });
@@ -2811,20 +2812,17 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
     const gif = arIsGif(src);
 
     const sync = (o: { x: number; y: number }, z: number, r: number) => {
-        const rad = r * Math.PI / 180;
-        const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+        const cos = Math.abs(Math.cos(r * Math.PI / 180)), sin = Math.abs(Math.sin(r * Math.PI / 180));
         const { w, h } = natR.current;
-        const bbW = (w * cos + h * sin) * z;
-        const bbH = (w * sin + h * cos) * z;
-        const mx = Math.max(0, bbW / 2 - AR_CIRC_R);
-        const my = Math.max(0, bbH / 2 - AR_CIRC_R);
+        const bbW = (w * cos + h * sin) * z, bbH = (w * sin + h * cos) * z;
+        const mx = Math.max(0, bbW / 2 - AR_CIRC_R), my = Math.max(0, bbH / 2 - AR_CIRC_R);
         return { x: Math.max(-mx, Math.min(mx, o.x)), y: Math.max(-my, Math.min(my, o.y)) };
     };
 
-    const setAll = (o: { x: number; y: number }, z: number, r: number, fH = flipH, fV = flipV) => {
-        const clamped = sync(o, z, r);
-        zoomR.current = z; rotR.current = r; offR.current = clamped;
-        setZoomS(z); setRotS(r); setOffS(clamped); setFlipH(fH); setFlipV(fV);
+    const setAll = (o: { x: number; y: number }, z: number, r: number) => {
+        const c = sync(o, z, r);
+        zoomR.current = z; rotR.current = r; offR.current = c;
+        setZoomS(z); setRotS(r); setOffS(c);
     };
 
     React.useEffect(() => {
@@ -2834,18 +2832,15 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
             const mz = Math.max(AR_CIRC_D / w, AR_CIRC_D / h);
             natR.current = { w, h }; minZR.current = mz;
             setImgNat({ w, h }); setMinZoom(mz);
-            setAll({ x: 0, y: 0 }, mz, 0, false, false);
+            setAll({ x: 0, y: 0 }, mz, 0);
             setLoaded(true);
         };
         img.src = src;
     }, []);
 
     const doApply = async () => {
-        if (gif) {
-            onApply(src, { ox: offR.current.x, oy: offR.current.y, zoom: zoomR.current, rot: rotR.current, flipH, flipV });
-            modalProps.onClose();
-            return;
-        }
+        const cp: CropParams = { ox: offR.current.x, oy: offR.current.y, zoom: zoomR.current, rot: rotR.current };
+        if (gif) { onApply(src, cp); modalProps.onClose(); return; }
         const img = new Image();
         img.crossOrigin = "anonymous";
         await new Promise<void>(r => { img.onload = () => r(); img.src = src; });
@@ -2854,16 +2849,14 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
         const ctx = canvas.getContext("2d")!;
         const ratio = AR_EXP_S / AR_CIRC_D;
         ctx.save();
-        ctx.translate(AR_EXP_S / 2 + offR.current.x * ratio, AR_EXP_S / 2 + offR.current.y * ratio);
-        ctx.rotate(rotR.current * Math.PI / 180);
-        ctx.scale((flipH ? -1 : 1) * zoomR.current * ratio, (flipV ? -1 : 1) * zoomR.current * ratio);
+        ctx.translate(AR_EXP_S / 2 + cp.ox * ratio, AR_EXP_S / 2 + cp.oy * ratio);
+        ctx.rotate(cp.rot * Math.PI / 180);
+        ctx.scale(cp.zoom * ratio, cp.zoom * ratio);
         ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
         ctx.restore();
-        onApply(canvas.toDataURL("image/png"));
+        onApply(canvas.toDataURL("image/png"), cp);
         modalProps.onClose();
     };
-
-    const iStyle: React.CSSProperties = { flex: 1, background: "rgba(0,0,0,.38)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 6, color: AR.text, fontSize: 13, padding: "6px 10px", outline: "none", minWidth: 0 };
 
     return (
         <ModalRoot {...modalProps} size="medium">
@@ -2877,33 +2870,21 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
                     </div>
                     <div>
                         <div style={{ fontSize: 15, fontWeight: 700, color: AR.text }}>Edit Avatar</div>
-                        <div style={{ fontSize: 11, color: AR.sub }}>Drag to move · Zoom · Rotate · Flip</div>                    </div>
+                        <div style={{ fontSize: 11, color: AR.sub }}>Drag to reposition · Scroll or slider to zoom · Rotate</div>
+                    </div>
                 </div>
             </ModalHeader>
             <ModalContent style={{ padding: 0, overflow: "hidden" }}>
                 <div style={{ width: "100%", height: AR_CONT_H, background: "#0b0b0e", position: "relative", cursor: loaded ? "grab" : "default", userSelect: "none", overflow: "hidden" }}
-                    onPointerDown={e => {
-                        if (!loaded) return;
-                        drag.current = true;
-                        lastP.current = { x: e.clientX, y: e.clientY };
-                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                        e.preventDefault();
-                    }}
-                    onPointerMove={e => {
-                        if (!drag.current) return;
-                        const dx = e.clientX - lastP.current.x;
-                        const dy = e.clientY - lastP.current.y;
-                        lastP.current = { x: e.clientX, y: e.clientY };
-                        const newOff = sync({ x: offR.current.x + dx, y: offR.current.y + dy }, zoomR.current, rotR.current);
-                        offR.current = newOff;
-                        setOffS({ ...newOff });
-                    }}
+                    onPointerDown={e => { if (!loaded) return; drag.current = true; lastP.current = { x: e.clientX, y: e.clientY }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); e.preventDefault(); }}
+                    onPointerMove={e => { if (!drag.current) return; const dx = e.clientX - lastP.current.x, dy = e.clientY - lastP.current.y; lastP.current = { x: e.clientX, y: e.clientY }; const no = sync({ x: offR.current.x + dx, y: offR.current.y + dy }, zoomR.current, rotR.current); offR.current = no; setOffS({ ...no }); }}
                     onPointerUp={() => { drag.current = false; }}
                     onPointerCancel={() => { drag.current = false; }}
+                    onWheel={e => { if (!loaded) return; const z = Math.max(minZR.current, Math.min(minZR.current * 4, zoomR.current * (e.deltaY < 0 ? 1.08 : 0.92))); const c = sync(offR.current, z, rotR.current); zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c }); }}
                 >
                     {loaded && (
                         <div style={{ position: "absolute", left: "50%", top: "50%", width: 0, height: 0, transform: `translate(${offset.x}px, ${offset.y}px)` }}>
-                            <img src={src} draggable={false} style={{ position: "absolute", left: 0, top: 0, width: imgNat.w, height: imgNat.h, maxWidth: "none", transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${flipH ? -zoom : zoom}, ${flipV ? -zoom : zoom})`, transformOrigin: "center center", pointerEvents: "none", userSelect: "none", imageRendering: "auto" }} />
+                            <img src={src} draggable={false} style={{ position: "absolute", width: imgNat.w, height: imgNat.h, maxWidth: "none", transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${zoom})`, transformOrigin: "center center", pointerEvents: "none", userSelect: "none" }} />
                         </div>
                     )}
                     {!loaded && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: AR.sub, fontSize: 13 }}>Loading…</div>}
@@ -2917,38 +2898,26 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill={AR.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
                         <input type="range" min={minZoom} max={minZoom * 4} step={0.0005} value={zoom} disabled={!loaded}
-                            onChange={e => {
-                                const z = Math.max(minZR.current, parseFloat(e.target.value));
-                                const c = sync(offR.current, z, rotR.current);
-                                zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c });
-                            }}
+                            onChange={e => { const z = Math.max(minZR.current, parseFloat(e.target.value)); const c = sync(offR.current, z, rotR.current); zoomR.current = z; offR.current = c; setZoomS(z); setOffS({ ...c }); }}
                             style={{ flex: 1, accentColor: AR.accent, cursor: loaded ? "pointer" : "default" } as React.CSSProperties} />
                         <svg width="19" height="19" viewBox="0 0 24 24" fill={AR.sub}><path fillRule="evenodd" clipRule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm13.35 8.13 3.5 4.67c.37.5.02 1.2-.6 1.2H5.81a.75.75 0 0 1-.59-1.22l1.86-2.32a1.5 1.5 0 0 1 2.34 0l.5.64 2.23-2.97a2 2 0 0 1 3.2 0Z"/></svg>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                    <div>
                         <button disabled={!loaded} onClick={() => { const nr = (rotR.current + 90) % 360; rotR.current = nr; const c = sync(offR.current, zoomR.current, nr); offR.current = c; setRotS(nr); setOffS({ ...c }); }}
                             style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${AR.accent}44`, background: AR.aD, color: AR.accent, opacity: loaded ? 1 : 0.45 }}>
                             ↻ 90°
                         </button>
-                        <button disabled={!loaded} onClick={() => setFlipH(f => !f)}
-                            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${flipH ? AR.accent : AR.sub}44`, background: flipH ? AR.aD : "transparent", color: flipH ? AR.accent : AR.sub, opacity: loaded ? 1 : 0.45 }}>
-                            ↔ Flip H
-                        </button>
-                        <button disabled={!loaded} onClick={() => setFlipV(f => !f)}
-                            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: loaded ? "pointer" : "not-allowed", outline: "none", border: `1px solid ${flipV ? AR.accent : AR.sub}44`, background: flipV ? AR.aD : "transparent", color: flipV ? AR.accent : AR.sub, opacity: loaded ? 1 : 0.45 }}>
-                            ↕ Flip V
-                        </button>
                     </div>
                     {gif && (
                         <div style={{ padding: "8px 11px", borderRadius: 7, background: `${AR.warn}15`, border: `1px solid ${AR.warn}40`, fontSize: 11, color: AR.warn, lineHeight: 1.5 }}>
-                            🎞 <b>GIF:</b> Apply saves crop settings (first frame used as static PNG on upload). Skip keeps the original animated GIF unchanged.
+                            🎞 <b>GIF:</b> Apply saves crop - animated on upload with Nitro, static without. Skip keeps original unchanged.
                         </div>
                     )}
                 </div>
             </ModalContent>
             <ModalFooter separator={false}>
                 <div style={{ display: "flex", width: "100%", alignItems: "center" }}>
-                    <button disabled={!loaded} onClick={() => setAll({ x: 0, y: 0 }, minZR.current, 0, false, false)}
+                    <button disabled={!loaded} onClick={() => setAll({ x: 0, y: 0 }, minZR.current, 0)}
                         style={{ background: "none", border: "none", color: loaded ? AR.text : AR.sub, cursor: loaded ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 500, padding: "0 4px", outline: "none" }}>
                         Reset
                     </button>
@@ -2968,7 +2937,175 @@ function ArCropModal({ src, onApply, onSkip, modalProps }: { src: string; onAppl
     );
 }
 
+async function gifDecode(data: string): Promise<{ frames: Array<{ canvas: HTMLCanvasElement; delay: number }>; w: number; h: number; loops: number } | null> {
+    if (typeof (window as any).ImageDecoder === "undefined") return null;
+    try {
+        const b64 = data.split(",")[1]; if (!b64) return null;
+        const raw = atob(b64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        if (bytes[0] !== 0x47 || bytes[1] !== 0x49 || bytes[2] !== 0x46) return null;
+        const W = bytes[6] | (bytes[7] << 8), H = bytes[8] | (bytes[9] << 8);
+        const dec = new (window as any).ImageDecoder({ data: bytes.buffer, type: "image/gif" });
+        const frames: Array<{ canvas: HTMLCanvasElement; delay: number }> = [];
+        let fi = 0;
+        while (true) {
+            let r: any;
+            try { r = await dec.decode({ frameIndex: fi, completeFramesOnly: true }); fi++; } catch { break; }
+            const vf = r.image;
+            const delay = typeof vf.duration === "number" ? Math.max(20, Math.round(vf.duration / 1000)) : 100;
+            const fc = document.createElement("canvas"); fc.width = W; fc.height = H;
+            fc.getContext("2d")!.drawImage(vf, 0, 0, W, H);
+            vf.close();
+            frames.push({ canvas: fc, delay });
+            await new Promise<void>(r2 => setTimeout(r2, 0));
+        }
+        dec.close();
+        return frames.length ? { frames, w: W, h: H, loops: 0 } : null;
+    } catch { return null; }
+}
+
+function gifLZWEnc(indices: Uint8Array, minCodeSize: number): Uint8Array {
+    const cc = 1 << minCodeSize, eoi = cc + 1;
+    const out: number[] = [];
+    let buf = 0, bits = 0, cs = minCodeSize + 1, nxt = cc + 2;
+    const emit = (code: number) => { buf |= code << bits; bits += cs; while (bits >= 8) { out.push(buf & 0xFF); buf >>>= 8; bits -= 8; } };
+    const dict = new Map<number, number>();
+    emit(cc);
+    if (!indices.length) { emit(eoi); if (bits) out.push(buf & 0xFF); return new Uint8Array(out); }
+    let prev = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+        const sym = indices[i], key = prev * 256 + sym;
+        const found = dict.get(key);
+        if (found !== undefined) { prev = found; }
+        else {
+            emit(prev);
+            if (nxt <= 4095) { dict.set(key, nxt++); if (nxt === (1 << cs) && cs < 12) cs++; }
+            else { emit(cc); dict.clear(); nxt = cc + 2; cs = minCodeSize + 1; }
+            prev = sym;
+        }
+    }
+    emit(prev); emit(eoi); if (bits) out.push(buf & 0xFF);
+    return new Uint8Array(out);
+}
+
+function gifPackSubs(data: Uint8Array): Uint8Array {
+    const C = 255, out = new Uint8Array(data.length + Math.ceil(data.length / C) + 1);
+    let pos = 0;
+    for (let i = 0; i < data.length; i += C) {
+        const ch = data.subarray(i, Math.min(i + C, data.length));
+        out[pos++] = ch.length; out.set(ch, pos); pos += ch.length;
+    }
+    out[pos] = 0; return out;
+}
+
+function gifQuantize(imageData: ImageData): { palette: Uint8Array; indices: Uint8Array } {
+    const { data, width, height } = imageData, n = width * height;
+    const freq = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+        if (data[i*4+3] < 128) continue;
+        const k = (data[i*4]<<16)|(data[i*4+1]<<8)|data[i*4+2];
+        freq.set(k, (freq.get(k) ?? 0) + 1);
+    }
+    const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+    const nc = Math.min(sorted.length, 256);
+    const palette = new Uint8Array(256 * 3);
+    const cmap = new Map<number, number>();
+    for (let i = 0; i < nc; i++) {
+        const k = sorted[i][0];
+        palette[i*3] = (k>>16)&0xFF; palette[i*3+1] = (k>>8)&0xFF; palette[i*3+2] = k&0xFF;
+        cmap.set(k, i);
+    }
+    const lut = new Uint8Array(4096).fill(0xFF);
+    for (let i = nc - 1; i >= 0; i--) lut[((palette[i*3]>>4)<<8)|((palette[i*3+1]>>4)<<4)|(palette[i*3+2]>>4)] = i;
+    const indices = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+        const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+        if (data[i*4+3] < 128) { indices[i] = 0; continue; }
+        const ex = cmap.get((r<<16)|(g<<8)|b);
+        if (ex !== undefined) { indices[i] = ex; continue; }
+        const lv = lut[((r>>4)<<8)|((g>>4)<<4)|(b>>4)];
+        if (lv !== 0xFF) { indices[i] = lv; continue; }
+        let best = 0, bestD = Infinity;
+        for (let j = 0; j < nc; j++) {
+            const dr = r-palette[j*3], dg = g-palette[j*3+1], db = b-palette[j*3+2];
+            const d = dr*dr+dg*dg+db*db; if (d < bestD) { bestD = d; best = j; }
+        }
+        lut[((r>>4)<<8)|((g>>4)<<4)|(b>>4)] = best; indices[i] = best;
+    }
+    return { palette, indices };
+}
+
+function gifEncode(frames: Array<{ imageData: ImageData; delay: number }>, w: number, h: number, loops: number): string {
+    const w16 = (a: Uint8Array, i: number, v: number) => { a[i] = v&0xFF; a[i+1] = (v>>8)&0xFF; };
+    const parts: Uint8Array[] = [];
+    parts.push(new Uint8Array([0x47,0x49,0x46,0x38,0x39,0x61]));
+    const lsd = new Uint8Array(7); w16(lsd,0,w); w16(lsd,2,h); parts.push(lsd);
+    parts.push(new Uint8Array([0x21,0xFF,0x0B,0x4E,0x45,0x54,0x53,0x43,0x41,0x50,0x45,0x32,0x2E,0x30,0x03,0x01,loops&0xFF,(loops>>8)&0xFF,0x00]));
+    for (const { imageData, delay } of frames) {
+        const { palette, indices } = gifQuantize(imageData);
+        const dc = Math.max(2, Math.round(delay/10));
+        parts.push(new Uint8Array([0x21,0xF9,0x04,0x04,dc&0xFF,(dc>>8)&0xFF,0x00,0x00]));
+        const imd = new Uint8Array(10); imd[0]=0x2C; w16(imd,5,w); w16(imd,7,h); imd[9]=0x87; parts.push(imd);
+        parts.push(palette);
+        parts.push(new Uint8Array([8]));
+        parts.push(gifPackSubs(gifLZWEnc(indices, 8)));
+    }
+    parts.push(new Uint8Array([0x3B]));
+    const total = parts.reduce((s,p) => s+p.length, 0);
+    const out = new Uint8Array(total); let pos = 0;
+    for (const p of parts) { out.set(p, pos); pos += p.length; }
+    const C = 0x8000; let bin = "";
+    for (let i = 0; i < out.length; i += C) bin += String.fromCharCode(...out.subarray(i, Math.min(i+C, out.length)));
+    return "data:image/gif;base64," + btoa(bin);
+}
+
+async function gifApplyCrop(src: string, ox: number, oy: number, zoom: number, rot: number): Promise<string | null> {
+    const decoded = await gifDecode(src);
+    if (!decoded || !decoded.frames.length) return null;
+    const { frames, w: sw, h: sh, loops } = decoded;
+    const S = 256, ratio = S / AR_CIRC_D;
+    const encFrames: Array<{ imageData: ImageData; delay: number }> = [];
+    for (let fi = 0; fi < frames.length; fi++) {
+        await new Promise<void>(r => setTimeout(r, 0));
+        const { canvas, delay } = frames[fi];
+        const oc = document.createElement("canvas"); oc.width = S; oc.height = S;
+        const ctx = oc.getContext("2d")!;
+        ctx.save();
+        ctx.translate(S/2 + ox*ratio, S/2 + oy*ratio);
+        ctx.rotate(rot * Math.PI/180);
+        ctx.scale(zoom*ratio, zoom*ratio);
+        ctx.drawImage(canvas, -sw/2, -sh/2);
+        ctx.restore();
+        encFrames.push({ imageData: ctx.getImageData(0, 0, S, S), delay });
+    }
+    return arStampGif(gifEncode(encFrames, S, S, loops));
+}
+
 function arOpenCropFor(data: string, onDone: (d: string, cropParams?: CropParams) => void) {
+    if (arIsGif(data)) {
+        openModal((p: any) => (
+            <ModalRoot {...p} size="small">
+                <ModalHeader separator={false}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: AR.text }}>⚠ GIF Crop Unavailable</div>
+                </ModalHeader>
+                <ModalContent>
+                    <div style={{ padding: "10px 4px 14px", fontSize: 13, color: AR.sub, lineHeight: 1.6 }}>
+                        Crop/Edit is not supported for GIF avatars due to browser frame-compositing limitations that cause rendering artifacts across animation frames. The original GIF will be used as-is.
+                    </div>
+                </ModalContent>
+                <ModalFooter separator={false}>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button onClick={() => { onDone(data); p.onClose(); }}
+                            style={{ padding: "8px 20px", borderRadius: 7, fontSize: 13, fontWeight: 600, border: "none", background: AR.accent, color: "#fff", cursor: "pointer", outline: "none" }}>
+                            OK
+                        </button>
+                    </div>
+                </ModalFooter>
+            </ModalRoot>
+        ));
+        return;
+    }
     openModal(p => <ArCropModal src={data} onApply={onDone} onSkip={() => onDone(data)} modalProps={p} />);
 }
 
@@ -2980,7 +3117,7 @@ function ArAvatarCard({
     entry: AvatarEntry; isDragged: boolean; isDragOver: boolean; isExcluded: boolean;
     onDragStart: (e: React.DragEvent) => void; onDragOver: (e: React.DragEvent) => void;
     onDragLeave: () => void; onDrop: (e: React.DragEvent) => void; onDragEnd: () => void;
-    onRemove: () => void; onApplyNow: () => void; onCrop: () => void;
+    onRemove: () => void; onApplyNow: () => void; onCrop?: () => void;
     onRename: (l: string) => void;
 }) {
     const [editing, setEditing] = React.useState(false);
@@ -3006,9 +3143,37 @@ function ArAvatarCard({
                 <rect y="5" width="12" height="1.8" rx="0.9"/>
                 <rect y="9" width="12" height="1.8" rx="0.9"/>
             </svg>
-            <div style={{ position: "relative", flexShrink: 0 }}>
-                <img src={entry.previewData ?? entry.data} alt="" draggable={false} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? AR.warn : AR.accent}`, display: "block" }} />
-                {isExcluded && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: 14 }}>⛔</span></div>}
+            <div style={{ position: "relative", flexShrink: 0, width: 38, height: 38, borderRadius: "50%", overflow: "hidden", border: `2px solid ${isExcluded ? "#6b7280" : ext === "gif" ? AR.warn : AR.accent}`, cursor: arIsGif(entry.data) ? "zoom-in" : "default" }}>
+                <img
+                    src={entry.previewData ?? entry.data}
+                    alt=""
+                    draggable={false}
+                    onMouseEnter={arIsGif(entry.data) ? e => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        const cp = entry.cropParams;
+                        if (cp && arHasCrop(cp)) {
+                            const r = 38 / AR_CIRC_D;
+                            img.style.cssText = `position:absolute;top:50%;left:50%;width:${entry.previewData ? 38 : "auto"}px;height:${entry.previewData ? 38 : "auto"}px;max-width:none;max-height:none;transform:translate(-50%,-50%) translate(${cp.ox * r}px,${cp.oy * r}px) rotate(${cp.rot}deg) scale(${cp.zoom * r});`;
+                        }
+                        try {
+                            const b64 = entry.data.split(",")[1];
+                            const raw = atob(b64);
+                            const bytes = new Uint8Array(raw.length);
+                            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+                            const url = URL.createObjectURL(new Blob([bytes], { type: "image/gif" }));
+                            img.dataset.gifUrl = url;
+                            img.src = url;
+                        } catch { img.src = entry.data; }
+                    } : undefined}
+                    onMouseLeave={arIsGif(entry.data) ? e => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        if (img.dataset.gifUrl) { URL.revokeObjectURL(img.dataset.gifUrl); delete img.dataset.gifUrl; }
+                        img.src = entry.previewData ?? entry.data;
+                        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+                    } : undefined}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+                {isExcluded && <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center" }}><span style={{ fontSize: 14 }}>⛔</span></div>}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {editing
@@ -3030,11 +3195,11 @@ function ArAvatarCard({
             <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
                 {[
                     { color: AR.accent, title: "Use now", onClick: onApplyNow, icon: <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/> },
-                    { color: "#00b0f4", title: "Edit/Crop", onClick: onCrop, icon: <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/> },
+                    { color: arIsGif(entry.data) ? "#4a5568" : "#00b0f4", title: arIsGif(entry.data) ? "Crop unavailable for GIFs" : "Edit/Crop", onClick: arIsGif(entry.data) ? undefined : onCrop, icon: <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/> },
                     { color: AR.red, title: "Remove", onClick: onRemove, icon: <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/> },
                 ].map(({ color, title, onClick, icon }) => (
-                    <button key={title} onClick={e => { e.stopPropagation(); onClick(); }} title={title}
-                        style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0, border: `1px solid ${color}33`, background: `${color}18`, color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", padding: 0 }}>
+                    <button key={title} onClick={e => { e.stopPropagation(); onClick?.(); }} title={title}
+                        style={{ width: 26, height: 26, borderRadius: 6, flexShrink: 0, border: `1px solid ${color}33`, background: `${color}18`, color, cursor: onClick ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", outline: "none", padding: 0, opacity: onClick ? 1 : 0.4 }}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">{icon}</svg>
                     </button>
                 ))}
@@ -4748,6 +4913,8 @@ function RSUserAreaButton() {
 export default definePlugin({
     name: "Rotator Suite",
     description: "All-in-one Discord identity rotator. Cycles status, clan, bio, global pronouns, display name, server nicknames, per-server pronouns, avatar, and banner color (26 modes, HSV picker, favorites). Master Sync, DataStore-persisted, drag-to-reorder, JSON import/export.",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],

@@ -12,8 +12,9 @@ import gitRemote from "~git-remote";
 export default definePlugin({
     name: "Versions",
     description: "Adds extra information to the version info",
+    tags: ["Developers", "Utility"],
     authors: [Devs.x2b],
-    enabledByDefault: true,
+    enabledByDefault: false,
 
     patches: [
         {

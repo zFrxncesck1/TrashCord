@@ -12,6 +12,8 @@ const settings = definePluginSettings({
     activeStart: {
         type: OptionType.NUMBER,
         description: "UTC hour when servers UNMUTE (0–23). Default: 16 (4 PM UTC)",
+    tags: ["Voice", "Servers"],
+    enabledByDefault: false,
         default: 16,
         restartNeeded: false,
     },

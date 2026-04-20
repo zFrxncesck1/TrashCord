@@ -31,6 +31,8 @@ const settings = definePluginSettings({
     forceGoogleProvider: {
         type: OptionType.BOOLEAN,
         description: "Force using Google Docs Viewer for all supported files.",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: false,
     },
 });

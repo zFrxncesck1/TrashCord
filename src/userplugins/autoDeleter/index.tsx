@@ -52,6 +52,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable automatic message deletion",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: false,
     },
     defaultDelay: {

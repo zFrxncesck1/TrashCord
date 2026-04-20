@@ -160,6 +160,8 @@ export default definePlugin({
   name: "CloseAllDms",
   description:
     "Closes all private DMs with one click with 50ms rate limit (preserves groups)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
   authors: [Devs.x2b],
 
   contextMenus: {

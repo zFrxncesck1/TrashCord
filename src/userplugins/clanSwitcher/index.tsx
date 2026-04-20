@@ -135,6 +135,8 @@ function scheduleNext() {
 export default definePlugin({
     name: "Clan Switcher",
     description: "Automatically cycles through Discord clan tags at a configurable interval.",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
 

@@ -16,6 +16,8 @@ const STANDARDS = {
 const settings = definePluginSettings({
     planMode: {
         description: "Select power plan for gaming",
+    tags: ["Utility", "Developers"],
+    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "High Performance", value: STANDARDS.HIGH_PERF },

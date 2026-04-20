@@ -40,6 +40,8 @@ const settings = definePluginSettings({
     applyToNew: {
         type: OptionType.BOOLEAN,
         description: "Auto-apply settings when joining a new server",
+    tags: ["Servers", "Notification"],
+    enabledByDefault: false,
         default: true,
     },
     muteServer: {

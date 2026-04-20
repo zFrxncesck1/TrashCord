@@ -45,6 +45,8 @@ const settings = definePluginSettings({
     maxMessages: {
         type: OptionType.NUMBER,
         description: "Max suspicious messages in the time window before rate-limit trigger",
+    tags: ["Chat", "Privacy", "Utility"],
+    enabledByDefault: false,
         default: 10,
     },
     windowMs: {

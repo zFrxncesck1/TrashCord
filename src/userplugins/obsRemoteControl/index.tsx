@@ -26,6 +26,8 @@ interface VOICE_CHANNEL_SELECT_DATA {
 const settings = definePluginSettings({
     origin: {
         description: "The origin of the OBS websocket.",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         type: OptionType.STRING,
         default: "ws://127.0.0.1:4455"
     },

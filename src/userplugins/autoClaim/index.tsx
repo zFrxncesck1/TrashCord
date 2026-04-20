@@ -19,6 +19,8 @@ const settings = definePluginSettings({
     allowedguilds: {
         type: OptionType.STRING,
         description: "allowed guilds separated by /",
+    tags: ["Utility"],
+    enabledByDefault: false,
         default: "319560327719026709",
     },
     autoClaimEnabled: {

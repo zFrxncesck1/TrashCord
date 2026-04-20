@@ -22,6 +22,8 @@ import { getBadges, RelationshipIndicator } from "./utils";
 const indicatorLocations = {
     list: {
         description: "In the member list",
+    tags: ["Friends", "Appearance"],
+    enabledByDefault: false,
         onEnable: () => addMessageDecoration("friend-indicator", props =>
             <ErrorBoundary noop>
                 <RelationshipIndicator user={props.user} />

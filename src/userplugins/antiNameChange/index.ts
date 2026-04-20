@@ -13,6 +13,8 @@ import { Toasts } from "@webpack/common";
 const settings = definePluginSettings({
     ids: {
         description: "User IDs of the friend (comma separated)",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         type: OptionType.STRING
     },
     alias: {

@@ -13,6 +13,8 @@ const settings = definePluginSettings({
     intervalMs: {
         type: OptionType.NUMBER,
         description: "Tick interval (ms) [Default: 429 & Recommended: 429+]",
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
         default: 429
     }
 });

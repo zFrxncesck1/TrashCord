@@ -19,6 +19,8 @@ const settings = definePluginSettings({
     autoStart: {
         type: OptionType.BOOLEAN,
         description: "Auto-start recording on VC join (captures your mic)",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     outputFolder: {

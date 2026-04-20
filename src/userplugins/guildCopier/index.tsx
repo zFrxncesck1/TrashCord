@@ -88,6 +88,8 @@ const settings = definePluginSettings({
     copyRoles: {
         type: OptionType.BOOLEAN,
         description: "Copy roles from the original guild",
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
         default: true,
     },
     copyChannels: {

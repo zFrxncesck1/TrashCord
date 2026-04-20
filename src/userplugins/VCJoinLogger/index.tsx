@@ -202,6 +202,8 @@ function addLog(userId, guildId) {
 export default definePlugin({
     name: "VCJoinLogger",
     description: "Logs users who join the voice channel (you must be in a voice channel before someone joins so it works ).",
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     authors: [{ name: "SAMURAI", id: 1400403728552431698n }],
 
     flux: {

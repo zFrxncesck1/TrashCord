@@ -42,6 +42,8 @@ export const settings = definePluginSettings({
     delay: {
         type: OptionType.NUMBER,
         description: "Delay between the requests to Navidrome in milliseconds. 1000 = 1 second",
+    tags: ["Media", "Activity"],
+    enabledByDefault: false,
         default: 1000,
         restartNeeded: true
     },

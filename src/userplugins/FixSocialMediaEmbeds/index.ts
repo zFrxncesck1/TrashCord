@@ -27,6 +27,8 @@ import { EmbedChatBarIcon, EmbedIcon } from "./EmbedIcon";
 export const settings = definePluginSettings({
     enableTwitterOrX: {
         description: "Allow Twitter/X embeds to be altered.",
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true,
     },

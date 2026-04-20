@@ -16,6 +16,8 @@ const settings = definePluginSettings({
     accentColor: {
         type: OptionType.STRING,
         description: "Accent color for the delete icon (hex code).",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default: "#ed4245"
     },
     replacementMessage: {

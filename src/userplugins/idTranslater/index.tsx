@@ -14,6 +14,8 @@ const settings = definePluginSettings({
   translateUserIds: {
     type: OptionType.BOOLEAN,
     description: "Convert user IDs to clickable @ mentions",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     default: true,
   },
   translateChannelIds: {

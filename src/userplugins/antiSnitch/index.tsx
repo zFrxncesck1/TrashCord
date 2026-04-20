@@ -14,6 +14,8 @@ const settings = definePluginSettings({
     volume: {
         type: OptionType.SLIDER,
         description: "Alarm Volume",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
         default: 100,
         min: 0,
         max: 100,

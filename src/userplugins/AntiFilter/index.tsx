@@ -226,6 +226,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable AntiFilter bypass",
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
         default: false
     },
     isEnabled: {

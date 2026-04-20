@@ -13,6 +13,8 @@ const settings = definePluginSettings({
     volume: {
         type: OptionType.SLIDER,
         description: "Volume of the animalese sound",
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
         default: 0.5,
         markers: [0, 0.25, 0.5, 0.75, 1],
     },

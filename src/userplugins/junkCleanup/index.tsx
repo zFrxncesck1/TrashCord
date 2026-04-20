@@ -24,6 +24,8 @@ const settings = definePluginSettings(Object.fromEntries([
     ["enableAllPatches", {
         type: OptionType.BOOLEAN,
         description: "Enable all patches (intended for testing)",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
         default: false,
         restartNeeded: true
     }]

@@ -20,6 +20,8 @@ const settings = definePluginSettings({
   enabled: {
     type: OptionType.BOOLEAN,
     description: "Enable Server Pinner plugin",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     default: true,
   },
   showNotifications: {

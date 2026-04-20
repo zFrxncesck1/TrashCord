@@ -43,6 +43,8 @@ function ComponentsIcon( props: React.SVGProps<SVGSVGElement> )
 export default definePlugin( {
     name: "BetterUI",
     description: "Finally, the ability to customize the UI just how you want it!",
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     authors: [ Devs.LSDZaddi ],
     dependencies: [ "Settings" ],
     startAt: StartAt.WebpackReady,

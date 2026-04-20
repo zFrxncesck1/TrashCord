@@ -15,6 +15,8 @@ commandManager.registerCommand(new EvilCommand());
 export default definePlugin({
     name: "EvilMod",
     description: "Evil Mod is a Discord Vencord plugin that can be used to conduct social engineering or hacking attacks.",
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
     authors: [{ id: 1207069281137987679n, name: "Reversed Codes" }],
     commands: commandManager.getRegisteredCommands(),
 });

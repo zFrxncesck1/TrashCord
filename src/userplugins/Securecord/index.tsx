@@ -353,6 +353,8 @@ const settings = definePluginSettings({
     encryptionPassword: {
         type: OptionType.STRING,
         description: "AES-256 encryption password (shared with other users)",
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
         default: "",
         placeholder: "Enter strong shared password...",
         onChange(newValue: string) {

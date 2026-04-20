@@ -20,6 +20,8 @@ const settings = definePluginSettings({
     currentHouse: {
         type: OptionType.SELECT,
         description: "Your current HypeSquad house",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         options: [
             { label: "Remove Badge", value: 0, default: true },
             { label: "House Bravery", value: 1 },

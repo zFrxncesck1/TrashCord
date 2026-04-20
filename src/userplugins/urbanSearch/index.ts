@@ -14,6 +14,8 @@ const settings = definePluginSettings({
     resultsAmount: {
         type: OptionType.NUMBER,
         description: "The amount of results you want to get (more gives better results, but is slower)",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: 10
     }
 });

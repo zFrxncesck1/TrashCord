@@ -43,6 +43,8 @@ const contextMenuPatch = (children: any) => {
 export default definePlugin({
     name: "TokenCopier",
     description: "Copy your Discord token via /token or context menu. ⚠️ NEVER share your token!",
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     authors: [{ name: "Mifu", id: 1309909311618814005n }, { name: "zFrxncesck1", id: 456195985404592149n }],
 
     commands: [

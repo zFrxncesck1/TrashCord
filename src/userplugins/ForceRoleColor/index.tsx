@@ -76,6 +76,8 @@ const settings = definePluginSettings({
     dmsOnly: {
         type: OptionType.BOOLEAN,
         description: "Applies your color only in DMs",
+    tags: ["Appearance", "Servers"],
+    enabledByDefault: false,
         default: false,
     }
 });

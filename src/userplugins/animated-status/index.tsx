@@ -49,7 +49,6 @@ const parseEmoji = (input: string): Omit<StatusStep, "preset" | "status"> => {
     return match ? { text: input.replace(EMOJI_REGEX, "").trim(), emojiName: match[1], emojiId: match[2], animated: input.includes("<a:") } : { text: input };
 };
 const safeParse = <T,>(json: string, fallback: T): T => { try { return JSON.parse(json) || fallback; } catch { return fallback; } };
-const getPresets = (items: StatusStep[]) => [...new Set(items.map(x => x.preset).filter(Boolean) as string[])];
 const getEmojiUrl = (id: string, animated: boolean) => `https://cdn.discordapp.com/emojis/${id}.${animated ? "gif" : "png"}`;
 const getAvatarUrl = (userId: string, avatar: string | null): string => avatar ? `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=64` : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`;
 const formatInterval = (seconds: number): string => seconds < 60 ? `${seconds}s` : seconds % 60 === 0 ? `${Math.floor(seconds / 60)}m` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -75,6 +74,18 @@ const settings = definePluginSettings({
 });
 
 const state = { currentIndex: 0, interval: null as NodeJS.Timeout | null, isRunning: false, _started: false };
+const runningListeners = new Set<() => void>();
+const notifyRunningListeners = () => runningListeners.forEach(fn => fn());
+
+function useIsRunning() {
+    const [isRunning, setIsRunning] = useState(state.isRunning);
+    useEffect(() => {
+        const update = () => setIsRunning(state.isRunning);
+        runningListeners.add(update);
+        return () => { runningListeners.delete(update); };
+    }, []);
+    return isRunning;
+}
 
 function AnimatedStatusIcon({ color = "currentColor" }: { color?: string; }) {
     return (
@@ -85,11 +96,7 @@ function AnimatedStatusIcon({ color = "currentColor" }: { color?: string; }) {
 }
 
 function AnimatedStatusButton() {
-    const [isRunning, setIsRunning] = useState(state.isRunning);
-    useEffect(() => {
-        const id = setInterval(() => setIsRunning(state.isRunning), 500);
-        return () => clearInterval(id);
-    }, []);
+    const isRunning = useIsRunning();
     return (
         <HeaderBarButton
             icon={AnimatedStatusIcon}
@@ -102,7 +109,12 @@ function AnimatedStatusButton() {
 }
 
 export default definePlugin({
-    name: "AnimatedStatus", description: "Cycle through status messages automatically", authors: [{ id: 705545572299571220n, name: "shxdes69" }], settings,
+    name: "AnimatedStatus",
+    description: "Cycle through status messages automatically",
+    authors: [{ id: 705545572299571220n, name: "shxdes69" }],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
+    settings,
     dependencies: ["HeaderBarAPI"],
     managedStyle,
     headerBarButton: {
@@ -110,7 +122,6 @@ export default definePlugin({
         render: AnimatedStatusButton,
         priority: 1337
     },
-    _lastSignal: 0,
     async setStatus(step: StatusStep): Promise<boolean> {
         if (!CustomStatus) return false;
         try {
@@ -127,8 +138,13 @@ export default definePlugin({
         if (state.interval) clearInterval(state.interval);
         state.currentIndex = 0;
         await this.setStatus(items[0]);
-        state.interval = setInterval(() => this.next(preset).catch(() => { if (state.interval) { clearInterval(state.interval); state.interval = null; } state.isRunning = false; this.forceUpdate(); }), Math.max(settings.store.interval * 1000, MIN_INTERVAL * 1000));
-        state.isRunning = true; this.forceUpdate();
+        state.interval = setInterval(() => this.next(preset).catch(() => {
+            if (state.interval) { clearInterval(state.interval); state.interval = null; }
+            state.isRunning = false;
+            notifyRunningListeners();
+        }), Math.max(settings.store.interval * 1000, MIN_INTERVAL * 1000));
+        state.isRunning = true;
+        notifyRunningListeners();
         Toasts.show({ message: "Animated status started!", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
     },
     async next(preset?: string) {
@@ -149,8 +165,6 @@ export default definePlugin({
         clearInterval(state.interval);
         state.interval = setInterval(() => this.next().catch(() => { }), Math.max(newInterval * 1000, MIN_INTERVAL * 1000));
     },
-    forceUpdate() { this.buttonUpdateSignal = Date.now(); },
-    buttonUpdateSignal: 0,
     start() {
         state._started = false;
         if (settings.store.autoStart) {
@@ -159,13 +173,16 @@ export default definePlugin({
     },
     stop() {
         if (state.interval) clearInterval(state.interval);
-        state.currentIndex = 0; state.isRunning = false; state._started = true; this.forceUpdate();
+        state.currentIndex = 0;
+        state.isRunning = false;
+        state._started = true;
+        notifyRunningListeners();
     },
     getIsRunning: () => state.isRunning,
 });
 
 function StatusPreview({ emojiId, emojiName, animated, text, statusType }: { emojiId?: string; emojiName?: string; animated?: boolean; text: string; statusType: StatusType; }) {
-    const currentUser = UserStore.getCurrentUser();
+    const currentUser = useMemo(() => UserStore.getCurrentUser(), []);
     return (
         <div className={cl("preview")}>
             <Text className={cl("preview-label")}>LIVE PREVIEW</Text>
@@ -231,15 +248,18 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
     const [selectedStatus, setSelectedStatus] = useState<StatusType>("online");
     const [filterPreset, setFilterPreset] = useState<string | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
-    const [running, setRunning] = useState(state.isRunning);
+    const running = useIsRunning();
     const [runningPreset, setRunningPreset] = useState<string | null>(null);
     const [presetListTrigger, setPresetListTrigger] = useState(0);
     const plugin = window.Vencord?.Plugins?.plugins?.AnimatedStatus as any;
     const presets = useMemo(() => safeParse<Preset[]>(settings.store.presets, []), [settings.store.presets, presetListTrigger]);
     const presetNames = useMemo(() => presets.map(p => p.name), [presets]);
-    const filteredStatuses = useMemo(() => filterPreset ? statuses.filter(s => s.preset === filterPreset) : statuses, [statuses, filterPreset]);
+    const filteredWithIndices = useMemo(() => {
+        if (filterPreset) return statuses.map((s, i) => ({ status: s, index: i })).filter(({ status: s }) => s.preset === filterPreset);
+        return statuses.map((s, i) => ({ status: s, index: i }));
+    }, [statuses, filterPreset]);
     const previewData = useMemo(() => editingIndex !== null && statuses[editingIndex] ? { ...statuses[editingIndex], status: statuses[editingIndex].status || "online" } : { ...parseEmoji(inputText), status: selectedStatus }, [inputText, selectedStatus, editingIndex, statuses]);
-    useEffect(() => { const check = () => setRunning(state.isRunning); const id = setInterval(check, 500); return () => clearInterval(id); }, []);
+
     const addStatus = () => {
         if (!inputText.trim()) return;
         const parsed = parseEmoji(inputText);
@@ -274,11 +294,9 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
         plugin?.stop();
         if (startTimeoutRef.current) clearTimeout(startTimeoutRef.current);
         startTimeoutRef.current = setTimeout(() => plugin?.begin(preset ?? undefined), 100);
-        setRunning(true);
     };
     const stopAnimation = () => {
         plugin?.stop();
-        setRunning(false);
         setRunningPreset(null);
     };
     return (
@@ -296,7 +314,7 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
                 </TabBar>
                 <ModalContent scrollerRef={scrollerRef} className={cl("modal-content")}>
                     {currentTab === Tab.STATUSES && (
-                        <StatusesTab statuses={statuses} filteredStatuses={filteredStatuses} presetNames={presetNames} presets={presets} filterPreset={filterPreset} inputText={inputText} setInputText={setInputText} preset={preset} setPreset={setPreset} selectedStatus={selectedStatus} setSelectedStatus={setSelectedStatus} running={running} editingIndex={editingIndex} previewData={previewData} onAddStatus={addStatus} onDeleteStatus={deleteStatus} onEditStart={setEditingIndex} onEditSave={saveEdit} onEditCancel={cancelEdit} onStart={startAnimation} onStop={stopAnimation} onFilterChange={setFilterPreset} />
+                        <StatusesTab statuses={statuses} filteredWithIndices={filteredWithIndices} presetNames={presetNames} presets={presets} filterPreset={filterPreset} inputText={inputText} setInputText={setInputText} preset={preset} setPreset={setPreset} selectedStatus={selectedStatus} setSelectedStatus={setSelectedStatus} running={running} editingIndex={editingIndex} previewData={previewData} onAddStatus={addStatus} onDeleteStatus={deleteStatus} onEditStart={setEditingIndex} onEditSave={saveEdit} onEditCancel={cancelEdit} onStart={startAnimation} onStop={stopAnimation} onFilterChange={setFilterPreset} />
                     )}
                     {currentTab === Tab.PRESETS && (
                         <PresetsTab statuses={statuses} setStatuses={setStatuses} presetNames={presetNames} running={running} runningPreset={runningPreset} onStart={startAnimation} onStop={stopAnimation} onPresetChange={() => setPresetListTrigger(t => t + 1)} />
@@ -312,22 +330,40 @@ function SettingsModal({ onClose, transitionState }: { onClose: () => void; tran
 }
 
 interface StatusesTabProps {
-    statuses: StatusStep[]; filteredStatuses: StatusStep[]; presetNames: string[]; presets: Preset[];
-    filterPreset: string | null; inputText: string; setInputText: (v: string) => void; preset: string; setPreset: (v: string) => void;
-    selectedStatus: StatusType; setSelectedStatus: (v: StatusType) => void; running: boolean; editingIndex: number | null;
-    previewData: Omit<StatusStep, "preset"> & { status: StatusType; }; onAddStatus: () => void; onDeleteStatus: (index: number) => void;
-    onEditStart: (index: number) => void; onEditSave: (index: number, updated: StatusStep) => void; onEditCancel: () => void;
-    onStart: (preset: string | null) => void; onStop: () => void; onFilterChange: (preset: string | null) => void;
+    statuses: StatusStep[];
+    filteredWithIndices: Array<{ status: StatusStep; index: number; }>;
+    presetNames: string[];
+    presets: Preset[];
+    filterPreset: string | null;
+    inputText: string;
+    setInputText: (v: string) => void;
+    preset: string;
+    setPreset: (v: string) => void;
+    selectedStatus: StatusType;
+    setSelectedStatus: (v: StatusType) => void;
+    running: boolean;
+    editingIndex: number | null;
+    previewData: StatusStep & { status: StatusType; };
+    onAddStatus: () => void;
+    onDeleteStatus: (index: number) => void;
+    onEditStart: (index: number) => void;
+    onEditSave: (index: number, updated: StatusStep) => void;
+    onEditCancel: () => void;
+    onStart: (preset: string | null) => void;
+    onStop: () => void;
+    onFilterChange: (preset: string | null) => void;
 }
-function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterPreset, inputText, setInputText, preset, setPreset, selectedStatus, setSelectedStatus, running, editingIndex, previewData, onAddStatus, onDeleteStatus, onEditStart, onEditSave, onEditCancel, onStart, onStop, onFilterChange }: StatusesTabProps) {
+function StatusesTab({ statuses, filteredWithIndices, presetNames, presets, filterPreset, inputText, setInputText, preset, setPreset, selectedStatus, setSelectedStatus, running, editingIndex, previewData, onAddStatus, onDeleteStatus, onEditStart, onEditSave, onEditCancel, onStart, onStop, onFilterChange }: StatusesTabProps) {
+    const currentUser = useMemo(() => UserStore.getCurrentUser(), []);
+    const avatarUrl = useMemo(() => currentUser ? getAvatarUrl(currentUser.id, currentUser.avatar) : undefined, [currentUser]);
+
     return (
         <div className={cl("tab-content")}>
-            <StatusPreview emojiId={previewData.emojiId} emojiName={previewData.emojiName} animated={previewData.animated} text={previewData.text} statusType={previewData.status || "online"} />
-            <Forms.FormDivider />
             <Forms.FormSection className={cl("section")}>
-                <Text className={cl("section-title")} variant="heading-md/bold">Add New Status</Text>
-                <Text className={cl("section-desc")} variant="text-md/normal">Enter your status text or paste a Discord emoji (e.g., &lt;:emoji:123456789&gt;)</Text>
-                <div className={cl("input-group")}><TextInput value={inputText} onChange={setInputText} placeholder="Enter status text or paste emoji..." autoFocus className={cl("input")} /></div>
+                <StatusPreview emojiId={previewData.emojiId} emojiName={previewData.emojiName} animated={previewData.animated} text={previewData.text} statusType={previewData.status} />
+                <div className={cl("input-group")}>
+                    <TextInput value={inputText} onChange={setInputText} placeholder="Status text or <:emoji:id>..." className={cl("input")} onKeyDown={e => { if (e.key === "Enter") onAddStatus(); }} />
+                </div>
                 <div className={cl("row", "gap-sm")}>
                     <div className={cl("col", "flex-1")}>
                         <Text className={cl("label")} variant="text-sm/semibold">Preset (optional)</Text>
@@ -355,10 +391,10 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
             )}
             <Forms.FormSection className={cl("section")}>
                 <div className={cl("list-header")}>
-                    <Text variant="heading-md/bold">Your Statuses <span className={cl("count-small")}>({filteredStatuses.length})</span></Text>
+                    <Text variant="heading-md/bold">Your Statuses <span className={cl("count-small")}>({filteredWithIndices.length})</span></Text>
                     <Button onClick={() => running ? onStop() : onStart(filterPreset)} color={running ? Button.Colors.RED : Button.Colors.GREEN} size={Button.Sizes.SMALL}>{running ? <><I.Stop /> Stop</> : <><I.Play /> Start</>}</Button>
                 </div>
-                {filteredStatuses.length === 0 ? (
+                {filteredWithIndices.length === 0 ? (
                     <div className={cl("empty-state")}>
                         <div className={cl("empty-icon")}><I.List /></div>
                         <Text className={cl("empty-title")} variant="heading-md/semibold">No statuses yet</Text>
@@ -366,8 +402,7 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                     </div>
                 ) : (
                     <div className={cl("status-list")}>
-                        {filteredStatuses.map(status => {
-                            const actualIndex = statuses.indexOf(status);
+                        {filteredWithIndices.map(({ status, index: actualIndex }) => {
                             const isEditing = editingIndex === actualIndex;
                             return (
                                 <div key={actualIndex} className={cl("status-card", { editing: isEditing })}>
@@ -381,7 +416,7 @@ function StatusesTab({ statuses, filteredStatuses, presetNames, presets, filterP
                                     ) : (
                                         <>
                                             <div className={cl("status-avatar-wrapper")}>
-                                                <img src={getAvatarUrl(UserStore.getCurrentUser()?.id ?? "", UserStore.getCurrentUser()?.avatar ?? null)} alt="" className={cl("status-avatar-img")} />
+                                                <img src={avatarUrl} alt="" className={cl("status-avatar-img")} />
                                                 <StatusIndicator type={status.status || "online"} />
                                             </div>
                                             <div className={cl("status-info")}>
@@ -419,6 +454,22 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
     const [editingPresetName, setEditingPresetName] = useState("");
     const [expandedPresets, setExpandedPresets] = useState<Set<string>>(new Set());
     const presets = useMemo(() => safeParse<Preset[]>(settings.store.presets, []), [settings.store.presets]);
+    const currentUser = useMemo(() => UserStore.getCurrentUser(), []);
+    const avatarUrl = useMemo(() => currentUser ? getAvatarUrl(currentUser.id, currentUser.avatar) : undefined, [currentUser]);
+
+    const statusesByPresetName = useMemo(() => {
+        const map = new Map<string, StatusStep[]>();
+        for (const s of statuses) {
+            if (s.preset) {
+                if (!map.has(s.preset)) map.set(s.preset, []);
+                map.get(s.preset)!.push(s);
+            }
+        }
+        return map;
+    }, [statuses]);
+
+    const statusIndexMap = useMemo(() => new Map(statuses.map((s, i) => [s, i])), [statuses]);
+
     const toggleExpanded = (presetId: string) => {
         setExpandedPresets(prev => {
             const next = new Set(prev);
@@ -428,7 +479,7 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
     };
     const getStatusesForPreset = (presetId: string) => {
         const preset = presets.find(p => p.id === presetId);
-        return preset ? statuses.filter(s => s.preset === preset.name) : [];
+        return preset ? (statusesByPresetName.get(preset.name) ?? []) : [];
     };
     const createPreset = () => {
         const name = newPresetName.trim();
@@ -468,7 +519,7 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
     };
     const cancelPresetEdit = () => setEditingPresetId(null);
     const runPreset = (preset: Preset) => {
-        const presetStatuses = statuses.filter(s => s.preset === preset.name);
+        const presetStatuses = statusesByPresetName.get(preset.name) ?? [];
         if (presetStatuses.length === 0) return Toasts.show({ message: `No statuses in "${preset.name}". Add some in the Statuses tab!`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
         onStart(preset.name);
     };
@@ -530,11 +581,11 @@ function PresetsTab({ statuses, setStatuses, presetNames, running, runningPreset
                                     {isExpanded && presetStatuses.length > 0 && (
                                         <div className={cl("preset-statuses")}>
                                             {presetStatuses.map(status => {
-                                                const actualIndex = statuses.indexOf(status);
+                                                const actualIndex = statusIndexMap.get(status) ?? -1;
                                                 return (
                                                     <div key={actualIndex} className={cl("preset-status-item")}>
                                                         <div className={cl("preset-status-emoji")}>
-                                                            {status.emojiId ? <img src={getEmojiUrl(status.emojiId, status.animated!)} alt="" className={cl("emoji-img")} /> : status.emojiName ? <span className={cl("emoji-text")}>{status.emojiName}</span> : <img src={getAvatarUrl(UserStore.getCurrentUser()?.id ?? "", UserStore.getCurrentUser()?.avatar ?? null)} alt="" className={cl("emoji-img")} />}
+                                                            {status.emojiId ? <img src={getEmojiUrl(status.emojiId, status.animated!)} alt="" className={cl("emoji-img")} /> : status.emojiName ? <span className={cl("emoji-text")}>{status.emojiName}</span> : <img src={avatarUrl} alt="" className={cl("emoji-img")} />}
                                                             <StatusIndicator type={status.status || "online"} />
                                                         </div>
                                                         <Text className={cl("preset-status-text")} variant="text-sm/normal" lineClamp={1}>{status.text || <em>No text</em>}</Text>

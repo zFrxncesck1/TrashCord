@@ -31,6 +31,8 @@ const availableBadges = [
         id: "staff",
         title: "Discord Staff",
         description: "Discord Staff",
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
         icon: "5e74e9b61934fc1f67c65515d1f7e60d",
         link: "https://discord.com/company"
     },

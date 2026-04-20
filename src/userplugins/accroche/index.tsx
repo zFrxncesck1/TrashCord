@@ -58,6 +58,8 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable Accroche plugin",
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
         default: true,
     },
     showNotifications: {

@@ -150,6 +150,8 @@ const settings = definePluginSettings({
     deleteDelay: {
         type: OptionType.SLIDER,
         description: "Base delay between deletions (ms) — auto-retries on rate limits",
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
         default: 350,
         markers: [200, 350, 500, 750, 1000],
     },

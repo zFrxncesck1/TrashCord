@@ -39,6 +39,8 @@ export const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: SoundTriggerSettings,
         description: "",
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
     }
 });
 
