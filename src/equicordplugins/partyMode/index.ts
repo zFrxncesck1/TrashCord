@@ -45,7 +45,7 @@ export default definePlugin({
     name: "PartyMode",
     description: "Allows you to use party mode cause the party never ends ✨",
     tags: ["Fun"],
-    authors: [Devs.UwUDev],
+    authors: [Devs.UwUDev, Devs.rz30],
     reporterTestable: ReporterTestable.None,
     settings,
 
