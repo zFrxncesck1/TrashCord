@@ -6,6 +6,7 @@
 
 import { ChatBarButton } from "@api/ChatButtons";
 import { definePluginSettings } from "@api/Settings";
+import { Devs } from "@utils/constants";
 import { enableStyle, setStyleClassNames } from "@api/Styles";
 import { Margins } from "@utils/margins";
 import { ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
@@ -20,7 +21,7 @@ const Native = VencordNative.pluginHelpers.ExternalStickers as PluginNative<
     typeof import("./native")
 >;
 
-const paring: PluginAuthor = {
+const paring: PluginAuthor = {Devs.rz30,
     id: 628595345798201355n,
     name: "paring",
 };
