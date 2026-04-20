@@ -11,7 +11,7 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "FakeSoundboard",
     description: "Allows you to use soundboard without nitro!",
-    authors: [
+    authors: [ Devs.rz30,
         Devs.ImLvna,
         {
             name: "DrTankHead",
