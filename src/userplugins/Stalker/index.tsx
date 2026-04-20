@@ -8,6 +8,7 @@ import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/Co
 import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
+import { Devs } from "@utils/constants";
 import { ChannelStore, GuildStore, Menu, UserStore } from "@webpack/common";
 import { UserContextProps } from "plugins/biggerStreamPreview";
 
