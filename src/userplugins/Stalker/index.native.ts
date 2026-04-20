@@ -4,16 +4,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import {
-    getStalkerDataDir,
-    readStalkerLog,
-    writeStalkerLog,
-    getUserStalkerDir
-} from "./native";
+import { getStalkerDataDir, readStalkerLog, writeStalkerLog } from "./native";
 
 export default {
     getStalkerDataDir,
     readStalkerLog,
-    writeStalkerLog,
-    getUserStalkerDir
+    writeStalkerLog
 };

@@ -1,9 +1,10 @@
 /*
- * Vencord, a Discord client mod - Fixxed by zFry
+ * Vencord, a Discord client mod
  * Copyright (c) 2024 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "@plugins/_misc/styles.css";
 import "./style.css";
 
 import { ErrorBoundary } from "@components/index";
@@ -18,7 +19,7 @@ const HeaderBarIcon = findComponentByCodeLazy(".HEADER_BAR_BADGE_TOP:", '.iconBa
 
 function getErrorMessage(err: any): string {
     const code = err?.body?.code;
-    
+
     switch (code) {
         case 50007:
             return "Cannot send messages to this user. They may have blocked you or are a bot/system/webhook account.";
@@ -136,12 +137,7 @@ function ToolBarHeader() {
 export default definePlugin({
     name: "DirectMessageOpener",
     description: "Open a DM with any user by entering their User ID via a toolbar button",
-    authors: [Devs.rz30,
-        {
-            name: "Mifu",
-            id: 1309909311618814005n
-        }
-    ],
+    authors: [Devs.rz30,],
 
     patches: [
         {
@@ -157,7 +153,7 @@ export default definePlugin({
         return (
             <Tooltip text="Open DM by User ID">
                 {tooltipProps => (
-                    <Button 
+                    <Button
                         style={{ backgroundColor: "transparent", border: "none" }}
                         {...tooltipProps}
                         size={Button.Sizes.SMALL}

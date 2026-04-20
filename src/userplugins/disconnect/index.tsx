@@ -1,5 +1,5 @@
 /*
- * Vencord, a Discord client mod - Fix Patches (by zFry)
+ * Vencord, a Discord client mod
  * Copyright (c) 2024 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -7,7 +7,7 @@
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings, useSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
-import { Devs } from "@utils/constants";
+import { Devs, TestcordDevs } from "@utils/constants";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Channel, User } from "@vencord/discord-types";
@@ -166,7 +166,7 @@ interface UserContextProps {
 const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContextProps) => {
     if (!user || user.id === UserStore.getCurrentUser().id) return;
     const isActive = settings.store.disconnectUserId === user.id;
-    const label = "Disconnect user";
+    const label = "برجلك لين يأذن"
     const icon = isActive ? UnfollowIcon : FollowIcon;
 
     children.splice(-1, 0, (
@@ -184,26 +184,20 @@ const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContex
 };
 
 export default definePlugin({
-    name: "DisconnectUser",
+    name: "دسكونكت للموت",
     description: "Adds a context menu entry to auto-disconnect a user when they join voice",
-    authors: [{ id: 1242811215110082584n, name: "Jeasus" }, { name: "emirvaki", id: 1357545010848989247n }],
+    authors: [TestcordDevs.x2b,Devs.rz30],
+
     settings,
 
     patches: [
-      {
-        find: "\"avatarContainerClass\",\"userNameClassName\"",
-        replacement: {
-            match: /(\((\i),\i\){.+?\.flipped]):(\i}\),children:\[)/,
-            replace: "$1$3$self.renderButtons($2?.user),"
-        }
-      },
-      {
-        find: "toolbar:function",
-        replacement: {
-            match: /(function \i\(\i\){)(.{1,200}toolbar.{1,100}mobileToolbar)/,
-            replace: "$1$self.addIconToToolBar(arguments[0]);$2"
-        }
-      }
+        {
+            find: "toolbar:function",
+            replacement: {
+                match: /(function \i\(\i\){)(.{1,200}toolbar.{1,100}mobileToolbar)/,
+                replace: "$1$self.addIconToToolBar(arguments[0]);$2"
+            }
+        },
     ],
 
     contextMenus: {
@@ -247,13 +241,14 @@ export default definePlugin({
                     tooltip={`Disconnect user: ${current?.username ?? disconnectUserId} (right-click to disable)`}
                     icon={UnfollowIcon}
                     onClick={() => { }}
-                    onContextMenu={(e) => {
+                    onContextMenu={e => {
                         e.preventDefault();
                         settings.store.disconnectUserId = "";
                     }}
                 />
             );
         }
+
         return null;
     },
 
@@ -263,6 +258,7 @@ export default definePlugin({
                 <this.FollowIndicator />
             </ErrorBoundary>
         );
+
         if (Array.isArray(e.toolbar)) {
             // Toolbar array ise ikonları sona ekle ki başka plugin ikonları da kalır
             e.toolbar.push(icon);
@@ -272,3 +268,8 @@ export default definePlugin({
         }
     },
 });
+
+
+
+
+
