@@ -1050,7 +1050,7 @@ const devContextCallback: NavContextMenuPatchCallback = (children, { id }: { id:
 export default definePlugin({
     name: "ViewRawEnhanced",
     description: "Advanced raw data viewer with search, export, formatting, history, and metadata",
-    authors: [Devs.KingFish, Devs.Ven, Devs.rad, Devs.ImLvna, Devs.Mifu],
+    authors: [Devs.KingFish, Devs.Ven, Devs.rz30, Devs.rad, Devs.ImLvna, Devs.Mifu],
     settings,
 
     contextMenus: {
