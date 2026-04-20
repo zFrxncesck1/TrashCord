@@ -49,7 +49,6 @@ const flagRegistry: Record<FlagType, FlagRegistryEntry> = {
     }
 };
 
-
 type Flag = {
     type: FlagType;
     text: string;
@@ -78,8 +77,10 @@ function Flag({ id }: { id: string; }) {
 
 export default definePlugin({
     name: "UserFlags",
-    description: "Add \"flags\" to users that will always show under their messages",
+    description: "Add flags to users that will always show under their messages",
     authors: [Devs.x2b],
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     dependencies: ["MessageAccessoriesAPI"],
     async start() {
         const savedFlags = await DataStore.get("USERFLAGS");
@@ -98,8 +99,6 @@ export default definePlugin({
         {
             name: "flag set",
             description: "Set a flag on a user",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
             inputType: ApplicationCommandInputType.BOT,
             options: [
                 {
@@ -168,8 +167,3 @@ export default definePlugin({
         }
     ]
 });
-
-
-
-
-

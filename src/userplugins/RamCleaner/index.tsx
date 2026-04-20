@@ -86,6 +86,7 @@ export default definePlugin({
     name: "RamCleaner",
     description: "Monitor and automatically clean Discord's memory to reduce RAM usage",
     authors: [{ name: "Irritably", id: 928787166916640838n }],
+    enabledByDefault: false,
     tags: ["Utility", "Privacy"],
     settings,
     managedStyle,

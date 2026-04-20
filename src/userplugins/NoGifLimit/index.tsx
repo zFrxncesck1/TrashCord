@@ -8,11 +8,18 @@ import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
+import { PencilIcon } from "@components/Icons";
 import { Devs } from "@utils/constants";
 import { getCurrentChannel, sendMessage } from "@utils/discord";
 import { ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, Menu, React, showToast, Toasts, useState } from "@webpack/common";
+
+import type { CaptionMedia } from "../gifCaptioner/types";
+import { fetchMedia } from "../gifCaptioner/utils/fetchMedia";
+import { inspectMedia } from "../gifCaptioner/utils/media";
+import GifCaptionerModal from "../gifCaptioner/ui/modal";
+import { showError as showCaptionError } from "../gifCaptioner/ui/statusCard";
 
 const DATA_KEY = "heartGifs-data";
 const FOLDERS_KEY = "heartGifs-folders";
@@ -64,6 +71,23 @@ interface FavItem {
 
 function generateId(): string {
     return "nogl-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
+}
+
+function getCurrentDiscordFavoriteUrls(): Set<string> {
+    try {
+        const wreq = (window as any).Vencord?.Webpack?.wreq;
+        if (!wreq?.c) return new Set();
+        for (const key of Object.keys(wreq.c)) {
+            try {
+                const m = wreq.c[key].exports;
+                if (m?.bW && typeof m.bW === "object" && typeof m.bW.getCurrentValue === "function") {
+                    const gifs = m.bW.getCurrentValue()?.favoriteGifs?.gifs ?? {};
+                    return new Set(Object.keys(gifs));
+                }
+            } catch { }
+        }
+    } catch { }
+    return new Set();
 }
 
 const settings = definePluginSettings({
@@ -192,6 +216,12 @@ async function addToLocal(item: { url: string; src: string; width: number; heigh
     var items = await getStoredItems();
 
     if (items.some(function (g) { return g.url === item.url; })) {
+        return false;
+    }
+
+    // Skip if already in Discord favorites
+    const discordFavs = getCurrentDiscordFavoriteUrls();
+    if (discordFavs.has(item.url)) {
         return false;
     }
 
@@ -516,9 +546,16 @@ function NoGifLimitModal({ modalProps }: { modalProps: ModalProps; }): React.Rea
                 var mediaUrl = item.src || item.url;
                 if (mediaUrl.indexOf("tenor.com") !== -1 && /\.mp4(\?.*)?$/i.test(mediaUrl)) {
                     var gifUrl = mediaUrl.replace(/\.mp4(\?.*)?$/i, ".gif");
-                    tenorFallbackRef.current.add(id);
                     setOverrideSrc(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[id] = gifUrl; return o; });
                     return;
+                }
+                if (mediaUrl.indexOf("giphy.com") !== -1) {
+                    var giphyIdMatch = mediaUrl.match(/giphy\.com\/gifs\/([^\/\?]+)/);
+                    if (giphyIdMatch && giphyIdMatch[1]) {
+                        var giphyId = giphyIdMatch[1];
+                        setOverrideSrc(function (prev) { var o = {}; for (var k in prev) o[k] = prev[k]; o[id] = "https://media.giphy.com/media/" + giphyId + "/200.gif"; return o; });
+                        return;
+                    }
                 }
             }
         }
@@ -836,8 +873,8 @@ function NoGifLimitModal({ modalProps }: { modalProps: ModalProps; }): React.Rea
         }
     };
 
-    return React.createElement(ModalRoot, modalProps,
-        React.createElement("div", { style: { width: "900px", maxWidth: "95vw", background: bgPrimary, borderRadius: "8px", display: "flex", flexDirection: "column", maxHeight: "85vh" } },
+    return React.createElement(ModalRoot, { ...modalProps, size: "large" as any },
+        React.createElement("div", { style: { width: "1400px", maxWidth: "95vw", background: bgPrimary, borderRadius: "8px", display: "flex", flexDirection: "column", maxHeight: "90vh", margin: "auto" } },
             React.createElement(ModalHeader, null,
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center", padding: "16px", boxSizing: "border-box" } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "16px" } },
@@ -931,15 +968,19 @@ function NoGifLimitModal({ modalProps }: { modalProps: ModalProps; }): React.Rea
                                                 onClick: function (e: React.MouseEvent) { handleItemClick(item, e); }
                                             },
                                                 imageErrors[item.id] ? (
-                                                    React.createElement("div", { style: { textAlign: "center", color: mutedColor, padding: "12px", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", width: "100%" } },
-                                                        React.createElement("div", { style: { fontSize: "20px", opacity: 0.5 } }, "[Error]"),
-                                                        React.createElement("div", { style: { fontSize: "11px" } }, "Failed to load")
+                                                    (item.url.indexOf("tenor.com") !== -1 || item.url.indexOf("giphy.com") !== -1) ? (
+                                                        React.createElement("a", { href: item.url, target: "_blank", rel: "noopener noreferrer", style: { color: "#5865F2", fontSize: "11px", textDecoration: "underline", padding: "8px" } }, "Open in new tab")
+                                                    ) : (
+                                                        React.createElement("div", { style: { textAlign: "center", color: mutedColor, padding: "12px", fontSize: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", width: "100%" } },
+                                                            React.createElement("div", { style: { fontSize: "20px", opacity: 0.5 } }, "[Error]"),
+                                                            React.createElement("div", { style: { fontSize: "11px" } }, "Failed to load")
+                                                        )
                                                     )
                                                 ) : (function () {
                                                     var mediaUrl = item.src || item.url;
                                                     var fallback = overrideSrc[item.id];
                                                     var src = fallback || item.cachedUrl || mediaUrl;
-                                                    var isVideo = !fallback && (/\.(mp4|webm|mov)(\?.*)?$/i.test(mediaUrl) || mediaUrl.indexOf("format=mp4") !== -1 || mediaUrl.indexOf("format=webm") !== -1 || (mediaUrl.indexOf("tenor.com") !== -1 && !/\.gif(\?.*)?$/i.test(mediaUrl)));
+                                                    var isVideo = !fallback && (/\.(mp4|webm|mov)(\?.*)?$/i.test(mediaUrl) || mediaUrl.indexOf("format=mp4") !== -1 || mediaUrl.indexOf("format=webm") !== -1 || (mediaUrl.indexOf("tenor.com") !== -1 && /\.gifv(\?.*)?$/i.test(mediaUrl)) || mediaUrl.indexOf(".gifv") !== -1);
                                                     if (isVideo) {
                                                         return React.createElement("video", {
                                                             src: src,
@@ -966,6 +1007,7 @@ function NoGifLimitModal({ modalProps }: { modalProps: ModalProps; }): React.Rea
                                             getMediaIcon(item.type),
                                             getTypeLabel(item.type)
                                         ),
+                                        (item.type === MediaType.GIF || item.type === MediaType.VIDEO || item.type === MediaType.IMAGE) && React.createElement(CaptionGifButton, { item: item }),
                                         selectedItems.has(item.id) && React.createElement("div", { style: { position: "absolute", top: "8px", left: "8px", width: "24px", height: "24px", background: pinkColor, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "14px" } }, "OK"),
                                         React.createElement("button", {
                                             onClick: function (e: React.MouseEvent) { e.stopPropagation(); handleRemoveItem(item.id); },
@@ -996,6 +1038,94 @@ var HeartGifsButton: ChatBarButtonFactory = function () {
     );
 };
 
+function CaptionGifButton({ item }: { item: FavItem; }) {
+    var [loading, setLoading] = useState(false);
+
+    var handleClick = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (loading) return;
+        setLoading(true);
+
+        var mediaUrl = item.src || item.url;
+        try {
+            var result = await fetchMedia(mediaUrl);
+            if (!result) {
+                showCaptionError("Failed to load media for captioning.");
+                setLoading(false);
+                return;
+            }
+
+            var blob = new Blob([result.buffer], { type: result.contentType });
+            var metadata = await inspectMedia(result.buffer, result.contentType, blob);
+            if (!metadata) {
+                showCaptionError("Could not inspect media.");
+                setLoading(false);
+                return;
+            }
+
+            var previewUrl = URL.createObjectURL(blob);
+            var released = false;
+
+            var captionMedia: CaptionMedia = {
+                buffer: result.buffer,
+                contentType: result.contentType,
+                height: metadata.height,
+                isVideo: metadata.isVideo,
+                release: () => {
+                    if (released) return;
+                    released = true;
+                    URL.revokeObjectURL(previewUrl);
+                },
+                url: previewUrl,
+                width: metadata.width
+            };
+
+            openModal(modalProps => (
+                <GifCaptionerModal
+                    {...modalProps}
+                    media={captionMedia}
+                    onCancel={() => {
+                        captionMedia.release();
+                        setLoading(false);
+                    }}
+                    onSubmit={() => { }}
+                    onConfirm={() => {
+                        captionMedia.release();
+                        setLoading(false);
+                    }}
+                />
+            ));
+        } catch (err) {
+            showCaptionError("Error: " + err);
+            setLoading(false);
+        }
+    };
+
+    return React.createElement("button", {
+        type: "button",
+        onClick: handleClick,
+        disabled: loading,
+        title: "Caption this GIF",
+        style: {
+            position: "absolute",
+            bottom: "8px",
+            right: "40px",
+            background: "rgba(0,0,0,0.7)",
+            color: loading ? "gray" : "white",
+            border: "none",
+            borderRadius: "4px",
+            width: "28px",
+            height: "28px",
+            cursor: loading ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "14px",
+            zIndex: 10
+        }
+    }, loading ? "..." : React.createElement(PencilIcon, { width: 16, height: 16 }));
+}
+
 var addFavContextMenuPatch: NavContextMenuPatchCallback = function (children, props) {
     if (!props) return;
     var { itemSrc } = props;
@@ -1005,9 +1135,37 @@ var addFavContextMenuPatch: NavContextMenuPatchCallback = function (children, pr
     var itemUrl = "";
     if (itemSrc) itemUrl = itemSrc;
     else if (itemHref) itemUrl = itemHref;
-    else if (message && message.content) {
-        var urlMatch = message.content.match(/(https?:\/\/[^\s]+\.(gif|webp|mp4|jpg|jpeg|png|mp3|wav|ogg))/i);
-        if (urlMatch) itemUrl = urlMatch[1];
+    else if (message) {
+        if (message.content) {
+            var urlMatch = message.content.match(/(https?:\/\/[^\s]+\.(gif|webp|mp4|jpg|jpeg|png|mp3|wav|ogg))/i);
+            if (!urlMatch) {
+                var contentUrl = message.content.match(/(https?:\/\/[^\s]+)/i);
+                if (contentUrl && (contentUrl[1].includes("tenor.com") || contentUrl[1].includes("giphy.com") || contentUrl[1].includes("media.tenor") || contentUrl[1].includes("media.giphy"))) {
+                    urlMatch = contentUrl;
+                }
+            }
+            if (urlMatch) itemUrl = urlMatch[1];
+        }
+        if (!itemUrl && message.embeds) {
+            for (var embed of message.embeds) {
+                if (embed.video && embed.video.url && (embed.video.url.includes("tenor.com") || embed.video.url.includes("giphy.com") || embed.video.url.includes("media.tenor") || embed.video.url.includes("media.giphy"))) {
+                    itemUrl = embed.video.url;
+                    break;
+                }
+                if (embed.thumbnail && embed.thumbnail.url && (embed.thumbnail.url.includes("tenor.com") || embed.thumbnail.url.includes("giphy.com") || embed.thumbnail.url.includes("media.tenor") || embed.thumbnail.url.includes("media.giphy"))) {
+                    itemUrl = embed.thumbnail.url;
+                    break;
+                }
+                if (embed.image && embed.image.url && (embed.image.url.includes("tenor.com") || embed.image.url.includes("giphy.com") || embed.image.url.includes("media.tenor") || embed.image.url.includes("media.giphy"))) {
+                    itemUrl = embed.image.url;
+                    break;
+                }
+                if (embed.url && (embed.url.includes("tenor.com") || embed.url.includes("giphy.com"))) {
+                    itemUrl = embed.url;
+                    break;
+                }
+            }
+        }
     }
 
     if (!itemUrl) return;
@@ -1047,8 +1205,8 @@ export default definePlugin({
     name: "HeartGifs",
     description: "Unlimited gif/image/video saving with heart icon, folders, and more!",
     authors: [Devs.x2b],
-    tags: ["Media", "Utility"],
     enabledByDefault: false,
+    tags: ["Media", "Utility"],
     settings: settings,
 
     chatBarButton: {
@@ -1062,6 +1220,24 @@ export default definePlugin({
             // Try to extract media URL from message
             var content = msg.content || "";
             var urlMatch = content.match(/(https?:\/\/[^\s]+\.(gif|webp|mp4|jpg|jpeg|png|mp3|wav|ogg))/i);
+            if (!urlMatch && content.match(/(tenor\.com|giphy\.com|media\.tenor|media\.giphy)/i)) {
+                urlMatch = content.match(/(https?:\/\/[^\s]+)/i);
+            }
+
+            if (!urlMatch) {
+                if (msg.embeds) {
+                    for (var embed of msg.embeds) {
+                        if (embed.url && (embed.url.includes("tenor.com") || embed.url.includes("giphy.com"))) {
+                            urlMatch = [embed.url, embed.url];
+                            break;
+                        }
+                        if (embed.video && embed.video.url) {
+                            urlMatch = [embed.video.url, embed.video.url];
+                            break;
+                        }
+                    }
+                }
+            }
 
             if (!urlMatch) {
                 // Check attachments
