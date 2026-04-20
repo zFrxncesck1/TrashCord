@@ -95,8 +95,6 @@ function KeybindRecorder() {
 const settings = definePluginSettings({
     keybind: {
         description: "Toggle Highlighter",
-    tags: ["Chat", "Appearance"],
-    enabledByDefault: false,
         type: OptionType.COMPONENT,
         default: DEFAULT_KEYBIND,
         component: KeybindRecorder
@@ -467,6 +465,8 @@ export default definePlugin({
     name: "ClassHighlighter",
     description: "Highlight and inspect elements easily, with focus on class names.",
     authors: [Devs.x2b],
+    tags: ["Chat", "Appearance"],
+    enabledByDefault: false,
     settings,
     managedStyle,
 

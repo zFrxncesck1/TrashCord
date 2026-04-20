@@ -50,8 +50,6 @@ const badge: ProfileBadge = {
 const settings = definePluginSettings({
     badges: {
         description: "Enable on badges.",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true,
     },
@@ -76,6 +74,8 @@ export default definePlugin({
     name: "NewUserIndicator",
     description: "Adds a indicator if users account is created recently",
     authors: [Devs.x2b],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     patches: [],
     settings,
     start() {

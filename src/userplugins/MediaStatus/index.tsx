@@ -40,8 +40,6 @@ const settings = definePluginSettings({
     serverType: {
         type: OptionType.SELECT,
         description: "What media server are you using?",
-    tags: ["Media", "Appearance"],
-    enabledByDefault: false,
         options: [
             { label: "Jellyfin", value: ServiceType.JELLYFIN, default: true },
             { label: "Plex", value: ServiceType.PLEX }
@@ -285,6 +283,8 @@ export default definePlugin({
     name: "MediaStatus",
     description: "Show your Jellyfin/Plex media activity as Discord Rich Presence",
     authors: [Devs.x2b],
+    tags: ["Media", "Appearance"],
+    enabledByDefault: false,
     dependencies: ["UserSettingsAPI"],
     settings,
 

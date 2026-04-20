@@ -39,8 +39,6 @@ const settings = definePluginSettings({
     qualityEnabled: {
         type: OptionType.BOOLEAN,
         description: "Override microphone quality/bitrate.",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         default: true,
         restartNeeded: false,
         onChange: triggerLiveUpdate,
@@ -239,6 +237,8 @@ export default definePlugin({
     name: "CustomMicQuality",
     description: "Customize your microphone quality, bitrates, stereo mode, echo cancellation, and apply fun effects.",
     authors: [Devs.x2b],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     settings,
     contextMenus: {
         "audio-device-context"(children, props) {

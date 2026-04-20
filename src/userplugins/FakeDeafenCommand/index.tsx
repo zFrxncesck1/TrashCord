@@ -19,8 +19,6 @@ const settings = definePluginSettings({
     mute: {
         type: OptionType.BOOLEAN,
         description: "Keep mute state when fake deafened",
-    tags: ["Voice", "Fun"],
-    enabledByDefault: false,
         default: true
     },
     deafen: {
@@ -34,6 +32,8 @@ export default definePlugin({
     name: "FakeDeafenCommand",
     description: "Appear deafened to others while still being able to hear them. Use /fd to toggle",
     authors: [Devs.Nobody],
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
     
     patches: [
         {

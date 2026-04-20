@@ -38,8 +38,6 @@ const settings = definePluginSettings({
     whitelist: {
         type: OptionType.STRING,
         description: "Comma-separated user IDs to keep (whitelist)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: ""
     },
     whitelistMode: {
@@ -985,6 +983,8 @@ export default definePlugin({
     name: "MessagesScrapper",
     description: "Delete your own messages in DMs or servers with a beautiful progress interface. Logs each run to JSON.",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     start() {
         // Listen for custom event from separate window

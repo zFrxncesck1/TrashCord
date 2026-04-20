@@ -39,8 +39,6 @@ export const settings = definePluginSettings({
         type: OptionType.COMPONENT,
         component: SoundTriggerSettings,
         description: "",
-    tags: ["Voice", "Fun"],
-    enabledByDefault: false,
     }
 });
 
@@ -48,6 +46,8 @@ export default definePlugin({
     name: "SoundTriggers",
     description: "Chaotic plugin for mapping text/emojis to sound",
     authors: [Devs.x2b],
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
     settings,
     start() {
         if (Array.isArray(settings.store.soundTriggers)) {

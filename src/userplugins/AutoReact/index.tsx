@@ -18,8 +18,6 @@ const settings = definePluginSettings({
     rules: {
         type: OptionType.STRING,
         description: "Rules in format: word1:😀,😀|word2:<:name:id>,<a:name:id>",
-    tags: ["Reactions", "Fun"],
-    enabledByDefault: false,
         default: "",
     },
     enabled: {
@@ -204,6 +202,8 @@ export default definePlugin({
     name: "AutoReact",
     description: "Automatically react to messages containing specific words",
     authors: [Devs.x2b],
+    tags: ["Reactions", "Fun"],
+    enabledByDefault: false,
     settings,
     settingsPanel: RulesEditor,
 

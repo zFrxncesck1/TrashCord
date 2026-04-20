@@ -128,9 +128,9 @@ const ChatButton = () => {
 export default definePlugin({
     name: "ExternalStickers",
     description: "Use external stickers like DCCON",
+    authors: [paring],
     tags: ["Emotes", "Media"],
     enabledByDefault: false,
-    authors: [paring],
 
     chatBarButton: { render: ChatButton, icon: ExternalStickerIcon },
 

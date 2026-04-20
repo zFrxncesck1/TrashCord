@@ -25,9 +25,9 @@ async function getWhateverShouldBeSentFromMy() {
 export default definePlugin({
     name: "SentFromMyUname",
     description: "Add your uname/useragent to every single message you send",
+    authors: [Devs.x2b],
     tags: ["Chat", "Fun"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
     settings: definePluginSettings({
         signatureToUse: {
             description: "What to show after 'Sent from my'",

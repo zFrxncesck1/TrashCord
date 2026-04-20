@@ -142,8 +142,6 @@ const settings = definePluginSettings({
     showProgress: {
         type: OptionType.BOOLEAN,
         description: "Send a Clyde message with the download progress.",
-    tags: ["Media", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     showFfmpegWarning: {
@@ -172,6 +170,8 @@ export default definePlugin({
     name: "YTdownloader",
     description: "Download music (320kbps) or video (1080p) from YouTube using yt-dlp and Deno. (plugin based on MediaDownloader)",
     authors: [Devs.x2b],
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
     reporterTestable: ReporterTestable.Patches,
     settings,
     managedStyle,

@@ -11,8 +11,6 @@ const settings = definePluginSettings({
     autoAcceptQuests: {
         type: OptionType.BOOLEAN,
         description: "Automatically accept all available quests",
-    tags: ["Utility", "Chat"],
-    enabledByDefault: false,
         default: true,
         restartNeeded: false
     },
@@ -486,6 +484,8 @@ export default definePlugin({
     name: "QuestAutocompleter",
     description: "Automatically completes Discord quests. Supports auto-accept and spoofing game/stream/video progress.",
     authors: [{ name: "Seramicx", id: 543577333530099742n }],
+    tags: ["Utility", "Chat"],
+    enabledByDefault: false,
     settings,
 
     start() {

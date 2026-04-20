@@ -11,8 +11,6 @@ import definePlugin, { OptionType } from "@utils/types";
 const settings = definePluginSettings({
     spoilerFilenames: {
         description: "Strings in filenames that should be spoilered. Comma separated.",
-    tags: ["Chat", "Notification"],
-    enabledByDefault: false,
         type: OptionType.STRING,
         default: "",
     },
@@ -32,6 +30,8 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "TriggerWarning",
     authors: [Devs.x2b],
+    tags: ["Chat", "Notification"],
+    enabledByDefault: false,
     description: "Spoiler attachments based on filenames and links.",
     patches: [
         {

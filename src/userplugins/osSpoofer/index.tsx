@@ -15,8 +15,6 @@ const settings = definePluginSettings({
     os: {
         type: OptionType.SELECT,
         description: "Operating system to spoof",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         restartNeeded: true,
         options: [
             { label: "Linux", value: "linux", default: true },
@@ -30,6 +28,8 @@ export default definePlugin({
     name: "OSSpoofer",
     description: "Maximum possible OS spoofing at plugin level",
     authors: [Devs.x2b],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
     settingsAboutComponent: () => (
         <Notice.Warning>

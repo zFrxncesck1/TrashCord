@@ -259,8 +259,6 @@ const settings = definePluginSettings({
     buttons: {
         type: OptionType.COMPONENT,
         description: "Manage your custom chat buttons",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         component: () => <ButtonEntries />
     }
 });
@@ -270,6 +268,8 @@ export default definePlugin({
     name: "ChatButtonsPlus",
     description: "Add custom chat buttons with personalized + messages and SVG icons",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     managedStyle,
 

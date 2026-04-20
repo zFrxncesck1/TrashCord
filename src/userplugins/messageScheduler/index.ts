@@ -22,8 +22,6 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show notifications when scheduled messages are sent",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true
     }
 });
@@ -130,6 +128,8 @@ export default definePlugin({
     name: "MessageScheduler",
     description: "Schedule messages to be sent at a specific time or after a delay",
     authors: [{ name: "MessageScheduler", id: 0n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     commands: [

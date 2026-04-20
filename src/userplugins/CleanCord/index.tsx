@@ -37,8 +37,6 @@ const settings = definePluginSettings({
     // CleanCord : Options CATEGORY
     showOptions: {
         description: "Display the options upon right-clicking a server/folder",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true,
     },
@@ -778,6 +776,8 @@ export default definePlugin({
     name: "CleanCord",
     description: "Allows you to hide specific servers and folders from your Discord server list with various settings",
     authors: [{ name: "Tetra_Sky", id: 406453997294190594n }],
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     settings,
 
     streamerModeListener: null as (() => void) | null,

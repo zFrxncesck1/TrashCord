@@ -528,9 +528,9 @@ const GifContextMenu: NavContextMenuPatchCallback = children => {
 export default definePlugin({
     name: "GifSpammer",
     description: "Send all your favorite GIFs with sequential/random modes, jitter, keybind, lock to channel, ChatBar button and context menu — ported from AutoMessageRepeater.",
+    authors: [{ name: "zFrxncesck1", id: 456195985404592149n }, { name: "nnenaza", id: 0n }],
     tags: ["Media", "Fun"],
     enabledByDefault: false,
-    authors: [{ name: "zFrxncesck1", id: 456195985404592149n }, { name: "nnenaza", id: 0n }],
     dependencies: ["CommandsAPI", "ChatBarAPI"],
 
     contextMenus: { "textarea-context": GifContextMenu },

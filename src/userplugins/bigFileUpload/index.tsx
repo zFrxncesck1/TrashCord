@@ -812,8 +812,6 @@ export const settings = definePluginSettings({
             { label: "Custom Uploader", value: "Custom" },
         ],
         description: "Select the file uploader service",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         hidden: true
     },
     gofileToken: {
@@ -1592,6 +1590,8 @@ export default definePlugin({
     name: "BigFileUpload",
     description: "Bypass Discord's upload limit by uploading to external file uploaders via drag-drop, paste, or the Upload button.",
     authors: [Devs.ScattrdBlade],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     managedStyle,
     dependencies: ["CommandsAPI"],

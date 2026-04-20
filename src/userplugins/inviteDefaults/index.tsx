@@ -11,8 +11,6 @@ const settings = definePluginSettings({
     inviteDuration: {
         type: OptionType.SELECT,
         description: "Invite Duration",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
         options: [
             { label: "30 minutes", value: 1800 },
             { label: "1 hour", value: 3600 },
@@ -47,6 +45,8 @@ export default definePlugin({
     name: "InviteDefaults",
     description: "Allows you to edit the default values when creating server invites.",
     authors: [{ name: "Death", id: 1003477997728313405n }],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     settings,
     patches: [
         {

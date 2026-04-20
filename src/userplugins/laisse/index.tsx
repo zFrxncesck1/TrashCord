@@ -43,8 +43,6 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Enable laisse plugin",
-    tags: ["Chat", "Fun"],
-    enabledByDefault: false,
     },
     onlyWhenInVoice: {
         type: OptionType.BOOLEAN,
@@ -137,6 +135,8 @@ export default definePlugin({
     description:
         "Hooks a user to you by automatically moving them to the voice channel you go to",
     authors: [Devs.x2b],
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
     settings,
     contextMenus: {
         "user-context": UserContextMenuPatch,

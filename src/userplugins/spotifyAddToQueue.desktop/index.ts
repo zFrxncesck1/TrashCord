@@ -46,9 +46,9 @@ function queueSong(id: string) {
 export default definePlugin({
     name: "SpotifyAddToQueue",
     description: "Adds a button in Spotify embeds to add the song to the queue",
+    authors: [Devs.nin0dev],
     tags: ["Media", "Utility"],
     enabledByDefault: false,
-    authors: [Devs.nin0dev],
     iframeMessageListener: e => {
         try {
             const songIDMatch = (e.data as string).match(/vc-spotifyaddtoqueue__([a-zA-Z0-9]{0,200})/);

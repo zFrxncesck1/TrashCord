@@ -23,7 +23,6 @@ import definePlugin, { OptionType } from "@utils/types";
 const settings = definePluginSettings({
     Max: {
         description: "Max reactions",
-    enabledByDefault: false,
         type: OptionType.NUMBER,
         default: 5,
     },
@@ -32,8 +31,9 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "MoreReact",
     description: "This plugin allows you to modify the max number of reactions for the frencency reaction experiment",
-    tags: ["Reactions", "Fun"],
     authors: [Devs.x2b],
+    tags: ["Reactions", "Fun"],
+    enabledByDefault: false,
     patches: [
         {
             find: ".MESSAGE_HOVER_BAR_REACTION_SUGGESTION_ADD_ALLY",

@@ -20,8 +20,6 @@ const options = {
 const settings = definePluginSettings({
     experimentTreatment: {
         description: "Which treatment to enable the experiment with",
-    tags: ["Chat", "Appearance"],
-    enabledByDefault: false,
         type: OptionType.SELECT,
         restartNeeded: true,
         options: [
@@ -35,6 +33,8 @@ export default definePlugin({
     name: "MessageNitroBadge",
     description: "Enables the Social Proofing Message Nitro Badge experiment",
     authors: [Devs.x2b],
+    tags: ["Chat", "Appearance"],
+    enabledByDefault: false,
     settings,
     managedStyle,
     dependencies: ["Experiments"],

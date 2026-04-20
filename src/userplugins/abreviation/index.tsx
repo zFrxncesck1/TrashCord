@@ -18,8 +18,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable Abreviation plugin",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     showNotifications: {
@@ -285,6 +283,8 @@ export default definePlugin({
     description:
         "Automatically transforms abbreviations into full text when sending messages",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["MessageEventsAPI"],
     settings,
 

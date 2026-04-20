@@ -16,8 +16,6 @@ const STANDARDS = {
 const settings = definePluginSettings({
     planMode: {
         description: "Select power plan for gaming",
-    tags: ["Utility", "Developers"],
-    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "High Performance", value: STANDARDS.HIGH_PERF },
@@ -152,6 +150,8 @@ export default definePlugin({
     name: "PowerSync",
     description: "Automatically switches Windows power plans when a game is detected.",
     authors: [{ name: "unclide", id: "395504896817758210" }],
+    tags: ["Utility", "Developers"],
+    enabledByDefault: false,
     settings,
 
     start() {

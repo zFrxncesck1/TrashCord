@@ -9,9 +9,9 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "SelfForward",
     description: "shows the current channel in the message forward popup",
+    authors: [{ id: 1003477997728313405n, name: "Death" }],
     tags: ["Chat", "Utility"],
     enabledByDefault: false,
-    authors: [{ id: 1003477997728313405n, name: "Death" }],
     patches: [
         {
             find: ".getChannelHistory(),",

@@ -158,8 +158,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable ChatGPT Writing plugin",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         defaultValue: false
     },
     useKaomoji: {
@@ -213,6 +211,8 @@ export default definePlugin({
     name: "ChatGPTWriting",
     description: "Enhance your messages with kaomoji, emoji, and autocorrect",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["MessageEventsAPI"],
     settings,
 

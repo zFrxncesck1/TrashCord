@@ -104,8 +104,6 @@ const settings = definePluginSettings({
     keymap: {
         type: OptionType.COMPONENT,
         description: "the keybind that you want to save on",
-    tags: ["Chat", "Shortcuts"],
-    enabledByDefault: false,
         component: props => <KeymapElement {...props}></KeymapElement>
     }
 });
@@ -114,6 +112,8 @@ export default definePlugin({
     name: "CtrlEnterSave",
     description: "Adds a keybind to save settings. YOU HAVE TO SET THE KEYBIND IN SETTINGS.",
     authors: [Devs.x2b],
+    tags: ["Chat", "Shortcuts"],
+    enabledByDefault: false,
     patches: [
         {
             find: ".SETTINGS_NOTICE_MESSAGE",

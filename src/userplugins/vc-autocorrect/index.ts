@@ -22,8 +22,6 @@ import definePlugin, { OptionType, PluginSettingDef } from "@utils/types";
 
 const settingsSharedProps: PluginSettingDef = {
     description: "",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
     type: OptionType.BOOLEAN,
     default: true,
     restartNeeded: true,
@@ -48,6 +46,8 @@ export default definePlugin({
     description: "Configure auto text correction, completion, and capitalization",
     settings,
     authors: [Devs.x2b],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     patches: [
         {
             find: /autocorrect:"?(off|false|none)"?/i,

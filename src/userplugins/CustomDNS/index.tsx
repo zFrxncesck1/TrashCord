@@ -21,8 +21,6 @@ const settings = definePluginSettings({
     dnsProvider: {
         type: OptionType.SELECT,
         description: "Choose which DNS provider to use",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         options: [
             { label: "DNS.SB", value: DnsProvider.DNS_SB },
             { label: "Quad9", value: DnsProvider.QUAD9 },
@@ -87,6 +85,8 @@ export default definePlugin({
     name: "CustomDNS",
     description: "Force Discord to use custom DNS servers (DNS.SB or Quad9) for enhanced privacy (If Activated Remove MullvadDNS) ",
     authors: [{ name: "Irritably", id: 928787166916640838n }],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     // Statistics tracking

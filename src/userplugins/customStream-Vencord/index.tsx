@@ -127,8 +127,6 @@ const settings = definePluginSettings({
     replaceEnabled: {
         type: OptionType.BOOLEAN,
         description: "Use custom preview instead of screen capture",
-    tags: ["Voice", "Media"],
-    enabledByDefault: false,
         default: true
     },
     slideshowEnabled: {
@@ -1809,6 +1807,8 @@ export default definePlugin({
     name: "CustomStreamTopQ",
     description: "Custom stream preview images with profiles & slideshow. GitHub: https://github.com/MrTopQ/customStream-Vencord",
     authors: [{ name: "TopQ", id: 523800559791374356n }, { name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Voice", "Media"],
+    enabledByDefault: false,
 
     settings,
 

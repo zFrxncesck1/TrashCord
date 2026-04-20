@@ -122,8 +122,6 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "In-app toast alert on staff join/leave.",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
     },
     showNotifications: {
         type: OptionType.BOOLEAN,
@@ -650,6 +648,8 @@ export default definePlugin({
         { name: "Irritably", id: 928787166916640838n },
         { name: "zFrxncesck1", id: 456195985404592149n },
     ],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

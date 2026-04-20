@@ -39,8 +39,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable DecibelLimiter",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         default: true
     },
     thresholdPercent: {
@@ -359,6 +357,8 @@ export default definePlugin({
         name: "Bash",
         id: 1327483363518582784n
     }],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

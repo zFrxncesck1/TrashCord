@@ -3,12 +3,12 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "BoringVC",
     description: "Disables voice channel per-sever avatars and names",
-    tags: ["Voice", "Fun"],
-    enabledByDefault: false,
     authors: [{
         name: "Bartkk",
         id: 277910722380562432n
     }],
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
     patches: [
         // Hide vc avatars
         {

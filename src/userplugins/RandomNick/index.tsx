@@ -107,9 +107,9 @@ const GuildContext: NavContextMenuPatchCallback = (children, { guild }: GuildCon
 export default definePlugin({
     name: "RandomNick",
     description: "Randomizes your server nickname with random-length printable ASCII characters.",
+    authors: [{ name: "Harris", id: 0n }],
     tags: ["Appearance", "Fun"],
     enabledByDefault: false,
-    authors: [{ name: "Harris", id: 0n }],
 
     contextMenus: {
         "guild-context": GuildContext

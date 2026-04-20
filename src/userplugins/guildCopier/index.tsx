@@ -88,8 +88,6 @@ const settings = definePluginSettings({
     copyRoles: {
         type: OptionType.BOOLEAN,
         description: "Copy roles from the original guild",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     copyChannels: {
@@ -502,6 +500,8 @@ export default definePlugin({
     name: "GuildCopier",
     description: "Copy an entire guild including channels, roles, permissions, emotes, stickers, and categories to create a new identical guild.",
     authors: [Devs.x2b, Devs.mixiruri],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     dependencies: [],
 
     settings,

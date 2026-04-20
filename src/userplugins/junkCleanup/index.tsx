@@ -24,8 +24,6 @@ const settings = definePluginSettings(Object.fromEntries([
     ["enableAllPatches", {
         type: OptionType.BOOLEAN,
         description: "Enable all patches (intended for testing)",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
         default: false,
         restartNeeded: true
     }]
@@ -35,9 +33,10 @@ export default definePlugin({
     name: "JunkCleanup",
     description: "Another plugin that cleans up common annoyances in Discord",
     authors: [{ name: "Sqaaakoi", id: 0n }],
+    tags: ["Appearance", "Utility", "Junk", "Bloat", "Debloat", "Shop", "Gift", "Nitro", "Ad", "Advertisement", "Adblock"],
+    enabledByDefault: false,
     settings,
     patches: ParsedPatches.flatMap(p => p.patches),
-    tags: ["junk", "bloat", "debloat", "shop", "gift", "nitro", "ad", "advertisement", "adblock"],
     settingsAboutComponent: () => {
         return <div>
             <Forms.FormTitle>Total patch count: {ParsedPatches.length}</Forms.FormTitle>

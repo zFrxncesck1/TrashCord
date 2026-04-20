@@ -33,9 +33,9 @@ const SettingsShortcutsElement = () => (
 export default definePlugin({
     name: "SettingsShortcuts",
     description: "Adds Better Microphone and Better Screenshare shortcut buttons to Discord settings.",
+    authors: [Devs.x2b],
     tags: ["Shortcuts", "Utility"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
     start() {
         const customSettingsSections = (
             Vencord.Plugins.plugins.Settings as any as {

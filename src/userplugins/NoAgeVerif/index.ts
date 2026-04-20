@@ -9,9 +9,9 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "TrustMeBro",
     description: "Bypasses Discord’s age verification required under the UK Online Safety Act.",
+    authors: [{ name: "Menhera.st Team", id: 1325012503419420734n }],
     tags: ["Privacy", "Utility"],
     enabledByDefault: false,
-    authors: [{ name: "Menhera.st Team", id: 1325012503419420734n }],
 
     start() {
         const modules = Object.values((window as any).webpackChunkdiscord_app.push([[Symbol()], {}, (r: any) => r.c])) as any[];

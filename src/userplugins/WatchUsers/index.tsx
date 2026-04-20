@@ -113,8 +113,6 @@ export const settings = definePluginSettings({
     watchUserId: {
         type: OptionType.STRING,
         description: "User ID of the watched user",
-    tags: ["Friends", "Utility"],
-    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "",
@@ -268,6 +266,8 @@ export default definePlugin({
     name: "WatchUsers",
     description: "Watches a user, and notifies when they join or leave a channel in a server you share",
     authors: [Devs.x2b],
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
     settings,
 
     patches: [

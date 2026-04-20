@@ -13,8 +13,6 @@ import { Toasts } from "@webpack/common";
 const settings = definePluginSettings({
     ids: {
         description: "User IDs of the friend (comma separated)",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         type: OptionType.STRING
     },
     alias: {
@@ -47,6 +45,8 @@ export default definePlugin({
     name: "AntiNameChange",
     description: "for that one friend who keeps changing their username/account",
     authors: [Devs.nin0dev],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
     onBeforeMessageSend: handler,
     onBeforeMessageEdit: handler,

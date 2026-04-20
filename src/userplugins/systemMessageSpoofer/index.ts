@@ -110,9 +110,9 @@ function dispatchFakeMessage(channelId: string, messageData: any) {
 export default definePlugin({
     name: "SystemMessageSpoofer",
     description: "Spoof Discord system messages, including nitro gifts, Clyde messages, and verified Discord messages",
+    authors: [Devs.x2b],
     tags: ["Chat", "Fun"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
     dependencies: ["CommandsAPI"],
 
     commands: [

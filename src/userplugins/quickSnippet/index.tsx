@@ -18,8 +18,6 @@ const settings = definePluginSettings({
     whitelistChannels: {
         type: OptionType.STRING,
         description: "list of channel IDs to whitelist",
-    tags: ["Chat", "Shortcuts"],
-    enabledByDefault: false,
         default: "1032200195582197831, 1028106818368589824"
     },
     descriptions: {
@@ -81,6 +79,8 @@ export default definePlugin({
     name: "QuickSnippet",
     description: "append css snippets quickly to quickCss with one click!",
     authors: [Devs.x2b],
+    tags: ["Chat", "Shortcuts"],
+    enabledByDefault: false,
     settings: settings,
     managedStyle,
     patches: [

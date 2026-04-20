@@ -76,8 +76,6 @@ const settings = definePluginSettings({
     dmsOnly: {
         type: OptionType.BOOLEAN,
         description: "Applies your color only in DMs",
-    tags: ["Appearance", "Servers"],
-    enabledByDefault: false,
         default: false,
     }
 });
@@ -86,6 +84,8 @@ export default definePlugin({
     name: "ForceRoleColor",
     description: "Forces a specific role color on yourself globally",
     authors: [Devs.x2b],
+    tags: ["Appearance", "Servers"],
+    enabledByDefault: false,
     settings,
     patches: [
         {

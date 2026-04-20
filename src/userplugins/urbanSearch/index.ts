@@ -14,8 +14,6 @@ const settings = definePluginSettings({
     resultsAmount: {
         type: OptionType.NUMBER,
         description: "The amount of results you want to get (more gives better results, but is slower)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: 10
     }
 });
@@ -24,6 +22,8 @@ export default definePlugin({
     name: "UrbanDictionary",
     description: "Search for a word on Urban Dictionary via /urban slash command",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI"],
     settings,
     commands: [

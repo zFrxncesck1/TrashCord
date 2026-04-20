@@ -163,8 +163,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable or disable automatic blocking",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     bannedLanguage: {
@@ -315,6 +313,8 @@ export default definePlugin({
     name: "AutoLanguageBlock",
     description: "Automatically blocks users who write in the configured language by detecting keywords in their messages.",
     authors: [{ name: "nnenaza", id: 1485706082080002140n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     settingsAboutComponent: AboutComponent,

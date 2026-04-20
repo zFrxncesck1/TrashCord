@@ -32,9 +32,9 @@ function log(text: string) {
 export default definePlugin({
     name: "FakeDeafenOld",
     description: "Fake deafens you. (So you still hear things.)",
+    authors: [{ name: "MisleadingName", id: 892072557988151347n }, { name: "Exotic", id: 287667540178501634n }],
     tags: ["Voice", "Fun"],
     enabledByDefault: false,
-    authors: [{ name: "MisleadingName", id: 892072557988151347n }, { name: "Exotic", id: 287667540178501634n }],
 
     flux: {
         AUDIO_TOGGLE_SELF_DEAF: async function () {

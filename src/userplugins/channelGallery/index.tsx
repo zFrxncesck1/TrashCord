@@ -25,8 +25,6 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Include GIFs in the gallery",
-    tags: ["Chat", "Media"],
-    enabledByDefault: false,
     },
     includeEmbeds: {
         type: OptionType.BOOLEAN,
@@ -150,6 +148,8 @@ export default definePlugin({
     name: "ChannelGallery",
     description: "Adds a Gallery view for images in the current channel",
     authors: [Devs.Benjii, Devs.x2b],
+    tags: ["Chat", "Media"],
+    enabledByDefault: false,
     dependencies: ["HeaderBarAPI"],
 
     settings,

@@ -12,8 +12,6 @@ const settings = definePluginSettings({
     language: {
         type: OptionType.SELECT,
         description: "Language / Idioma",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
         default: "en",
         options: [
             { label: "English", value: "en" },
@@ -242,6 +240,8 @@ export default definePlugin({
     name: "FocusMode",
     description: "Hide server list & sidebar with one click to focus on chat/call. | Oculta servidores e barra lateral para focar no chat/call.",
     authors: [Devs.Ven],
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

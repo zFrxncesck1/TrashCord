@@ -62,8 +62,6 @@ const SearchIcon: IconComponent = ({ height = 20, width = 20, className }) => {
 const settings = definePluginSettings({
     clickMethod: {
         description: "Button click behavior",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "Left Click to view raw", value: "Left", default: true },
@@ -1053,6 +1051,8 @@ export default definePlugin({
     name: "ViewRawEnhanced",
     description: "Advanced raw data viewer with search, export, formatting, history, and metadata",
     authors: [Devs.KingFish, Devs.Ven, Devs.rad, Devs.ImLvna, Devs.Mifu],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     contextMenus: {

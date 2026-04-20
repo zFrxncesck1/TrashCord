@@ -10,9 +10,9 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "VsCodeTyping",
     description: "Forces a thick VS Code Block Cursor, Monospace font, and smooth cursor animation that follows the text.",
+    authors: [Devs.x2b],
     tags: ["Chat", "Appearance"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
 
     start() {
         if (document.getElementById("vc-vscode-styles")) return;

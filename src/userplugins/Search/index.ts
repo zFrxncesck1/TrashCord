@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     customSearchEngine: {
         type: OptionType.STRING,
         description: "Full base URL for custom search engine (must support ?q= parameter)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: "https://google.com/search?q=",
         restartNeeded: false,
     },
@@ -26,6 +24,8 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "Search",
     authors: [{ name: "x2b", id: 0n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     description: "Generates search links for various search engines.",
     dependencies: ["CommandsAPI"],

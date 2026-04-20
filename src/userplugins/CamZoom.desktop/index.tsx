@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     maxZoom: {
         type: OptionType.SLIDER,
         description: "Maximum zoom level",
-    tags: ["Voice", "Media"],
-    enabledByDefault: false,
         default: 5,
         markers: [2, 3, 4, 5, 8, 10],
     },
@@ -703,6 +701,8 @@ export default definePlugin({
     name: "CamZoom",
     description: "Scroll-to-zoom & drag-to-pan on webcam tiles. Real-time PiP overlay. Auto portrait minimap for mobile cameras. Compatible with NoMirroredCamera. Screenshares excluded.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Voice", "Media"],
+    enabledByDefault: false,
     settings,
 
     start() {

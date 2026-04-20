@@ -13,8 +13,6 @@ const settings = definePluginSettings({
     currentVC: {
         type: OptionType.BOOLEAN,
         description: "Always show you are typing in your current voice channel",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: true
     },
     threshold: {
@@ -33,6 +31,8 @@ export default definePlugin({
     name: "ShyTyping",
     description: "Prevents you from accidentally revealing that you're lurking in a channel",
     authors: [Devs.x2b],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
     settings,
     patches: [
         {

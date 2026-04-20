@@ -950,8 +950,6 @@ const settings = definePluginSettings({
     messages: {
         type: OptionType.COMPONENT,
         description: "Messages to repeat - leave empty and enable Random Words for random-only mode",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         component: MessageEntries,
     },
     randomWordsEnabled: {
@@ -1117,6 +1115,8 @@ export default definePlugin({
     name: "AutoMessageRepeater",
     description: "Repeat messages with smart word-list mixing, gender mode, channel-aware pools, jitter, output separator, and export/import",
     authors: [Devs.x2b, { name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     dependencies: ["CommandsAPI"],
 

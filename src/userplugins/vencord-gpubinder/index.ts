@@ -8,8 +8,6 @@ const settings = definePluginSettings({
   gpuPreference: {
     type: OptionType.SELECT,
     description: "Select GPU preference. Note: This plugin overrides the GPU preference configured for Discord in Windows Graphics settings.",
-    tags: ["Developers", "Utility"],
-    enabledByDefault: false,
     default: 2,
     options: [
       { label: "High Performance (Discrete GPU)", value: 2 },
@@ -86,6 +84,8 @@ export default definePlugin({
   name: "GpuBinder",
   description: "Forces Discord to use your preferred GPU and re-applies the setting after updates.",
   authors: [{ name: "unclide", id: "395504896817758210" }],
+    tags: ["Developers", "Utility"],
+  enabledByDefault: false,
 
   settings,
 

@@ -46,8 +46,6 @@ const settings = definePluginSettings({
     streamerEnabled: {
         type: OptionType.BOOLEAN,
         description: "Enable Streamer Mode",
-    tags: ["Voice", "Privacy"],
-    enabledByDefault: false,
         default: false,
         onChange: (v: boolean) => apply("enabled", v),
     },
@@ -87,6 +85,8 @@ export default definePlugin({
     name: "StreamerModeControl",
     description: "Control all Streamer Mode options directly from plugin settings",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Voice", "Privacy"],
+    enabledByDefault: false,
     settings,
 
     start() {

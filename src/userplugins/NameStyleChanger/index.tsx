@@ -35,8 +35,6 @@ const settings = definePluginSettings({
     font: {
         type: OptionType.SELECT,
         description: "Font style for your name",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
         options: fontOptions
     }
 });
@@ -45,6 +43,8 @@ export default definePlugin({
     name: "NameStyleChanger",
     description: "Change the font style of your own username and display name. (basically Display Name Styles but free)",
     authors: [Devs.x2b],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     settings,
 
     start() {

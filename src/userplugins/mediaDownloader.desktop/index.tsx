@@ -144,8 +144,6 @@ async function openDependencyModal() {
 const settings = definePluginSettings({
     supportedWebsites: {
         description: "See the link for a list of supported websites.",
-    tags: ["Media", "Utility"],
-    enabledByDefault: false,
         type: OptionType.COMPONENT,
         default: "none",
         component: () => (
@@ -198,6 +196,8 @@ export default definePlugin({
     name: "MediaDownloader",
     description: "Download and send videos with from YouTube, Twitter, Reddit and more.",
     authors: [Devs.x2b],
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
     reporterTestable: ReporterTestable.Patches,
     settings,
     managedStyle,

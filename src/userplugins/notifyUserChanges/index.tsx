@@ -176,8 +176,6 @@ export const settings = definePluginSettings({
     notifyStatus: {
         type: OptionType.BOOLEAN,
         description: "Notify on status changes",
-    tags: ["Friends", "Notification"],
-    enabledByDefault: false,
         restartNeeded: false,
         default: true,
     },
@@ -287,6 +285,8 @@ export default definePlugin({
     name: "NotifyUserChanges",
     description: "Adds a notify option in the user context menu to get notified when a user changes voice channels or online status",
     authors: [Devs.D3SOX],
+    tags: ["Friends", "Notification"],
+    enabledByDefault: false,
 
     settings,
 

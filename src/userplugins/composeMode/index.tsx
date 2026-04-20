@@ -16,8 +16,6 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: false,
         description: "Show an icon for toggling the plugin",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
     },
     contextMenu: {
         type: OptionType.BOOLEAN,
@@ -70,6 +68,8 @@ const ComposeModeToggleButton: ChatBarButtonFactory = ({ isMainChat }) => {
 export default definePlugin({
     name: "ComposeMode",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     description: "Toggle writing multi-line messages by default",
     dependencies: ["CommandsAPI", "ChatInputButtonAPI"],
     settings,

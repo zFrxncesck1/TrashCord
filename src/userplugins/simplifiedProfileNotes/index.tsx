@@ -22,8 +22,6 @@ const requireClasses = extractAndLoadChunksLazy(['"handleOpenUserProfileModal"']
 const settings = definePluginSettings({
     hideWhenEmpty: {
         description: "Hide the note box when no note is set for a user",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: false,
     }
@@ -80,6 +78,8 @@ export default definePlugin({
     name: "SimplifiedProfileNotes",
     description: "Show the notes text box in the new simplified profile popouts",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     patches: [
         {

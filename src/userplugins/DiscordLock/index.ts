@@ -12,8 +12,6 @@ const settings = definePluginSettings({
     password: {
         type:          OptionType.STRING,
         description:   "Unlock password",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default:       "1337",
         restartNeeded: false,
     },
@@ -468,6 +466,8 @@ export default definePlugin({
     name:        "DiscordLock",
     description: "Locks Discord on startup, on inactivity, and on specified servers/channels/DMs.",
     authors:     [{ name: "vejcowski", id: 1375544683908042862n }],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

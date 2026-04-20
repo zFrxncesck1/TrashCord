@@ -23,8 +23,6 @@ const settings = definePluginSettings({
     channelIds: {
         type: OptionType.STRING,
         description: "Channel IDs to auto bump in (comma, space, or newline separated).",
-    tags: ["Utility", "Fun"],
-    enabledByDefault: false,
         default: "",
         placeholder: "123456789012345678, 987654321098765432"
     }
@@ -236,6 +234,8 @@ export default definePlugin({
     name: "AutoBump",
     description: "Automatically sends DISBOARD /bump on a timer. This is considered selfbot behavior and can get you banned.",
     authors: [Devs.x2b],
+    tags: ["Utility", "Fun"],
+    enabledByDefault: false,
     settings,
 
     start() {

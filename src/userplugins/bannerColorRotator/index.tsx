@@ -1100,9 +1100,9 @@ function BCRUserAreaWrapper() {
 export default definePlugin({
     name:        "BannerColorRotator",
     description: "Auto-cycles your Discord banner color. 26 modes. HSV picker, import/export all settings, optional current-color display. Free - no Nitro.",
+    authors:     [{ name: "zFrxncesck1", id: 456195985404592149n }],
     tags: ["Appearance", "Customisation"],
     enabledByDefault: false,
-    authors:     [{ name: "zFrxncesck1", id: 456195985404592149n }],
     settings,
     dependencies: ["UserAreaAPI"],
 

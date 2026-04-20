@@ -178,8 +178,6 @@ export const settings = definePluginSettings({
     targetUserIds: {
         type: OptionType.STRING,
         description: "Tracked user IDs (managed automatically)",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "[]",
@@ -512,6 +510,8 @@ export default definePlugin({
         { name: "x2b", id: 0n },
         { name: "zFrxncesck1", id: 456195985404592149n },
     ],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     settings,
     settingsAboutComponent: TrackedUsersList,
 

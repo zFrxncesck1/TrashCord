@@ -150,8 +150,6 @@ const settings = definePluginSettings({
     deleteDelay: {
         type: OptionType.SLIDER,
         description: "Base delay between deletions (ms) — auto-retries on rate limits",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: 350,
         markers: [200, 350, 500, 750, 1000],
     },
@@ -392,6 +390,8 @@ export default definePlugin({
     name: "BulkMessageDeleter",
     description: "Select and mass-delete your own messages. Works on ALL message types including grouped. Click-to-select, hover button, keyword filter, slash command, and context menus.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI", "MessagePopoverAPI", "ContextMenuAPI"],
     settings,
     managedStyle,

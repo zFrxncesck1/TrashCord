@@ -29,9 +29,9 @@ const badNounsReplacements = ["pasta", "kebab", "cake", "potato", "woman", "comp
 export default definePlugin({
     name: "GoodPerson",
     description: "Makes you (or others) a good person",
+    authors: [Devs.nin0dev, Devs.mantikafasi],
     tags: ["Voice", "Fun"],
     enabledByDefault: false,
-    authors: [Devs.nin0dev, Devs.mantikafasi],
     dependencies: ["MessageEventsAPI"],
     settings: definePluginSettings({
         incoming: {

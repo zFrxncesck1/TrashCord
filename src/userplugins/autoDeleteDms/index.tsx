@@ -31,8 +31,6 @@ const settings = definePluginSettings({
     deleteAfterValue: {
         type: OptionType.NUMBER,
         description: "Delete messages after (value)",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: 24
     },
     timeUnit: {
@@ -74,6 +72,8 @@ export default definePlugin({
     name: "AutoDeleteDMs",
     description: "Automatically deletes DMs after a specified time period",
     authors: [Devs.x2b],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
     settings,
 
     messageTimestamps: new Map<string, { timestamp: number, userId: string, channelId: string; }>(),

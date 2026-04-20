@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     enableAwaitDeletion: {
         type: OptionType.BOOLEAN,
         description: "enable/disable await for old and new message deletion. default as true",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     deleteInterval: {
@@ -67,6 +65,8 @@ export default definePlugin({
     name: "AntiLog",
     description: "abuses a discord client side glitch to mask your deleted message, so a user with vencord's messagelogger plugin enabled will not be able to see the deleted message.",
     authors: [Devs.x2b],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     dependencies: ["MessagePopoverAPI"],
     settings,
     start() {

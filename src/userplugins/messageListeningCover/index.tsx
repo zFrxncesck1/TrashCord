@@ -15,9 +15,9 @@ const ActivityCard = findComponentByCodeLazy(".USER_PROFILE_LIVE_ACTIVITY_CARD),
 export default definePlugin({
     name: "MessageListeningCover",
     description: "Shows listened-to album covers next to messages",
+    authors: [Devs.nin0dev],
     tags: ["Chat", "Privacy"],
     enabledByDefault: false,
-    authors: [Devs.nin0dev],
     renderMessageDecoration: props => {
         const ract = useStateFromStores([PresenceStore], () => PresenceStore.getActivities(props.message.author.id));
         const activities = ract.filter(a => [ActivityType.LISTENING].includes(a.type));

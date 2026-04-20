@@ -90,9 +90,9 @@ function formatTime(time: number) {
 export default definePlugin({
     name: "LastOnline",
     description: "Adds a last online indicator under usernames in your DM list and guild member list",
+    authors: [Devs.x2b],
     tags: ["Friends", "Utility"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
     flux: {
         PRESENCE_UPDATES({ updates }) {
             log.debug(`Received PRESENCE_UPDATES with ${updates.length} updates`);

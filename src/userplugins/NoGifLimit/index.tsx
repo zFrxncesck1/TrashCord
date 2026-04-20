@@ -70,8 +70,6 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show notifications when adding items",
-    tags: ["Media", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     allowTenor: {
@@ -1049,6 +1047,8 @@ export default definePlugin({
     name: "HeartGifs",
     description: "Unlimited gif/image/video saving with heart icon, folders, and more!",
     authors: [Devs.x2b],
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
     settings: settings,
 
     chatBarButton: {

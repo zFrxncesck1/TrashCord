@@ -9,9 +9,9 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "DontLimitMe",
     description: "removes the limit on message sending. spam away!",
-    tags: ["Utility", "Chat"],
-    enabledByDefault: false,
     authors: [{ name: "Death", id: 1003477997728313405n }],
+    tags: ["Utility", "Chat"],
+ enabledByDefault: false,
     patches: [
         {
             find: "cancelQueueMetricTimers",

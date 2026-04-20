@@ -17,8 +17,6 @@ const settings = definePluginSettings({
     filterEnabled: {
         type: OptionType.BOOLEAN,
         description: "Enable filtering (censor/replace/block). When off, messages pass through freely.",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: true,
     },
     actionOnViolation: {
@@ -551,6 +549,8 @@ export default definePlugin({
     name: "RobloxFilter",
     description: "Protects your main account by filtering messages that violate Discord's ToS. Block, censor with asterisks, or SFW-replace offensive content. Named RobloxFilter because it sounds funny.",
     authors: [Devs.x2b],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
 
     settings,
 

@@ -40,8 +40,6 @@ const settings = definePluginSettings({
     applyToNew: {
         type: OptionType.BOOLEAN,
         description: "Auto-apply settings when joining a new server",
-    tags: ["Servers", "Notification"],
-    enabledByDefault: false,
         default: true,
     },
     muteServer: {
@@ -221,7 +219,8 @@ export default definePlugin({
     name: "AutoServerNotifications",
     description: "Apply custom notification settings to all servers, with auto-apply on join and a right-click context menu.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
-    tags: ["mute", "notifications", "server", "auto"],
+    tags: ["Servers", "Notification", "Mute", "Notifications", "Server", "Auto"],
+    enabledByDefault: false,
     settings,
 
     patches: [

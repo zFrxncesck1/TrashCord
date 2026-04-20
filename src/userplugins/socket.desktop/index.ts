@@ -14,8 +14,6 @@ const settings = definePluginSettings({
     port: {
         type: OptionType.NUMBER,
         description: "self explanatory",
-    tags: ["Developers", "Utility"],
-    enabledByDefault: false,
         default: 3009
     },
     host: {
@@ -38,6 +36,8 @@ export default definePlugin({
     name: "Socket",
     description: "Send messages to a channel through a TCP socket",
     authors: [Devs.nin0dev],
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
     settings,
     start: () => Native.startServer(),
     stop: () => Native.stopServer()

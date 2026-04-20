@@ -20,8 +20,6 @@ const MessageDisplayCompact = getUserSettingLazy("textAndImages", "messageDispla
 const settings = definePluginSettings({
     customLinks: {
         description: "Custom links to check for (separated by commas)",
-    tags: ["Chat", "Fun"],
-    enabledByDefault: false,
         type: OptionType.STRING,
         default: "",
         restartNeeded: true
@@ -159,6 +157,8 @@ export default definePlugin({
     name: "AntiRickroll",
     description: "Warns you of potential Rickrolls in messages, including masked links (supports custom rules)",
     authors: [Devs.x2b],
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
     dependencies: ["MessageAccessoriesAPI", "UserSettingsAPI"],
 
     settings,

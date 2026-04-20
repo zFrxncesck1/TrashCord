@@ -12,8 +12,6 @@ const settings = definePluginSettings({
     activeStart: {
         type: OptionType.NUMBER,
         description: "UTC hour when servers UNMUTE (0–23). Default: 16 (4 PM UTC)",
-    tags: ["Voice", "Servers"],
-    enabledByDefault: false,
         default: 16,
         restartNeeded: false,
     },
@@ -172,6 +170,8 @@ export default definePlugin({
         "Mutes all servers outside your active UTC hours, sets @mentions only inside active hours. " +
         "Excluded servers are never touched. Toggle with the slider in the server list.",
     authors: [{ name: "You", id: 0n }],
+    tags: ["Voice", "Servers"],
+    enabledByDefault: false,
     settings,
 
     start() {

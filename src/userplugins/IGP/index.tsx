@@ -575,8 +575,6 @@ const settings = definePluginSettings({
     pgpPrivateKey: {
         type: OptionType.STRING,
         description: "Your PGP private key (armored format)",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: "",
         hidden: false,
     },
@@ -614,6 +612,8 @@ export default definePlugin({
     name: "IGP",
     description: "Illegalcord PGP encryption",
     authors: [{ name: "irritably", id: 928787166916640838n }], 
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     renderChatBarButton: ChatBarIcon,

@@ -25,14 +25,14 @@ function suppressGifPickerCloseForTick() {
 export default definePlugin({
     name: "KeepGifPickerOpen",
     description: "Prevents the Discord GIF picker from closing after sending a GIF.",
-    tags: ["Media", "Utility"],
-    enabledByDefault: false,
     authors: [
         {
             name: "pacxwheaa",
             id: 0n
         }
     ],
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
     patches: [
         {
             find: "handleSelectGIF=",

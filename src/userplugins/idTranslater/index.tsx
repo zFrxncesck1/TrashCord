@@ -14,8 +14,6 @@ const settings = definePluginSettings({
   translateUserIds: {
     type: OptionType.BOOLEAN,
     description: "Convert user IDs to clickable @ mentions",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
     default: true,
   },
   translateChannelIds: {
@@ -242,6 +240,8 @@ export default definePlugin({
   description:
     "Automatically translates Discord IDs to clickable @ mentions or # references",
   authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+  enabledByDefault: false,
   isModified: true,
 
   settings,

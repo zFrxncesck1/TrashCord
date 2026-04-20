@@ -41,8 +41,6 @@ const settings = definePluginSettings({
     },
     micLoopbackEnabled: {
         description: "Enable the Mic Test Loopback feature",
-    tags: ["Utility", "Developers"],
-    enabledByDefault: false,
         type: OptionType.BOOLEAN,
         default: true
     },
@@ -266,6 +264,8 @@ export default definePlugin({
     name: "BetterUserTools",
     description: "Mic test loopback and off-the-radar toggles in the user panel and audio context menus.",
     authors: [Devs.Benjii, Devs.x2b],
+    tags: ["Utility", "Developers"],
+    enabledByDefault: false,
     dependencies: ["UserSettingsAPI"],
     settings,
     styles,

@@ -46,8 +46,6 @@ const settings = definePluginSettings({
     colorEffects: {
         type: OptionType.BOOLEAN,
         description: "Color effects when approaching character limit",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     showProgressBar: {
@@ -521,6 +519,8 @@ export default definePlugin({
     name: "CharacterCounterEnhanced",
     description: "Advanced character counter with statistics, typing speed, alerts, and customization",
     authors: [{ name: "Equicord Team", id: 123n }, Devs.Panniku, Devs.thororen, Devs.Mifu],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     managedStyle,
 

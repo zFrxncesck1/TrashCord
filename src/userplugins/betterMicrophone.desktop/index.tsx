@@ -58,8 +58,6 @@ const settings = definePluginSettings({
     hideSettingsIcon: {
         type: OptionType.BOOLEAN,
         description: "Hide the settings icon",
-    tags: ["Voice", "Customisation"],
-    enabledByDefault: false,
         default: true,
     }
 });
@@ -68,6 +66,8 @@ export default definePlugin({
     name: "BetterMicrophone",
     description: "This plugin allows you to further customize your microphone.",
     authors: [Devs.philhk],
+    tags: ["Voice", "Customisation"],
+    enabledByDefault: false,
     dependencies: ["PhilsPluginLibrary"],
     patches: [
         {

@@ -109,8 +109,6 @@ export const settings = definePluginSettings({
     executeOnFollow: {
         type: OptionType.BOOLEAN,
         description: "Make sure to be in the same VC when following a user",
-    tags: ["Friends", "Voice"],
-    enabledByDefault: false,
         restartNeeded: false,
         default: true
     },
@@ -286,6 +284,8 @@ export default definePlugin({
     name: "FollowUser",
     description: "Adds a follow option in the user context menu to always be in the same VC as them",
     authors: [Devs.D3SOX],
+    tags: ["Friends", "Voice"],
+    enabledByDefault: false,
 
     settings,
 

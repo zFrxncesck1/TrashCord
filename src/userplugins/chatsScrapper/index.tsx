@@ -15,8 +15,6 @@ const settings = definePluginSettings({
     whitelist: {
         type: OptionType.STRING,
         description: "Comma-separated user IDs to keep (DM whitelist)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: ""
     }
 });
@@ -272,6 +270,8 @@ export default definePlugin({
     name: "ChatsScrapper",
     description: "Adds an × button near DM UI to close all 1:1 DMs except whitelist.",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
     renderChatBarButton: ({ isMainChat }) => {
         if (!isMainChat) return null;

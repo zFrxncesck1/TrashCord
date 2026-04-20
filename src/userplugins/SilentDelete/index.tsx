@@ -9,8 +9,6 @@ const settings = definePluginSettings({
     replacementText: {
         type: OptionType.STRING,
         description: "Text to replace the message with before deletion.",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: "** **"
     },
     deleteDelay: {
@@ -102,6 +100,8 @@ export default definePlugin({
         { name: "Aurick", id: 1348025017233047634n },
         { name: "appleflyer", id: 1209096766075703368n }
     ],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
     dependencies: ["MessagePopoverAPI", "CommandsAPI"],
     settings,
     

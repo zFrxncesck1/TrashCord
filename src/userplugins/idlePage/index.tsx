@@ -19,8 +19,6 @@ export const settings = definePluginSettings({
     BackgroundColor: {
         type: OptionType.STRING,
         description: "Hex code of the backgorund. needs #",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
         default: "#1a1b26"
     },
     onHomeClick: {
@@ -83,6 +81,8 @@ export default definePlugin({
     ],
 
     authors: [Devs.x2b],
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     start(){
         if (settings.store.onHomeClick)
             this.interval = setInterval(() => c = 0, 1000);

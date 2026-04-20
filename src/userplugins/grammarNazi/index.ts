@@ -12,8 +12,6 @@ const settings = definePluginSettings({
 	autoCapitalization: {
 		type: OptionType.BOOLEAN,
 		description: "Auto Capitalization to the first letter",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
 	},
 	autoPunctuation: {
 		type: OptionType.BOOLEAN,
@@ -29,6 +27,8 @@ export default definePlugin({
 	name: "GrammarNazi",
 	description: "Automatic punctuation, capitalization, and word replacement.",
 	authors: [{ name: "S€th", id: 1273447359417942128n }],
+    tags: ["Chat", "Utility"],
+	enabledByDefault: false,
 	// Remove dependencies: ["MessageEventsAPI"], - use manual message interception instead
 	settings,
 	

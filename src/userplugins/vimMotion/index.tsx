@@ -286,9 +286,9 @@ function handleKeyDown(key_event: KeyboardEvent): void {
 export default definePlugin({
     name: "vimMotion",
     description: "A plugin that allow you to use vim keymap to navigate in Discord",
+    authors: [{ name: "yewspine", id: 1061439057722359808n }],
     tags: ["Shortcuts", "Utility"],
     enabledByDefault: false,
-    authors: [{ name: "yewspine", id: 1061439057722359808n }],
     start() {
         styleElement = document.createElement("style");
         styleElement.textContent = `

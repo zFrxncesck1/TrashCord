@@ -19,8 +19,6 @@ const settings = definePluginSettings({
     autoStart: {
         type: OptionType.BOOLEAN,
         description: "Auto-start recording on VC join (captures your mic)",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     outputFolder: {
@@ -172,6 +170,8 @@ export default definePlugin({
     name: "RecordUrMic",
     description: "Records your microphone in voice channels, i coudnt make it record others' voices too, so im leaving it for whoever wants to hear what they were saying in vc.",
     authors: [Devs.x2b],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     native: true,
     settings,
     flux: {

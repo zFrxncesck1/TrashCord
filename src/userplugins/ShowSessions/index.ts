@@ -71,14 +71,14 @@ function formatWithoutReact(i18nString, values) {
 export default definePlugin({
     name: "ShowSessions",
     description: "Shows active sessions on your account",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
     authors: [
         {
             id: 566409342161780747n,
             name: "zv_yz",
         }
     ],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI"],
     commands: [
         {

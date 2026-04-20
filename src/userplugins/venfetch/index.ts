@@ -112,9 +112,9 @@ const ShowCurrentGame = getUserSettingLazy<boolean>("status", "showCurrentGame")
 export default definePlugin({
     name: "venfetch",
     description: "neofetch for vencord",
+    authors: [Devs.nin0dev],
     tags: ["Utility", "Fun"],
     enabledByDefault: false,
-    authors: [Devs.nin0dev],
     commands: [
         {
             name: "venfetch",

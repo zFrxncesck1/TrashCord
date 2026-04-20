@@ -15,8 +15,6 @@ const settings = definePluginSettings({
     targetUserId: {
         type: OptionType.STRING,
         description: "User ID to scan messages from",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: "",
     },
     targetChannelId: {
@@ -50,6 +48,8 @@ const plugin = definePlugin({
     name: "MessageResponder",
     description: "Automatically responds to messages from a specific user in a specific channel with random messages from a predefined list",
     authors: [Devs.Ven],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     // Function to send a random message from the list

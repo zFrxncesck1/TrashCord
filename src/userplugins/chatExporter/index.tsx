@@ -308,9 +308,9 @@ function exportToHTML(channel: any, messages: Message[]) {
 export default definePlugin({
   name: "Chat Exporter",
   description: "Export entire channel/group chat to JSON, CSV, or HTML",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
   authors: [{ name: "You", id: 123456789n }],
+    tags: ["Chat", "Utility"],
+  enabledByDefault: false,
   version: "1.3.0",
   settings,
   css: `

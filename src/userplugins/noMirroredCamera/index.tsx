@@ -14,9 +14,9 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "NoMirroredCamera",
     description: "Prevents the camera from being mirrored on your screen",
+    authors: [Devs.nyx],
     tags: ["Voice", "Utility"],
     enabledByDefault: false,
-    authors: [Devs.nyx],
 
     start() {
         const style = document.createElement("style");

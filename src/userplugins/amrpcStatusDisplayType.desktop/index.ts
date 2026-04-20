@@ -20,10 +20,10 @@ let originalUpdatePresence: Function;
 
 export default definePlugin({
     name: "AMRPCStatusDisplayType",
-    tags: ["Appearance", "Customisation"],
     description: "Make MusicRPC show the track / artist name in the member list",
-    enabledByDefault: false,
     authors: [Devs.nin0dev],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     hidden: !IS_MAC,
     startAt: StartAt.DOMContentLoaded,
     settings: definePluginSettings({

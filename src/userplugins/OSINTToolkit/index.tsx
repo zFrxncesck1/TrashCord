@@ -37,8 +37,6 @@ const settings = definePluginSettings({
     enableLogging: {
         type: OptionType.BOOLEAN,
         description: "Enable debug logging",
-    tags: ["Developers", "Utility"],
-    enabledByDefault: false,
         default: false
     },
     availableCommands: {
@@ -265,6 +263,8 @@ export default definePlugin({
     name: "OSINTToolkit",
     description: "OSINT - Domain age lookup & IP information",
     authors: [{ name: "Irritably", id: 928787166916640838n }],
+    tags: ["Developers", "Utility"],
+    enabledByDefault: false,
     settings,
 
     commands: [

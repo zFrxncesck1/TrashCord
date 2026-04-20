@@ -123,8 +123,6 @@ const settings = definePluginSettings({
     backend: {
         type: OptionType.SELECT,
         description: "Translation backend",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         options: [
             { label: "AnythingTranslate (free, no setup required)", value: "anythingtranslate", default: true },
             { label: "Local Claude Code (requires Claude Code installed)", value: "claude" },
@@ -142,6 +140,8 @@ export default definePlugin({
     name: "StyleTranslate",
     description: "Translate messages into fun styles via AnythingTranslate (free) or local Claude Code. Switch backend in plugin settings.",
     authors: [{ name: "Nyarc", id: 0n }],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI"],
     settings,
 

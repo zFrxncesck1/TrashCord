@@ -23,8 +23,6 @@ const settings = definePluginSettings({
     friends: {
         type: OptionType.BOOLEAN,
         description: "Include friends in mass DM",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     onlyFriends: {
@@ -122,6 +120,8 @@ export default definePlugin({
     name: "MassDM",
     description: "Mass direct message users with customizable options and auto-responses",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     commands: [

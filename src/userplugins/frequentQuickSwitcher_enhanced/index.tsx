@@ -13,8 +13,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable the frequent quick switcher to prioritize your most used channels",
-    tags: ["Shortcuts", "Utility"],
-    enabledByDefault: false,
         default: true
     },
     maxResults: {
@@ -60,6 +58,8 @@ export default definePlugin({
     name: "FrequentQuickSwitcher Enhanced",
     description: "Prioritizes your most frequent channels in the quick switcher results while preserving other search results -- enhanced by x2b so it wont break searching for users",
     authors: [Devs.x2b],
+    tags: ["Shortcuts", "Utility"],
+    enabledByDefault: false,
     settings,
     modifyResults: modifyResults,
     patches: [

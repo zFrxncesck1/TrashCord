@@ -225,8 +225,6 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Show a Typing section in the Friends list",
-    tags: ["Friends", "Notification"],
-    enabledByDefault: false,
     },
     showGuildIcons: {
         type: OptionType.BOOLEAN,
@@ -249,6 +247,8 @@ export default definePlugin({
     name: "TypingFriends",
     description: "See which of your friends are typing anywhere",
     authors: [Devs.Xylen],
+    tags: ["Friends", "Notification"],
+    enabledByDefault: false,
     settings: settings,
 
     patches: [

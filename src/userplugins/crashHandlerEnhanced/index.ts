@@ -83,7 +83,6 @@ const settings = definePluginSettings({
     attemptToPreventCrashes: {
         type: OptionType.BOOLEAN,
         description: "Attempt to prevent Discord crashes and auto-recover",
-    tags: ["Developers", "Utility"],
         default: true
     },
     attemptToNavigateToHome: {
@@ -491,6 +490,7 @@ export default definePlugin({
     name: "CrashHandlerEnhanced",
     description: "Advanced crash handling with detailed logging, statistics, preventive measures, and intelligent recovery",
     authors: [Devs.Nuckyz, Devs.Mifu],
+    tags: ["Developers", "Utility"],
     enabledByDefault: false,
 
     settings,

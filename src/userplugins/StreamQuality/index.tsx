@@ -29,8 +29,6 @@ const settings = definePluginSettings({
     fpsEnabled: {
         type: OptionType.BOOLEAN,
         description: "Override the stream frame rate.",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         default: true,
         restartNeeded: false,
         onChange: triggerLiveUpdate,
@@ -476,6 +474,8 @@ export default definePlugin({
     name: "CustomStreamQuality",
     description: "Customize your stream quality beyond Discord's limits. Set custom FPS, resolution, bitrate, codec, keyframe interval, and HDR.",
     authors: [Devs.x2b],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     settings,
     patches: [
         {

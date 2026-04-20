@@ -29,9 +29,9 @@ let preSendListener: MessageSendListener | undefined;
 export default definePlugin({
     name: "MediaCompressor",
     description: "Easily compress large video files directly in Discord, bypassing upload limits before sending.",
+    authors: [{ name: "StraiF", id: 314034398280286208n }],
     tags: ["Media", "Utility"],
     enabledByDefault: false,
-    authors: [{ name: "StraiF", id: 314034398280286208n }],
     settings,
 
     patches: [

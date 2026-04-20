@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     accentColor: {
         type: OptionType.STRING,
         description: "Accent color for the delete icon (hex code).",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: "#ed4245"
     },
     replacementMessage: {
@@ -72,6 +70,8 @@ export default definePlugin({
     name: "AntilogPremium",
     description: "Delete messages while hiding them from message loggers. Combines best anti-logging methods. (its made to replace AntiLog, SilentDelete, and MLE's silent delete at once)",
     authors: [Devs.x2b],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     dependencies: ["MessagePopoverAPI", "CommandsAPI"],
     settings,
     commands: [

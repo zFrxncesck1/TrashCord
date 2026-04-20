@@ -22,12 +22,12 @@ function isCurrentUser(userId: string) {
 export default definePlugin({
     name: "ClientSideBadges",
     description: "Adds client-side badges to your profile. Other users can't see them!",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
     authors: [
         Devs.nin0dev,
         { name: "KrystalSkullOfficial", id: 929208515883569182n }
     , Devs.x2b],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     settingsAboutComponent: () => <>
         <Forms.FormTitle style={{ color: "red", fontSize: "2rem", fontWeight: "bold" }}>Only you can view the badges. No, this can't and won't be changed.</Forms.FormTitle>
         <Forms.FormText>You may need to reload Discord after editing your settings for them to apply.</Forms.FormText>

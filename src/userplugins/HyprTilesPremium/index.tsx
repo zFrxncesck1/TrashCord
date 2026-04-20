@@ -113,11 +113,10 @@ type RouteRenderer = (props: RouteRenderPropsLike) => React.ReactNode;
 export default definePlugin({
     name: "HyprTilesPremium",
     description: "Hyprland-style tiled workspaces for Discord channels, DMs, and threads. BUT enhanced (some features still might not work)",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
     authors: [EquicordDevs.benjii, Devs.x2b],
+    tags: ["Appearance", "Customisation", "Workspace", "Tiling", "Layout", "Productivity"],
+    enabledByDefault: false,
     dependencies: ["ContextMenuAPI", "HeaderBarAPI"],
-    // tags: ["workspace", "tiling", "layout", "productivity"],
 
     managedStyle,
     settings,

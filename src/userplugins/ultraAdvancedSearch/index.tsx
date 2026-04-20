@@ -18,8 +18,6 @@ export const settings = definePluginSettings({
   maxResults: {
     type: OptionType.NUMBER,
     description: "Maximum number of results to display",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
     default: 100,
   },
   searchTimeout: {
@@ -124,6 +122,8 @@ export default definePlugin({
   description:
     "Advanced search similar to Discord mobile - Searches in all conversations, private messages, images, etc.",
   authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+  enabledByDefault: false,
   isModified: true,
 
   settings,

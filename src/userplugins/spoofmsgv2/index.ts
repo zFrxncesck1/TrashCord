@@ -77,8 +77,6 @@ function createServerBoostEmbed(boostTier: number = 1, boosterId?: string) {
         type: "rich",
         title: `${levelEmoji} Server Boosted!`,
         description: `${boosterName} just boosted the server!`,
-    tags: ["Chat", "Fun"],
-    enabledByDefault: false,
         color: 0xFF73FA,
         thumbnail: {
             url: "https://cdn.discordapp.com/emojis/1159626882694783036.png"
@@ -258,6 +256,8 @@ export default definePlugin({
     name: "SpoofSystemV2",
     description: "Spoof official Discord system messages with realistic embeds",
     authors: [Devs.x2b],
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI"],
 
     commands: [

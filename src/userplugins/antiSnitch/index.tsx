@@ -14,8 +14,6 @@ const settings = definePluginSettings({
     volume: {
         type: OptionType.SLIDER,
         description: "Alarm Volume",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: 100,
         min: 0,
         max: 100,
@@ -28,6 +26,8 @@ export default definePlugin({
     name: "antiSnitch",
     description: "Tools to avoid snitches",
     authors: [Devs.dot],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
     start() {
         FluxDispatcher.subscribe("VOICE_STATE_UPDATES", cb);

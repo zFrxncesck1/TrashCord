@@ -19,8 +19,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable MessageCleaner plugin",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     targetChannelId: {
@@ -641,6 +639,8 @@ export default definePlugin({
         },
         Devs.x2b
     ],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["ContextMenuAPI"],
     settings,
 

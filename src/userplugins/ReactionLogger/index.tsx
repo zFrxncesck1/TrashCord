@@ -17,8 +17,6 @@ const settings = definePluginSettings({
     delay: {
         type: OptionType.NUMBER,
         description: "Delay between notifications in seconds (the lower the more notifications will be sent)",
-    tags: ["Reactions", "Utility"],
-    enabledByDefault: false,
         default: 15,
     },
     ignoreSelf: {
@@ -32,6 +30,8 @@ export default definePlugin({
     name: "ReactionLogger",
     description: "Get notified when a user reacts to your messages",
     authors: [Devs.x2b],
+    tags: ["Reactions", "Utility"],
+    enabledByDefault: false,
 
     settings,
 

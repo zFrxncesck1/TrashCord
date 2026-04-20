@@ -12,8 +12,6 @@ const settings = definePluginSettings({
     apiKey: {
         type: OptionType.STRING,
         description: "Your OpenAI API key (https://platform.openai.com/api-keys)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: "",
         placeholder: "sk-proj-...",
     },
@@ -122,6 +120,8 @@ export default definePlugin({
     name: "ChatGPT",
     description: "Use ChatGPT directly in Discord with configurable settings",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["CommandsAPI"],
     settings,
     commands: [

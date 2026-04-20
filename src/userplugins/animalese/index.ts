@@ -13,8 +13,6 @@ const settings = definePluginSettings({
     volume: {
         type: OptionType.SLIDER,
         description: "Volume of the animalese sound",
-    tags: ["Voice", "Fun"],
-    enabledByDefault: false,
         default: 0.5,
         markers: [0, 0.25, 0.5, 0.75, 1],
     },
@@ -145,6 +143,8 @@ export default definePlugin({
     name: "Animalese",
     description: "Plays animalese (they yap a lot) on message sent",
     authors: [Devs.x2b],
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
     settings,
 
     start() {

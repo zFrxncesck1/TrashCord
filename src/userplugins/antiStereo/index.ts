@@ -11,8 +11,6 @@ import definePlugin, { OptionType } from "@utils/types";
 const settings = definePluginSettings({
   forceMono: {
     description: "Force mono (disable stereo)",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
     type: OptionType.BOOLEAN,
     default: true,
   },
@@ -32,6 +30,8 @@ export default definePlugin({
       id: 1327483363518582784n,
     },
   , Devs.x2b],
+    tags: ["Voice", "Utility"],
+  enabledByDefault: false,
   settings,
 
   patches: [

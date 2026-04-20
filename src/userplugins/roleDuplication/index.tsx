@@ -45,14 +45,14 @@ function MakeContextCallback(type: "settings" | "other"): NavContextMenuPatchCal
 export default definePlugin({
     name: "RoleDuplication",
     description: "Be able to duplicate/clone roles",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
     authors: [
         {
             name: "i am me",
             id: 984392761929256980n,
         },
     , Devs.x2b],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     managedStyle,
     contextMenus: {
         "guild-settings-role-context": MakeContextCallback("settings"),

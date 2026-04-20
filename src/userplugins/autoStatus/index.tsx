@@ -25,8 +25,6 @@ const updateAsync = findByCodeLazy("updateAsync", "status"); // function that up
 var settings = definePluginSettings({
     statusToset: {
         description: "Status to set when one of the following happens",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
         type: OptionType.SELECT,
         options: [
             { label: "Do not disturb", value: "dnd", default: true },
@@ -64,6 +62,8 @@ export default definePlugin({
     name: "autoStatus",
     description: "Change status on different events",
     authors: [{ name: "cynex_", id: 224173920968900608n }],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     settings,
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {

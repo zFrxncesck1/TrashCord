@@ -28,9 +28,9 @@ interface ExpressionPickerTabProps extends PropsWithChildren {
 export default definePlugin({
     name: "PinterestSearch",
     description: "Adds Pinterest search to the GIF picker for images and GIFs.",
+    authors: [EquicordDevs.omaw],
     tags: ["Appearance", "Customisation"],
     enabledByDefault: false,
-    authors: [EquicordDevs.omaw],
     settings,
     managedStyle,
     patches: [

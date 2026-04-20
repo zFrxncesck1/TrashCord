@@ -45,8 +45,6 @@ const settings = definePluginSettings({
     playInPrivate: {
         type: OptionType.BOOLEAN,
         description: "Play notification sound in private voice calls (DMs)",
-    tags: ["Voice", "Notification"],
-    enabledByDefault: false,
         default: true
     },
     playInServer: {
@@ -60,6 +58,8 @@ export default definePlugin({
     name: "VideoStartNotifier",
     description: "Plays a sound when someone starts/stops their webcam in a voice channel",
     authors: [Devs.redbaron2k7],
+    tags: ["Voice", "Notification"],
+    enabledByDefault: false,
     settings,
 
     flux: (() => {

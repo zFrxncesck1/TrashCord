@@ -376,8 +376,6 @@ const settings = definePluginSettings({
     pluginActivated: {
         type: OptionType.BOOLEAN,
         description: "Activate/deactivate the Securecord Opossum plugin",
-    tags: ["Privacy", "Chat"],
-    enabledByDefault: false,
         default: false
     },
     encryptionPassword: {
@@ -402,6 +400,8 @@ export default definePlugin({
     name: "SecurecordOpossum",
     description: "High-Performance, Post-Quantum Resilient end-to-end encryption for Discord based on BlazingOpossum cipher. Share the same password with other users to communicate securely.",
     authors: [{ name: "irritably", id: 928787166916640838n }],
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
     settings,
     chatBarButton: {
         render: EncryptionToggleButton

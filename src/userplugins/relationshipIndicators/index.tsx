@@ -22,8 +22,6 @@ import { getBadges, RelationshipIndicator } from "./utils";
 const indicatorLocations = {
     list: {
         description: "In the member list",
-    tags: ["Friends", "Appearance"],
-    enabledByDefault: false,
         onEnable: () => addMessageDecoration("friend-indicator", props =>
             <ErrorBoundary noop>
                 <RelationshipIndicator user={props.user} />
@@ -69,6 +67,8 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "RelationshipIndicators",
     authors: [Devs.x2b],
+    tags: ["Friends", "Appearance"],
+    enabledByDefault: false,
     settings,
     description: "Adds icons to indicate relationships with users.",
     start() {

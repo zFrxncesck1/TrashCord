@@ -106,8 +106,6 @@ export const settings = definePluginSettings({
     disconnectUserId: {
         type: OptionType.STRING,
         description: "Target user ID to auto-disconnect",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         restartNeeded: false,
         hidden: true,
         default: "",
@@ -189,6 +187,8 @@ export default definePlugin({
     name: "DisconnectUser",
     description: "Adds a context menu entry to auto-disconnect a user when they join voice",
     authors: [{ id: 1242811215110082584n, name: "Jeasus" }, { name: "emirvaki", id: 1357545010848989247n }],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     settings,
 
     patches: [

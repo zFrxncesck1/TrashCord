@@ -70,8 +70,6 @@ const settings = definePluginSettings({
     isEnabled: {
         type: OptionType.BOOLEAN,
         description: "Whether the plugin will automatically mute you after being silent for too long or not",
-    tags: ["Voice", "Utility"],
-    enabledByDefault: false,
         default: true,
         onChange() {
             updateAutoMute();
@@ -201,6 +199,8 @@ export default definePlugin({
     name: "AutoMute",
     description: "Automatically mute yourself in voice channels if you're not speaking for too long, or if someone who isn't a friend joins.",
     authors: [Devs.x2b],
+    tags: ["Voice", "Utility"],
+    enabledByDefault: false,
     settings,
     flux: {
         SPEAKING(s: SpeakingState) {

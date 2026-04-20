@@ -31,8 +31,6 @@ const availableBadges = [
         id: "staff",
         title: "Discord Staff",
         description: "Discord Staff",
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
         icon: "5e74e9b61934fc1f67c65515d1f7e60d",
         link: "https://discord.com/company"
     },
@@ -450,6 +448,8 @@ export default definePlugin({
         { id: 1147940825330876538n, name: 'Jelly' },
         { id: 1403404140461297816n, name: 'Sami' },
     ],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
 
     async start() {
         await loadData();

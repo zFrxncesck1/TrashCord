@@ -19,8 +19,6 @@ const settings = definePluginSettings({
     allowedguilds: {
         type: OptionType.STRING,
         description: "allowed guilds separated by /",
-    tags: ["Utility"],
-    enabledByDefault: false,
         default: "319560327719026709",
     },
     autoClaimEnabled: {
@@ -319,6 +317,8 @@ export default definePlugin({
     name: "autoClaim",
     description: "Automatically claims a vc after the owner of it leaves or when joining unowned VCs (custom VCs only)",
     authors: [Devs.dot],
+    tags: ["Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

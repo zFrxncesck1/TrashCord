@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     users: {
         type: OptionType.STRING,
         description: "User list separated by /",
-    tags: ["Servers", "Utility"],
-    enabledByDefault: false,
         default: "",
     },
     store: {
@@ -486,6 +484,8 @@ export default definePlugin({
     name: "autoBan",
     description: "Tools to automatically ban users. Enhanced VC owner detection",
     authors: [Devs.dot],
+    tags: ["Servers", "Utility"],
+    enabledByDefault: false,
     settings,
     contextMenus: {
         "user-context": makeUserContextMenuPatch(),

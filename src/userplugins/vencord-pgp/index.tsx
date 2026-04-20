@@ -81,8 +81,6 @@ export const settings = definePluginSettings({
     privateKey: {
         type: OptionType.STRING,
         description: "Your PGP private key (armored format)",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: "",
         hidden: true,
     },
@@ -746,6 +744,8 @@ export default definePlugin({
     name: "PGP",
     description: "End-to-end PGP encryption for Discord. Use /pgp commands.",
     authors: [{ name: "You", id: 0n }],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     commands: [

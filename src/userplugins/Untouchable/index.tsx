@@ -79,8 +79,6 @@ const settings = definePluginSettings({
     antiDisconnect: {
         type: OptionType.BOOLEAN,
         description: "Automatically rejoin the voice channel if you get disconnected by someone else.",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
         default: false,
     },
     rejoinDelay: {
@@ -233,6 +231,8 @@ export default definePlugin({
     name: "Untouchable",
     description: "Keeps you in control of your voice presence. Rejoins if disconnected, blocks moves, and auto-unmutes/undeafens if server-moderated.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Privacy", "Utility", "Fun", "Bypass", "Auto"],
+    enabledByDefault: false,
 
     settings,
 

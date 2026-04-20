@@ -16,8 +16,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable GroupKicker",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     showNotifications: {
@@ -128,6 +126,8 @@ export default definePlugin({
     name: "GroupKicker",
     description: "Allows group owner to kick all members with one click",
     authors: [{ name: "Bash", id: 1327483363518582784n }, Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     dependencies: ["ContextMenuAPI"],
     settings,
 

@@ -29,9 +29,9 @@ function WordCount({ messageContent }: { messageContent: string; }) {
 export default definePlugin({
     name: "WordCount",
     description: "Shows the word count of a message below it",
+    authors: [Devs.x2b],
     tags: ["Chat", "Utility"],
     enabledByDefault: false,
-    authors: [Devs.x2b],
     dependencies: ["MessageAccessoriesAPI"],
     async start() {
         addMessageAccessory("word-count", (props: Record<string, any>) => (

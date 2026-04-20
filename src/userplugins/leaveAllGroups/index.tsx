@@ -19,8 +19,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable LeaveAllGroups",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     showNotifications: {
@@ -142,6 +140,8 @@ export default definePlugin({
     name: "LeaveAllGroups",
     description: "Leave all Discord group DMs in one click with configurable rate limiting",
     authors: [Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     contextMenus: {

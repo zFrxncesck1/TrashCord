@@ -33,8 +33,6 @@ const settings = definePluginSettings({
     skipDuplicates: {
         type: OptionType.BOOLEAN,
         description: "Skip GIFs that are already in your favorites when importing",
-    tags: ["Media", "Utility"],
-    enabledByDefault: false,
         default: true,
     },
     delayBetweenImports: {
@@ -400,6 +398,8 @@ export default definePlugin({
             id: 1467863852782850160n,
         },
     ],
+    tags: ["Media", "Utility"],
+    enabledByDefault: false,
     settings,
 
     settingsAboutComponent() {

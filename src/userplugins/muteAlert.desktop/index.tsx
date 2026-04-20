@@ -42,8 +42,6 @@ const settings = definePluginSettings({
     useCustomAudio: {
         type: OptionType.BOOLEAN,
         description: "This can be any mp3, ogg, or wav file.",
-    tags: ["Voice", "Notification"],
-    enabledByDefault: false,
         default: false
     },
     component: {
@@ -75,6 +73,8 @@ export default definePlugin({
         name: "FawazT",
         id: 228825096360296448n
     }],
+    tags: ["Voice", "Notification"],
+    enabledByDefault: false,
     settings,
     managedStyle,
 

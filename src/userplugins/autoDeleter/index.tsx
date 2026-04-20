@@ -52,8 +52,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable automatic message deletion",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: false,
     },
     defaultDelay: {
@@ -314,6 +312,8 @@ export default definePlugin({
             id: 1327483363518582784n,
         },
         , Devs.x2b],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     // Map to track messages pending deletion

@@ -18,7 +18,6 @@ const settings = definePluginSettings({
     enableLogging: {
         type: OptionType.BOOLEAN,
         description: "Enable detailed logging",
-    enabledByDefault: false,
         default: true
     },
     showNotifications: {
@@ -37,8 +36,9 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "MullvadDNS",
     description: "Force Discord to use Mullvad DNS servers for enhanced privacy",
-    tags: ["Privacy", "Utility"],
     authors: [{ name: "Irritably", id: 928787166916640838n }],
+    tags: ["Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

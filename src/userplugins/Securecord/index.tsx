@@ -353,8 +353,6 @@ const settings = definePluginSettings({
     encryptionPassword: {
         type: OptionType.STRING,
         description: "AES-256 encryption password (shared with other users)",
-    tags: ["Privacy", "Chat"],
-    enabledByDefault: false,
         default: "",
         placeholder: "Enter strong shared password...",
         onChange(newValue: string) {
@@ -393,6 +391,8 @@ export default definePlugin({
     name: "Securecord",
     description: "AES-256 end-to-end encryption for Discord. Share the same password with other users to communicate securely.",
     authors: [{ name: "irritably", id: 928787166916640838n }],
+    tags: ["Privacy", "Chat"],
+    enabledByDefault: false,
     settings,
     chatBarButton: {
         render: EncryptionToggleButton

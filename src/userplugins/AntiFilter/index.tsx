@@ -226,8 +226,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable AntiFilter bypass",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: false
     },
     isEnabled: {
@@ -343,6 +341,8 @@ export default definePlugin({
     authors: [Devs.x2b, Devs.sirphantom89,
     { name: "dot", id: 1400610916285812776n }
     ],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
     settings: settings,
     dependencies: ["ChatInputButtonAPI", "CommandsAPI", "MessageEventsAPI"],
 

@@ -57,9 +57,9 @@ const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContex
 export default definePlugin({
     name: "PunishmentCommands",
     description: "Allows you to send a command in chat to punish someone, right from the context menu",
+    authors: [Devs.nin0dev],
     tags: ["Servers", "Commands"],
     enabledByDefault: false,
-    authors: [Devs.nin0dev],
     managedStyle,
     contextMenus: {
         "user-context": UserContext

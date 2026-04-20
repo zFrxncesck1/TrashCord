@@ -21,8 +21,6 @@ const settings = definePluginSettings({
     date: {
         type: OptionType.STRING,
         description: "ISO date string (YYYY-MM-DD) for what day to count down to",
-    tags: ["Appearance", "Utility"],
-    enabledByDefault: false,
         default: "2036-08-12",
         onChange: updateStatus,
     },
@@ -45,6 +43,8 @@ export default definePlugin({
     name: "StatusCountdown",
     description: "Automated days countdown in your status.",
     authors: [{ name: "mochie", id: 1043599230247374869n }, { name: "cassie", id: 280411966126948353n }],
+    tags: ["Appearance", "Utility"],
+    enabledByDefault: false,
     dependencies: ["UserSettingsAPI"],
     settings,
 

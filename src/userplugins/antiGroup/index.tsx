@@ -14,8 +14,6 @@ const settings = definePluginSettings({
     enabled: {
         type: OptionType.BOOLEAN,
         description: "Enable AntiGroup plugin",
-    tags: ["Chat", "Privacy"],
-    enabledByDefault: false,
         default: true,
     },
     showNotifications: {
@@ -218,6 +216,8 @@ export default definePlugin({
         },
         Devs.x2b
     ],
+    tags: ["Chat", "Privacy"],
+    enabledByDefault: false,
     settings,
 
     flux: {

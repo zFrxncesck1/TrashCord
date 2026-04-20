@@ -35,8 +35,6 @@ export const settings = definePluginSettings({
     autoMute: {
         type: OptionType.BOOLEAN,
         description: "Automatically mute when deafened.",
-    tags: ["Voice", "Privacy"],
-    enabledByDefault: false,
         default: false
     }
 });
@@ -64,6 +62,8 @@ export default definePlugin({
     name: "FakeMuteAndDeafen",
     description: "You can fake mute and deafen yourself. You can continue speaking and being heard during this time.",
     authors: [Devs.feelslove],
+    tags: ["Voice", "Privacy"],
+    enabledByDefault: false,
     settings,
     modifyVoiceState(e) {
         for (let i = 0; i < StateKeys.length; i++) {

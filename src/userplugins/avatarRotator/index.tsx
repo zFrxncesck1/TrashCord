@@ -1154,9 +1154,9 @@ function ARUserAreaButton() {
 export default definePlugin({
     name:         "AvatarRotator",
     description:  "Cycles your Discord avatar through a list at a set interval. Random or sequential. Supports jpg/jpeg/jfif/png/gif/webp/avif. Nitro check auto-skips GIFs when no Nitro (re-includes on detection). GIF-aware crop with frame-by-frame processing. Extension filter, crop editor, drag to reorder, rename, import/export. Auto-saved to DataStore.",
-    tags:         ["Appearance", "Customisation"],
-    enabledByDefault: false,
     authors:      [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Appearance", "Customisation"],
+    enabledByDefault: false,
     settings,
     dependencies: ["UserAreaAPI"],
 

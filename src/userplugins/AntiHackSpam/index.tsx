@@ -45,8 +45,6 @@ const settings = definePluginSettings({
     maxMessages: {
         type: OptionType.NUMBER,
         description: "Max suspicious messages in the time window before rate-limit trigger",
-    tags: ["Chat", "Privacy", "Utility"],
-    enabledByDefault: false,
         default: 10,
     },
     windowMs: {
@@ -617,6 +615,8 @@ export default definePlugin({
     name: "AntiHackSpam",
     description: "Blocks & deletes spam from hacked account (image floods + mass mentions). Includes bulk-purge tool.",
     authors: [{ name: "zFrxncesck1", id: 456195985404592149n }],
+    tags: ["Chat", "Privacy", "Utility"],
+    enabledByDefault: false,
     settings,
 
     settingsAboutComponent() {

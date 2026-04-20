@@ -31,8 +31,6 @@ const settings = definePluginSettings({
     forceGoogleProvider: {
         type: OptionType.BOOLEAN,
         description: "Force using Google Docs Viewer for all supported files.",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: false,
     },
 });
@@ -44,6 +42,8 @@ export default definePlugin({
         { name: "AGreenPig", id: 427179231164760066n },
         Devs.x2b
     ],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
     settings,
 
     start() {

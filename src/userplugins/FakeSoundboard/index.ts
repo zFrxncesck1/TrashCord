@@ -11,8 +11,6 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "FakeSoundboard",
     description: "Allows you to use soundboard without nitro!",
-    tags: ["Voice", "Fun"],
-    enabledByDefault: false,
     authors: [
         Devs.ImLvna,
         {
@@ -20,6 +18,8 @@ export default definePlugin({
             id: 1343271462408290364n
         }
     ],
+    tags: ["Voice", "Fun"],
+    enabledByDefault: false,
 
     patches: [
         // Force canUseSoundboardEverywhere and canUseCustomCallSounds to return true

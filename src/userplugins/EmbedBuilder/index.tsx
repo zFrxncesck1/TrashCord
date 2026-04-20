@@ -14,8 +14,6 @@ const settings = definePluginSettings({
     defaultColor: {
         type: OptionType.STRING,
         description: "Default embed color (hex format, e.g., #5865F2)",
-    tags: ["Chat", "Utility"],
-    enabledByDefault: false,
         default: "#5865F2"
     },
     autoCopy: {
@@ -52,6 +50,8 @@ export default definePlugin({
             id: 1309909311618814005n
         }
     ],
+    tags: ["Chat", "Utility"],
+    enabledByDefault: false,
 
     settings,
 

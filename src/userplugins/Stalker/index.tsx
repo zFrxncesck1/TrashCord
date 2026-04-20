@@ -121,8 +121,6 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         default: true,
         description: "Send a notification when a user joins a voice channel.",
-    tags: ["Friends", "Utility"],
-    enabledByDefault: false,
     },
 
     notifyCallLeave: {
@@ -217,6 +215,8 @@ export default definePlugin({
         { name: "Reycko", id: 1123725368004726794n },
         { name: "irritably", id: 928787166916640838n }
     ],
+    tags: ["Friends", "Utility"],
+    enabledByDefault: false,
 
     contextMenus: {
         "user-context": patchUserContext,

@@ -79,8 +79,6 @@ export const settings = definePluginSettings({
         type: OptionType.SELECT,
         default: "relay",
         description: "ICE transport policy. Relay forces TURN relay only (best privacy), public allows public IP discovery.",
-    tags: ["Privacy", "Voice"],
-    enabledByDefault: false,
         options: [
             { label: "Relay Only (Best Privacy)", value: "relay", default: true },
             { label: "Public (Default Discord)", value: "all" },
@@ -97,6 +95,8 @@ export default definePlugin({
     name: "WebRTCLeakPrevent",
     description: "Prevents WebRTC IP leaks by forcing ICE policy to relay-only mode. Blocks Discord from exposing your real IP address during voice calls.",
   authors: [{ name: "Irritably", id: 928787166916640838n }],
+    tags: ["Privacy", "Voice"],
+  enabledByDefault: false,
     settings,
 
     start() {

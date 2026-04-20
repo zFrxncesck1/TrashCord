@@ -9,10 +9,10 @@ import definePlugin from "@utils/types";
 export default definePlugin({
     name: "Say Something Cute",
     description: "It changes the message input placeholder to 'Send something cute... ✨'",
-    tags: ["Chat", "Fun"],
-    enabledByDefault: false,
     version: "1.0.1",
     authors: [{ name: null, id: null }],
+    tags: ["Chat", "Fun"],
+    enabledByDefault: false,
 
     start() {
         // Run initially
