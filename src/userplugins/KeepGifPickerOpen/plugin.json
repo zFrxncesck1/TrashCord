@@ -1,7 +1,0 @@
-{
-  "name": "KeepGifPickerOpen",
-  "description": "Prevents the Discord GIF picker from closing after sending a GIF.",
-  "author": "pacxwheaa",
-  "version": "1.0.0",
-  "main": "index.ts"
-}
