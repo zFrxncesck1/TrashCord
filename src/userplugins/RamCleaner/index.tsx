@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import managedStyle from "./styles.css?managed";
+import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
