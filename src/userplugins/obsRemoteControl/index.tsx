@@ -8,6 +8,7 @@ import managedStyle from "./styles.css?managed";
 
 import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
+import { Devs } from "@utils/constants";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 
@@ -82,7 +83,7 @@ const settings = definePluginSettings({
 export default definePlugin({
     name: "OBS Remote Control",
     description: "Control OBS from Discord using websockets.",
-    authors: [{
+    authors: [Devs.rz30,{
         name: "FawazT",
         id: 228825096360296448n
     }],
