@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import managedStyle from "./styles.css?managed";
+import "./styles.css";
 
 import { DataStore } from "@api/index";
 import { Flex } from "@components/Flex";
 import SettingsPlugin from "@plugins/_core/settings";
-import { Devs } from "@utils/constants";
+import { Devs, TestcordDevs } from "@utils/constants";
 import * as Modal from "@utils/modal";
 import definePlugin from "@utils/types";
 import { Button, React, Text, TextInput } from "@webpack/common";
@@ -91,7 +91,7 @@ const AddAccountModal = ({ manager, onClose, ...props }: Modal.ModalProps & {
                 </div>
             </Modal.ModalContent>
             <Modal.ModalFooter className="token-login-footer">
-                <Flex justify={Flex.Justify.END} gap={10}>
+                <Flex style={{ justifyContent: "flex-end", gap: "10px" }}>
                     <Button
                         color={Button.Colors.BRAND}
                         disabled={!username || !token}
@@ -171,7 +171,7 @@ class TokenLoginManagerUI {
 
         return (
             <div className="token-login-container">
-                <Flex justify={Flex.Justify.BETWEEN} align={Flex.Align.CENTER}>
+                <Flex style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <Text variant="heading-lg/semibold">Token Login Manager</Text>
                     <Button
                         onClick={() => {
@@ -206,10 +206,7 @@ class TokenLoginManagerUI {
 export default definePlugin({
     name: "TokenLoginManager",
     description: "Manage and login with user tokens",
-    tags: ["Privacy", "Utility"],
-    enabledByDefault: false,
-    authors: [Devs.x2b],
-    managedStyle,
+    authors: [TestcordDevs.x2b, TestcordDevs.nnenaza, Devs.rz30],
 
     tokenLoginManager: null as TokenLoginManager | null,
     ui: null as TokenLoginManagerUI | null,
