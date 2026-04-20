@@ -57,10 +57,10 @@ async function applyHouse(houseId: number) {
 }
 
 export default definePlugin({
-    name: "HypeSquadSwitcher",
-    description: "Easily switch between HypeSquad houses or remove your badge",
+    name: "rzSquad",
+    description: "علشان واحد من العيال غالي علي",
     
-    authors: [
+    authors: [ Devs.rz30,
         {
             name: "Dipraj",
             id: 1407738161471422495n, 
