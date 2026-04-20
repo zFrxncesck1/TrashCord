@@ -87,8 +87,8 @@ export default definePlugin({
     description: "Monitor and automatically clean Discord's memory to reduce RAM usage",
     authors: [{ name: "Irritably", id: 928787166916640838n }],
     tags: ["Utility", "Privacy"],
-    managedStyle,
     settings,
+    managedStyle,
 
     monitorInterval: null as NodeJS.Timeout | null,
     lastCleanTime: 0,
