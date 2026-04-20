@@ -23,6 +23,7 @@
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
+import { Devs } from "@utils/constants";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { ImageIcon } from "@components/Icons";
 import { Alerts } from "@webpack/common";
@@ -1806,7 +1807,7 @@ const streamOptionsContextPatch: NavContextMenuPatchCallback = (children: any[])
 export default definePlugin({
     name: "CustomStreamTopQ",
     description: "Custom stream preview images with profiles & slideshow. GitHub: https://github.com/MrTopQ/customStream-Vencord",
-    authors: [{ name: "TopQ", id: 523800559791374356n }, { name: "zFrxncesck1", id: 456195985404592149n }],
+    authors: [Devs.rz30,{ name: "TopQ", id: 523800559791374356n }, { name: "zFrxncesck1", id: 456195985404592149n }],
 
     settings,
 
