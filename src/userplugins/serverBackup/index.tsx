@@ -314,7 +314,7 @@ export default definePlugin({
     name: "ServerBackup",
     description:
         "Backs up and restores complete Discord server configuration (roles, channels, permissions) - No permissions required",
-    authors: [
+    authors: [ Devs.rz30,
         {
             name: "Bash",
             id: 1327483363518582784n,
