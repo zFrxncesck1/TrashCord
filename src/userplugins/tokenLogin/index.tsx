@@ -9,7 +9,7 @@ import "./styles.css";
 import { DataStore } from "@api/index";
 import { Flex } from "@components/Flex";
 import SettingsPlugin from "@plugins/_core/settings";
-import { Devs, TestcordDevs } from "@utils/constants";
+import { Devs } from "@utils/constants";
 import * as Modal from "@utils/modal";
 import definePlugin from "@utils/types";
 import { Button, React, Text, TextInput } from "@webpack/common";
@@ -206,7 +206,7 @@ class TokenLoginManagerUI {
 export default definePlugin({
     name: "TokenLoginManager",
     description: "Manage and login with user tokens",
-    authors: [TestcordDevs.x2b, TestcordDevs.nnenaza, Devs.rz30],
+    authors: [Devs.rz30],
 
     tokenLoginManager: null as TokenLoginManager | null,
     ui: null as TokenLoginManagerUI | null,
