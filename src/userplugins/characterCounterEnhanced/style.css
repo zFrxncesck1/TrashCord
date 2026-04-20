@@ -1,0 +1,385 @@
+/* ==================== BASE STYLES ==================== */
+.vc-char-counter-enhanced {
+    font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    position: absolute;
+    pointer-events: none;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.vc-char-counter-enhanced:hover {
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+}
+
+/* ==================== POSITIONING ==================== */
+.vc-char-position-bottom-right {
+    bottom: 8px;
+    right: 10px;
+}
+
+.vc-char-position-bottom-left {
+    bottom: 8px;
+    left: 10px;
+}
+
+.vc-char-position-top-right {
+    top: 8px;
+    right: 10px;
+}
+
+.vc-char-position-top-left {
+    top: 8px;
+    left: 10px;
+}
+
+/* Moveable position (drag & drop) */
+.vc-char-position-moveable {
+    bottom: 8px;
+    right: 10px;
+    /* Default position, will be overridden by transform */
+}
+
+.vc-char-draggable {
+    cursor: move;
+    pointer-events: auto;
+    user-select: none;
+    transition: transform 0.1s ease-out, box-shadow 0.2s ease;
+}
+
+.vc-char-draggable:hover {
+    box-shadow: 0 4px 16px rgba(88, 101, 242, 0.4);
+    background: rgba(88, 101, 242, 0.15);
+}
+
+.vc-char-draggable:active {
+    cursor: grabbing;
+    box-shadow: 0 6px 20px rgba(88, 101, 242, 0.6);
+    transform: scale(1.02);
+    z-index: 999;
+}
+
+/* ==================== MAIN DISPLAY ==================== */
+.vc-char-main-display {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-weight: 600;
+    font-size: inherit;
+}
+
+.vc-char-count {
+    font-weight: 700;
+    font-size: 1.1em;
+}
+
+.vc-char-separator {
+    opacity: 0.6;
+    margin: 0 2px;
+}
+
+.vc-char-max {
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.vc-char-percentage {
+    font-size: 0.85em;
+    opacity: 0.7;
+    margin-left: 4px;
+}
+
+/* ==================== ADDITIONAL STATS ==================== */
+.vc-char-additional-stats {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 0.9em;
+    flex-wrap: wrap;
+}
+
+.vc-stat-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.95em;
+    transition: background 0.2s ease;
+}
+
+.vc-stat-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.vc-stat-icon {
+    font-size: 1em;
+    line-height: 1;
+}
+
+.vc-typing-speed {
+    background: rgba(88, 101, 242, 0.15);
+    color: #5865f2;
+    font-weight: 600;
+}
+
+/* ==================== FORMAT INDICATORS ==================== */
+.vc-char-format-indicators {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.vc-format-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    font-size: 0.85em;
+    cursor: help;
+    transition: all 0.2s ease;
+}
+
+.vc-format-badge:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.vc-format-code {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+}
+
+.vc-format-markdown {
+    background: rgba(52, 152, 219, 0.15);
+    color: #3498db;
+}
+
+.vc-format-link {
+    background: rgba(155, 89, 182, 0.15);
+    color: #9b59b6;
+}
+
+.vc-format-emoji {
+    background: rgba(241, 196, 15, 0.15);
+    color: #f1c40f;
+}
+
+/* ==================== PROGRESS BAR ==================== */
+.vc-char-progress-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
+}
+
+.vc-char-progress-bar {
+    height: 100%;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* Progress bar styles */
+.vc-progress-thin .vc-char-progress-container {
+    height: 2px;
+}
+
+.vc-progress-medium .vc-char-progress-container {
+    height: 4px;
+}
+
+.vc-progress-thick .vc-char-progress-container {
+    height: 6px;
+}
+
+.vc-progress-gradient .vc-char-progress-bar {
+    background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c) !important;
+}
+
+.vc-progress-animated .vc-char-progress-bar {
+    background: linear-gradient(90deg, 
+        var(--brand-experiment),
+        var(--brand-experiment-560),
+        var(--brand-experiment)
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: progressShimmer 2s ease infinite;
+}
+
+@keyframes progressShimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* ==================== DETAILED TOOLTIP ==================== */
+.vc-char-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(12px);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    min-width: 180px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(5px);
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vc-char-counter-enhanced:hover .vc-char-tooltip {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.vc-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    color: var(--text-normal);
+}
+
+.vc-tooltip-row strong {
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.vc-tooltip-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 6px 0;
+}
+
+.vc-tooltip-indent {
+    padding-left: 12px;
+    font-size: 0.95em;
+}
+
+/* ==================== ALERT ANIMATIONS ==================== */
+.vc-char-alert-glow {
+    box-shadow: 0 0 20px rgba(242, 63, 67, 0.6);
+    animation: alertGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes alertGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(242, 63, 67, 0.4); }
+    50% { box-shadow: 0 0 30px rgba(242, 63, 67, 0.8); }
+}
+
+.vc-char-alert-pulse {
+    animation: alertPulse 1s ease-in-out infinite;
+}
+
+@keyframes alertPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.vc-char-alert-shake {
+    animation: alertShake 0.5s ease-in-out infinite;
+}
+
+@keyframes alertShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+}
+
+.vc-char-alert-flash {
+    animation: alertFlash 1s ease-in-out infinite;
+}
+
+@keyframes alertFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* ==================== COMPACT MODE ==================== */
+.vc-char-compact {
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+.vc-char-compact .vc-char-additional-stats {
+    margin-top: 2px;
+    gap: 4px;
+}
+
+.vc-char-compact .vc-stat-item {
+    padding: 1px 4px;
+    font-size: 0.85em;
+}
+
+/* ==================== FADE ON FOCUS ==================== */
+.vc-char-fade {
+    opacity: 0.3;
+}
+
+.vc-char-fade:hover {
+    opacity: 1;
+}
+
+/* ==================== NO ANIMATIONS ==================== */
+.vc-char-no-animations,
+.vc-char-no-animations * {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 768px) {
+    .vc-char-counter-enhanced {
+        font-size: 11px;
+        padding: 5px 8px;
+    }
+
+    .vc-char-tooltip {
+        min-width: 150px;
+        font-size: 0.85em;
+    }
+}
+
+/* ==================== THEME COMPATIBILITY ==================== */
+[data-theme="light"] .vc-char-counter-enhanced {
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .vc-char-counter-enhanced:hover {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .vc-char-tooltip {
+    background: rgba(255, 255, 255, 0.98);
+    color: #000;
+}
+
+/* ==================== ACCESSIBILITY ==================== */
+.vc-char-counter-enhanced:focus-visible {
+    outline: 2px solid var(--brand-experiment);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vc-char-counter-enhanced,
+    .vc-char-counter-enhanced * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
