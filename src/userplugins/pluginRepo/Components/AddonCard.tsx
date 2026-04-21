@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import "./addonCard.css";
+// import "./addonCard.css";
 
 import { classNameFactory } from "@api/Styles";
 import { Text } from "@webpack/common";

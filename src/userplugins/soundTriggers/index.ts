@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import managedStyle from "./components/styles.css?managed";
+
 import { definePluginSettings } from "@api/Settings";
 import { classNameFactory } from "@api/Styles";
 import { Devs } from "@utils/constants";
@@ -48,6 +50,7 @@ export default definePlugin({
     authors: [Devs.x2b],
     tags: ["Voice", "Fun"],
     enabledByDefault: false,
+    managedStyle,
     settings,
     start() {
         if (Array.isArray(settings.store.soundTriggers)) {

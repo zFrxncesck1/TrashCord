@@ -78,5 +78,3 @@ export function ImportModal(props: ModalProps) {
         </ModalRoot>
     );
 }
-
-

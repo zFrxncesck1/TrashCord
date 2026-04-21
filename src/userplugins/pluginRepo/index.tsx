@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import managedStyle from "./Components/addonCard.css?managed";
+
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
 
@@ -15,6 +17,7 @@ export default definePlugin({
     authors: [Devs.ScattrdBlade],
     tags: ["Developers", "Utility"],
     enabledByDefault: false,
+    managedStyle,
     required: false,
     patches: [
         {

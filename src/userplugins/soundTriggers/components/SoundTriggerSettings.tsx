@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./styles.css";
+// import "./styles.css";
 
 import { Flex } from "@components/Flex";
 import { copyToClipboard } from "@utils/clipboard";
@@ -80,5 +80,3 @@ export function SoundTriggerSettings() {
 
     );
 }
-
-
