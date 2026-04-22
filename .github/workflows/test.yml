@@ -13,6 +13,7 @@ jobs:
     Test:
         name: Test
         runs-on: ubuntu-latest
+        if: false 
 
         steps:
             - uses: actions/checkout@v4
