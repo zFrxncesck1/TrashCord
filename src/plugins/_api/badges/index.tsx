@@ -30,11 +30,11 @@ import { ContextMenuApi, Menu, Toasts, UserStore } from "@webpack/common";
 
 import Plugins, { PluginMeta } from "~plugins";
 
-import { TrashCordDonorModal, IllegalcordDonorModal, EquicordDonorModal, EquicordTranslatorModal, VencordDonorModal } from "./modals";
+import { TrashCordDonorModal, EquicordDonorModal, EquicordTranslatorModal, IllegalcordDonorModal, VencordDonorModal } from "./modals";
 
 const CONTRIBUTOR_BADGE = "https://cdn.discordapp.com/emojis/1092089799109775453.png?size=64";
 const EQUICORD_CONTRIBUTOR_BADGE = "https://equicord.org/assets/favicon.png";
-const USERPLUGIN_CONTRIBUTOR_BADGE = "https://equicord.org/assets/icons/misc/userplugin.png";
+const USERPLUGIN_CONTRIBUTOR_BADGE = "https://github.com/ImHisako/ImHisako/blob/main/Images/Illegalcord.png?raw=true";
 
 const ContributorBadge: ProfileBadge = {
     id: "vencord_contributor_badge",
@@ -99,7 +99,7 @@ async function loadAllBadges(noCache = false) {
     const equicordBadges = await loadBadges("https://badge.equicord.org/badges.json", noCache);
     const illegalcordBadges = await loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache);
     const TrashCordBadges = await loadBadges("https://raw.githubusercontent.com/zFrxncesck1/zFrxncesck1/refs/heads/main/host/files/badges.json", noCache);
-    
+
     DonorBadges = vencordBadges;
     EquicordDonorBadges = equicordBadges;
     IllegalcordDonorBadges = illegalcordBadges;
@@ -268,9 +268,10 @@ export default definePlugin({
             },
         } satisfies ProfileBadge));
     },
-    
+
     getIllegalcordDonorBadges(userId: string) {
-        return IllegalcordDonorBadges[userId]?.map(badge => ({
+        return IllegalcordDonorBadges[userId]?.map((badge, idx) => ({
+            id: `illegalcord_donor_badge_${idx}`,
             iconSrc: badge.badge,
             description: badge.tooltip,
             position: BadgePosition.START,
@@ -288,9 +289,10 @@ export default definePlugin({
             },
         } satisfies ProfileBadge));
     },
-    
+
     getTrashCordDonorBadges(userId: string) {
-        return TrashCordDonorBadges[userId]?.map(badge => ({
+        return TrashCordDonorBadges[userId]?.map((badge, idx) => ({
+            id: `trashcord_donor_badge_${idx}`,
             iconSrc: badge.badge,
             description: badge.tooltip,
             position: BadgePosition.START,
