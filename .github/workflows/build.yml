@@ -39,6 +39,14 @@ jobs:
             - name: Build
               run: pnpm buildStandalone
 
+            - name: Rename asar to desktop.asar
+              run: |
+                  if [ -f dist/equicord.asar ]; then
+                    mv dist/equicord.asar dist/desktop.asar
+                  elif [ -f dist/TrashCord.asar ]; then
+                    mv dist/TrashCord.asar dist/desktop.asar
+                  fi
+
             - name: Generate plugin lists
               run: |
                   pnpm generatePluginJson dist/plugins.json
