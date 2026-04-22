@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { ErrorBoundary } from "@components/index";
 import { Devs } from "@utils/constants";
@@ -142,6 +142,7 @@ export default definePlugin({
             id: 1309909311618814005n
         }
     ],
+    managedStyle,
     tags: ["Chat", "Friends"],
     enabledByDefault: false,
 

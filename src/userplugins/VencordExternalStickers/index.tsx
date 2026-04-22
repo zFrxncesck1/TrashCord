@@ -15,6 +15,7 @@ import { Button, Forms, Select, TextInput, useEffect, useState } from "@webpack/
 import { StickerPickerModal } from "./StickerPickerModal";
 import { classNames, pluginStyle } from "./styles";
 import { StickerPack, StickerRef } from "./types";
+import managedStyle from "./plugin.css?managed";
 
 const Native = VencordNative.pluginHelpers.ExternalStickers as PluginNative<
     typeof import("./native")
@@ -129,6 +130,7 @@ export default definePlugin({
     name: "ExternalStickers",
     description: "Use external stickers like DCCON",
     authors: [paring],
+    managedStyle,
     tags: ["Emotes", "Media"],
     enabledByDefault: false,
 
