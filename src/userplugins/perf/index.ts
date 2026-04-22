@@ -53,11 +53,12 @@ export default definePlugin({
             replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
         },
         {
-            find: "questEnrollmentBlockedUntil",
+
+            find: "--custom-app-panels-height",
             predicate: () => settings.store.disableQuests,
             replacement: {
-                match: /\d+==\w+\.\w+(?=\?function\(\)\{)/,
-                replace: "0==1",
+                match: /,\(0,\w+\.jsx\)\(\w+\.A,\{\}\)(?=,\(0,\w+\.jsx\)\(\w+\.A,\{\}\),\(0,\w+\.jsx\)\(\w+\.A,\{section:)/,
+                replace: "",
             },
         },
     ],
