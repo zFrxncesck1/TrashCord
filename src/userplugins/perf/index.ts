@@ -56,8 +56,8 @@ export default definePlugin({
             find: "questEnrollmentBlockedUntil",
             predicate: () => settings.store.disableQuests,
             replacement: {
-                match: /let U=\d+==\w+\.\w+\?function/,
-                replace: "let U=null;let _=function",
+                match: /\d+==\w+\.\w+(?=\?function\(\)\{)/,
+                replace: "0==1",
             },
         },
     ],
