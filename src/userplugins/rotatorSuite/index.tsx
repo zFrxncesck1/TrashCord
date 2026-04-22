@@ -11,6 +11,7 @@ import { Button, Forms, React, RestAPI, TextInput, Toasts, UserStore } from "@we
 const SK = "RS_v1";
 const AR_SK = "AvatarRotator_v6";
 const RS_CLOSE_SK = "RS_closeConfig_v1";
+const RS_CLOSE_LS = "rs_close_v1";
 const AR_DEFAULT_S = 300;
 const AR_WARN_S = 60;
 const AR_CIRC_R = 115;
@@ -354,7 +355,6 @@ let globalSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let lastGlobalNickApply = 0;
 const GLOBAL_NICK_MIN_MS = 429000;
 let pluginActive = false;
-let onCloseHandler: (() => void) | null = null;
 let voiceCheckInterval: ReturnType<typeof setInterval> | null = null;
 let lastVoiceGuildId: string | null = null;
 let cachedVoiceStateStore: any = null;
@@ -375,34 +375,81 @@ let closeClanId = "";
 let closeBannerEnabled = false;
 let closeBannerColor = "#111214";
 
-const saveCloseConfig = () => DataStore.set(RS_CLOSE_SK, { closeStatusEnabled, closeStatusText, closeStatusEmoji, closeStatusType, closeClanEnabled, closeClanId, closeBannerEnabled, closeBannerColor });
+const saveCloseConfig = () => {
+    const cfg = { closeStatusEnabled, closeStatusText, closeStatusEmoji, closeStatusType, closeClanEnabled, closeClanId, closeBannerEnabled, closeBannerColor };
+    DataStore.set(RS_CLOSE_SK, cfg);
+    try { localStorage.setItem(RS_CLOSE_LS, JSON.stringify(cfg)); } catch {}
+};
 
-async function applyCloseStatus(): Promise<void> {
-    if (!closeStatusEnabled) return;
-    const raw = closeStatusText.trim();
-    const emojiRaw = closeStatusEmoji.trim();
-    if (!raw && !emojiRaw) return;
-    const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
-    const entry: StatusEntry = {
-        ...parsed,
-        status: closeStatusType === "auto" ? undefined : closeStatusType,
-        clearAfter: undefined,
-    };
-    await applyStatus(entry);
+async function applyOnCloseAll(): Promise<void> {
+    if (closeStatusEnabled) {
+        const raw = closeStatusText.trim();
+        const emojiRaw = closeStatusEmoji.trim();
+        if (raw || emojiRaw) {
+            const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
+            void applyStatus({ ...parsed, status: closeStatusType === "auto" ? undefined : closeStatusType, clearAfter: undefined });
+        }
+    }
+    if (closeClanEnabled) {
+        const id = closeClanId.trim();
+        if (id && /^\d{17,20}$/.test(id)) void applyClan(id);
+    }
+    if (closeBannerEnabled) {
+        try { if (settings.store.bannerNitroCheck && arHasNitro()) {} else { const hex = closeBannerColor.trim(); if (bcrIsValidHex(hex)) void bcrApplyColor(hex); } } catch {}
+    }
 }
 
-async function applyCloseBanner(): Promise<void> {
-    if (!closeBannerEnabled) return;
-    const hex = closeBannerColor.trim();
-    if (!bcrIsValidHex(hex)) return;
-    await bcrApplyColor(hex);
+function loadCloseConfigSync(): void {
+    try {
+        const raw = localStorage.getItem(RS_CLOSE_LS);
+        if (!raw) return;
+        const c = JSON.parse(raw);
+        closeStatusEnabled = c.closeStatusEnabled  ?? false;
+        closeStatusText    = c.closeStatusText     ?? "";
+        closeStatusEmoji   = c.closeStatusEmoji    ?? "";
+        closeStatusType    = c.closeStatusType     ?? "auto";
+        closeClanEnabled   = c.closeClanEnabled    ?? false;
+        closeClanId        = c.closeClanId         ?? "";
+        closeBannerEnabled = c.closeBannerEnabled  ?? false;
+        closeBannerColor   = c.closeBannerColor    ?? "#111214";
+    } catch {}
 }
 
-async function applyCloseClan(): Promise<void> {
-    if (!closeClanEnabled) return;
-    const id = closeClanId.trim();
-    if (!id || !/^\d{17,20}$/.test(id)) return;
-    await applyClan(id);
+function fireCloseKeepalive(): void {
+    const token = getToken();
+    if (!token) return;
+    const baseHdrs = { "authorization": token, "content-type": "application/json", "x-discord-locale": "en-US", "x-discord-timezone": "UTC" };
+    if (closeStatusEnabled) {
+        const raw = closeStatusText.trim(); const emojiRaw = closeStatusEmoji.trim();
+        if (raw || emojiRaw) {
+            const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
+            fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: baseHdrs,
+                body: JSON.stringify({ custom_status: { text: parsed.text || null, emoji_name: parsed.emojiName ?? null, emoji_id: parsed.emojiId ?? null, expires_at: null } }) });
+            if (closeStatusType && closeStatusType !== "auto")
+                fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: baseHdrs, body: JSON.stringify({ status: closeStatusType }) });
+        }
+    }
+    if (closeClanEnabled) {
+        const id = closeClanId.trim();
+        if (id && /^\d{17,20}$/.test(id))
+            fetch("https://discord.com/api/v9/users/@me/clan", { method: "PUT", keepalive: true, headers: baseHdrs, body: JSON.stringify({ identity_enabled: true, identity_guild_id: id }) });
+    }
+    if (closeBannerEnabled) {
+        try { if (settings.store.bannerNitroCheck && arHasNitro()) {} else {
+            const hex = closeBannerColor.trim();
+            if (bcrIsValidHex(hex))
+                fetch("https://discord.com/api/v9/users/@me", { method: "PATCH", keepalive: true, headers: baseHdrs, body: JSON.stringify({ banner_color: hex }) });
+        } } catch {}
+    }
+}
+
+if (!(window as any)._rsCloseReg) {
+    window.addEventListener("beforeunload", () => {
+        loadCloseConfigSync();
+        void applyOnCloseAll();
+        fireCloseKeepalive();
+    });
+    (window as any)._rsCloseReg = true;
 }
 
 const saveData = () => DataStore.set(SK, {
@@ -985,6 +1032,7 @@ function formatStopDuration(ms: number): string {
 function doGlobalStop(durationMs: number | null) {
     isManualStop = true;
     stopAllRotators();
+    setTimeout(() => void applyOnCloseAll(), 600);
     if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
     if (durationMs !== null && durationMs > 0) {
         globalStopEndTime = Date.now() + durationMs;
@@ -1025,6 +1073,7 @@ function startInvisibleWatcher() {
         if (nowInvis && !wasInvisible) {
             wasInvisible = true;
             stopAllRotators();
+            setTimeout(() => void applyOnCloseAll(), 600);
             Toasts.show({ message: "Invisible detected - Rotators paused", type: Toasts.Type.MESSAGE, id: Toasts.genId() });
         } else if (!nowInvis && wasInvisible) {
             wasInvisible = false;
@@ -1050,8 +1099,6 @@ function startNitroWatcher() {
                 bcrWasStopped = true;
                 bcrStopRotator();
                 (settings.store as any).bannerEnabled = false;
-                closeBannerEnabled = false;
-                void saveCloseConfig();
                 arToast("Nitro detected - ColorBanner paused. Disable Nitro Check in Banner tab to override.", Toasts.Type.FAILURE);
             }
         } else {
@@ -5014,6 +5061,7 @@ export default definePlugin({
         closeClanId         = closeStored.closeClanId         ?? "";
         closeBannerEnabled  = closeStored.closeBannerEnabled  ?? false;
         closeBannerColor    = closeStored.closeBannerColor    ?? "#111214";
+        try { localStorage.setItem(RS_CLOSE_LS, JSON.stringify({ closeStatusEnabled, closeStatusText, closeStatusEmoji, closeStatusType, closeClanEnabled, closeClanId, closeBannerEnabled, closeBannerColor })); } catch {}
 
         Vencord.Api.UserArea.addUserAreaButton("rotator-suite", () => <RSUserAreaButton />);
 
@@ -5021,11 +5069,6 @@ export default definePlugin({
             startAllRotators();
         }
 
-        onCloseHandler = () => { void applyCloseStatus(); void applyCloseClan(); void applyCloseBanner(); };
-        if (!window._rsCloseHandlerRegistered) {
-            window.addEventListener("beforeunload", () => { if (onCloseHandler) onCloseHandler(); });
-            (window as any)._rsCloseHandlerRegistered = true;
-        }
         if (settings.store.stopOnInvisible) startInvisibleWatcher();
         if (settings.store.bannerNitroCheck) startNitroWatcher();
         if (settings.store.avatarEnabled && settings.store.avatarNitroCheck) startAvatarNitroWatcher();
