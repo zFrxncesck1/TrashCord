@@ -46,7 +46,7 @@ export default definePlugin({
     description: "Configure auto text correction, completion, and capitalization",
     settings,
     authors: [Devs.x2b],
-    tags: ["Voice", "Utility"],
+    tags: ["Chat", "Utility"],
     enabledByDefault: false,
     patches: [
         {
