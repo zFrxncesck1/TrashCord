@@ -53,11 +53,11 @@ export default definePlugin({
             replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
         },
         {
-            find: "QUEST_BAR_V2",
+            find: "questEnrollmentBlockedUntil",
             predicate: () => settings.store.disableQuests,
             replacement: {
-                match: /return\(0,\w+\.jsxs?\)\("div",\{className:\w+\.Z0/,
-                replace: "return null",
+                match: /let U=\d+==\w+\.\w+\?function/,
+                replace: "let U=null;let _=function",
             },
         },
     ],
