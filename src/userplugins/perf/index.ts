@@ -14,12 +14,6 @@ const settings = definePluginSettings({
         default: true,
         restartNeeded: true,
     },
-    disableSpriteCanvas: {
-        type: OptionType.BOOLEAN,
-        description: "Removes the hidden SpriteCanvas element - frees GPU memory and reduces renderer workload.",
-        default: true,
-        restartNeeded: true,
-    },
     optimizeDispatch: {
         type: OptionType.BOOLEAN,
         description: "Optimizes the READY event dispatcher - skips unnecessary operations on startup and reconnect.",
@@ -54,23 +48,17 @@ export default definePlugin({
             ],
         },
         {
-            find: "\"SpriteCanvas-module_spriteCanvasHidden",
-            predicate: () => settings.store.disableSpriteCanvas,
-            replacement: { match: /,\w\.createElement\("canvas",{.+?\)}\)/, replace: "" },
-        },
-        {
             find: "getDispatchHandler needs to be passed in first!",
             predicate: () => settings.store.optimizeDispatch,
             replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
         },
         {
-            find: "questProgressWrapper",
+            find: "QUEST_BAR_V2",
             predicate: () => settings.store.disableQuests,
             replacement: {
-                match: /function \w+\(\w+\)\{(?=(?:(?!\bfunction\b).){0,800}questProgressWrapper)/s,
-                replace: "function _(){return null;",
+                match: /return\(0,\w+\.jsxs?\)\("div",\{className:\w+\.Z0/,
+                replace: "return null",
             },
-            optional: true,
         },
     ],
 });
