@@ -54,10 +54,8 @@ jobs:
                   cp browser/browser.* release
                   cp Equicord.user.{js,js.LEGAL.txt} release
 
-                  # copy the plugin data jsons, the extension zips and the desktop/equibop asars
                   cp *.{json,zip,asar} release
 
-                  # legacy un-asared files
                   cp desktop/* release
                   for file in equibop/*; do
                     filename=$(basename "$file")
@@ -68,9 +66,13 @@ jobs:
                   rm release/package.json
                   rm release/*.map
 
-            - name: Upload Equicord Stable
+            - name: Upload to latest release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  gh release view latest || gh release create latest --title "Latest" --notes "This will always be the latest release" --latest
+                  git push origin --delete latest || true
+                  gh release delete latest --yes || true
+                  gh release create latest --title "Latest" --notes "Latest development build" --latest
                   gh release upload latest --clobber dist/release/*
 
             - name: Upload Plugin JSONs to Equibored repo
