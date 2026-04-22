@@ -28,7 +28,7 @@ const settings = definePluginSettings({
     },
     disableQuests: {
         type: OptionType.BOOLEAN,
-        description: "Removes the Quest component entirely - skips rendering the quest panel, saving CPU and RAM.",
+        description: "Removes the Quest bar above the user panel - skips rendering entirely, saving CPU and RAM.",
         default: true,
         restartNeeded: true,
     },
@@ -64,9 +64,13 @@ export default definePlugin({
             replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
         },
         {
-            find: ".questProgressWrapper",
+            find: "questProgressWrapper",
             predicate: () => settings.store.disableQuests,
-            replacement: { match: /return\(0,\w+\.jsxs?\)\((\w+\.QuestComponent)/, replace: "return null" },
+            replacement: {
+                match: /function \w+\(\w+\)\{(?=(?:(?!\bfunction\b).){0,800}questProgressWrapper)/s,
+                replace: "function _(){return null;",
+            },
+            optional: true,
         },
     ],
 });
