@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style.css";
+import managedStyle from "./style.css?managed";
 
 import { Devs } from "@utils/constants";
 
@@ -81,6 +81,7 @@ export default definePlugin({
     ],
 
     authors: [Devs.x2b],
+    managedStyle,
     tags: ["Appearance", "Utility"],
     enabledByDefault: false,
     start(){

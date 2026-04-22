@@ -23,6 +23,7 @@ import {
 import { settings } from "./settings";
 import type { ManagedUpload } from "./types";
 import { debug, getOriginalFileSize } from "./utils";
+import managedStyle from "./styles.css?managed";
 
 let preSendListener: MessageSendListener | undefined;
 
@@ -30,6 +31,7 @@ export default definePlugin({
     name: "MediaCompressor",
     description: "Easily compress large video files directly in Discord, bypassing upload limits before sending.",
     authors: [{ name: "StraiF", id: 314034398280286208n }],
+    managedStyle,
     tags: ["Media", "Utility"],
     enabledByDefault: false,
     settings,
