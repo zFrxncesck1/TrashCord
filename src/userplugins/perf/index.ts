@@ -4,39 +4,69 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import definePlugin from "@utils/types";
+import { definePluginSettings } from "@api/Settings";
+import definePlugin, { OptionType } from "@utils/types";
+
+const settings = definePluginSettings({
+    disableNowPlaying: {
+        type: OptionType.BOOLEAN,
+        description: "Disables NowPlayingStore - stops game tracking and clears the detected games list, reducing background CPU usage.",
+        default: true,
+        restartNeeded: true,
+    },
+    disableSpriteCanvas: {
+        type: OptionType.BOOLEAN,
+        description: "Removes the hidden SpriteCanvas element - frees GPU memory and reduces renderer workload.",
+        default: true,
+        restartNeeded: true,
+    },
+    optimizeDispatch: {
+        type: OptionType.BOOLEAN,
+        description: "Optimizes the READY event dispatcher - skips unnecessary operations on startup and reconnect.",
+        default: true,
+        restartNeeded: true,
+    },
+    disableQuests: {
+        type: OptionType.BOOLEAN,
+        description: "Removes the Quest component entirely - skips rendering the quest panel, saving CPU and RAM.",
+        default: true,
+        restartNeeded: true,
+    },
+});
 
 export default definePlugin({
     name: "perf",
     description: "Collection of small performance improvements",
     authors: [
-        {
-            id: 579731384868798464n,
-            name: "void",
-        },
+        { id: 579731384868798464n, name: "void" },
+        { id: 456195985404592149n, name: "zFrxncesck1" },
     ],
     tags: ["Developers", "Utility"],
     enabledByDefault: false,
-    patches: [{
-        find: "=\"NowPlayingStore\"",
-        replacement: [{
-            match: /get games\(\)\{return \w+?\}/,
-            replace: "get games(){return []}",
-        }, {
-            match: /(\.gameId;return null!=\w\[\w\]&&\().+?,(.+?,)\w={\.\.\.\w\},/,
-            replace: (_, prev1, prev2) => prev1 + prev2,
-        }]
-    }, {
-        find: "\"SpriteCanvas-module_spriteCanvasHidden",
-        replacement: {
-            match: /,\w\.createElement\("canvas",{.+?\)}\)/,
-            replace: "",
-        }
-    }, {
-        find: "getDispatchHandler needs to be passed in first!",
-        replacement: {
-            match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/,
-            replace: (_, pre, mid) => pre + mid + "}",
-        }
-    }]
+    settings,
+    patches: [
+        {
+            find: "=\"NowPlayingStore\"",
+            predicate: () => settings.store.disableNowPlaying,
+            replacement: [
+                { match: /get games\(\)\{return \w+?\}/, replace: "get games(){return []}" },
+                { match: /(\.gameId;return null!=\w\[\w\]&&\().+?,(.+?,)\w={\.\.\.\w\},/, replace: (_, a, b) => a + b },
+            ],
+        },
+        {
+            find: "\"SpriteCanvas-module_spriteCanvasHidden",
+            predicate: () => settings.store.disableSpriteCanvas,
+            replacement: { match: /,\w\.createElement\("canvas",{.+?\)}\)/, replace: "" },
+        },
+        {
+            find: "getDispatchHandler needs to be passed in first!",
+            predicate: () => settings.store.optimizeDispatch,
+            replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
+        },
+        {
+            find: ".questProgressWrapper",
+            predicate: () => settings.store.disableQuests,
+            replacement: { match: /return\(0,\w+\.jsxs?\)\((\w+\.QuestComponent)/, replace: "return null" },
+        },
+    ],
 });
