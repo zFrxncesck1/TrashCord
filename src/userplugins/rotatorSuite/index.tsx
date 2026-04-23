@@ -211,14 +211,18 @@ async function bcrPickNextColor(): Promise<string> {
     return bcrRandomHex();
 }
 async function bcrApplyColor(hex: string): Promise<void> {
-    try {
-        await RestAPI.patch({ url: "/users/@me", body: { banner_color: hex } });
-        bcrCurrentColor = hex; bcrOnColorApplied?.(hex);
-        if (settings.store.bannerShowToast) Toasts.show({ message: `Banner → ${hex}`, type: Toasts.Type.SUCCESS, id: Toasts.genId() });
-        await bcrSaveData();
-    } catch (e: any) {
-        if (settings.store.bannerShowToast) Toasts.show({ message: `Banner failed: ${e?.body?.message ?? "Unknown"}`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
-    }
+    const p = (async () => {
+        try {
+            await RestAPI.patch({ url: "/users/@me", body: { banner_color: hex } });
+            bcrCurrentColor = hex; bcrOnColorApplied?.(hex);
+            if (settings.store.bannerShowToast) Toasts.show({ message: `Banner → ${hex}`, type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+            await bcrSaveData();
+        } catch (e: any) {
+            if (settings.store.bannerShowToast) Toasts.show({ message: `Banner failed: ${e?.body?.message ?? "Unknown"}`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
+        }
+    })();
+    bcrApplyPromise = p;
+    await p;
 }
 async function bcrRotateNext(): Promise<void> { if (!pluginActive || isManualStop || wasInvisible) return; await bcrApplyColor(await bcrPickNextColor()); bcrSchedule(); }
 function bcrSchedule() { if (bcrRotatorTimer) clearTimeout(bcrRotatorTimer); if (!pluginActive || isManualStop || wasInvisible) return; bcrRotatorTimer = setTimeout(bcrRotateNext, Math.max(1, settings.store.bannerIntervalSeconds ?? BCR_DEFAULT_S) * 1000); }
@@ -348,6 +352,8 @@ const nickTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const guildPronounsTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let clanTimer: ReturnType<typeof setTimeout> | null = null;
+let clanAbortCtrl: AbortController | null = null;
+let bcrApplyPromise: Promise<void> = Promise.resolve();
 let bioTimer: ReturnType<typeof setTimeout> | null = null;
 let pronounsTimer: ReturnType<typeof setTimeout> | null = null;
 let globalNickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -383,8 +389,7 @@ const saveCloseConfig = () => {
 
 async function applyOnCloseAll(): Promise<void> {
     if (closeStatusEnabled) {
-        const raw = closeStatusText.trim();
-        const emojiRaw = closeStatusEmoji.trim();
+        const raw = closeStatusText.trim(); const emojiRaw = closeStatusEmoji.trim();
         if (raw || emojiRaw) {
             const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
             void applyStatus({ ...parsed, status: closeStatusType === "auto" ? undefined : closeStatusType, clearAfter: undefined });
@@ -395,7 +400,13 @@ async function applyOnCloseAll(): Promise<void> {
         if (id && /^\d{17,20}$/.test(id)) void applyClan(id);
     }
     if (closeBannerEnabled) {
-        try { if (settings.store.bannerNitroCheck && arHasNitro()) {} else { const hex = closeBannerColor.trim(); if (bcrIsValidHex(hex)) void bcrApplyColor(hex); } } catch {}
+        try {
+            if (settings.store.bannerNitroCheck && arHasNitro()) {}
+            else {
+                const hex = closeBannerColor.trim();
+                if (bcrIsValidHex(hex)) { await bcrApplyPromise.catch(() => {}); void bcrApplyColor(hex); }
+            }
+        } catch {}
     }
 }
 
@@ -416,40 +427,109 @@ function loadCloseConfigSync(): void {
 }
 
 function fireCloseKeepalive(): void {
-    const token = getToken();
-    if (!token) return;
-    const baseHdrs = { "authorization": token, "content-type": "application/json", "x-discord-locale": "en-US", "x-discord-timezone": "UTC" };
+    const token = getToken(); if (!token) return;
+    const hdrs = { "authorization": token, "content-type": "application/json", "x-discord-locale": "en-US", "x-discord-timezone": "UTC" };
     if (closeStatusEnabled) {
         const raw = closeStatusText.trim(); const emojiRaw = closeStatusEmoji.trim();
         if (raw || emojiRaw) {
             const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
-            fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: baseHdrs,
+            fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: hdrs,
                 body: JSON.stringify({ custom_status: { text: parsed.text || null, emoji_name: parsed.emojiName ?? null, emoji_id: parsed.emojiId ?? null, expires_at: null } }) });
             if (closeStatusType && closeStatusType !== "auto")
-                fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: baseHdrs, body: JSON.stringify({ status: closeStatusType }) });
+                fetch("https://discord.com/api/v9/users/@me/settings", { method: "PATCH", keepalive: true, headers: hdrs, body: JSON.stringify({ status: closeStatusType }) });
         }
     }
     if (closeClanEnabled) {
         const id = closeClanId.trim();
         if (id && /^\d{17,20}$/.test(id))
-            fetch("https://discord.com/api/v9/users/@me/clan", { method: "PUT", keepalive: true, headers: baseHdrs, body: JSON.stringify({ identity_enabled: true, identity_guild_id: id }) });
+            fetch("https://discord.com/api/v9/users/@me/clan", { method: "PUT", keepalive: true, headers: hdrs, body: JSON.stringify({ identity_enabled: true, identity_guild_id: id }) });
     }
     if (closeBannerEnabled) {
-        try { if (settings.store.bannerNitroCheck && arHasNitro()) {} else {
-            const hex = closeBannerColor.trim();
-            if (bcrIsValidHex(hex))
-                fetch("https://discord.com/api/v9/users/@me", { method: "PATCH", keepalive: true, headers: baseHdrs, body: JSON.stringify({ banner_color: hex }) });
-        } } catch {}
+        try {
+            if (settings.store.bannerNitroCheck && arHasNitro()) {}
+            else { const hex = closeBannerColor.trim(); if (bcrIsValidHex(hex)) fetch("https://discord.com/api/v9/users/@me", { method: "PATCH", keepalive: true, headers: hdrs, body: JSON.stringify({ banner_color: hex }) }); }
+        } catch {}
     }
 }
 
 if (!(window as any)._rsCloseReg) {
-    window.addEventListener("beforeunload", () => {
-        loadCloseConfigSync();
-        void applyOnCloseAll();
-        fireCloseKeepalive();
-    });
+    window.addEventListener("beforeunload", () => { loadCloseConfigSync(); void applyOnCloseAll(); fireCloseKeepalive(); });
     (window as any)._rsCloseReg = true;
+}
+
+async function applyCloseStatus(): Promise<void> {
+    if (!closeStatusEnabled) return;
+    const raw = closeStatusText.trim();
+    const emojiRaw = closeStatusEmoji.trim();
+    if (!raw && !emojiRaw) return;
+    const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
+    const entry: StatusEntry = {
+        ...parsed,
+        status: closeStatusType === "auto" ? undefined : closeStatusType,
+        clearAfter: undefined,
+    };
+    await applyStatus(entry);
+}
+
+async function applyCloseBanner(): Promise<void> {
+    if (!closeBannerEnabled) return;
+    const hex = closeBannerColor.trim();
+    if (!bcrIsValidHex(hex)) return;
+    await bcrApplyColor(hex);
+}
+
+async function applyCloseClan(): Promise<void> {
+    if (!closeClanEnabled) return;
+    const id = closeClanId.trim();
+    if (!id || !/^\d{17,20}$/.test(id)) return;
+    await applyClan(id);
+}
+
+function fireCloseStatus(): void {
+    if (!closeStatusEnabled) return;
+    const raw = closeStatusText.trim();
+    const emojiRaw = closeStatusEmoji.trim();
+    if (!raw && !emojiRaw) return;
+    const parsed = parseDiscordEmoji(emojiRaw + (raw ? " " + raw : ""));
+    const token = getToken();
+    if (!token) return;
+    fetch("https://discord.com/api/v9/users/@me/settings", {
+        method: "PATCH", keepalive: true,
+        headers: { "authorization": token, "content-type": "application/json" },
+        body: JSON.stringify({ custom_status: { text: parsed.text || null, emoji_name: parsed.emojiName ?? null, emoji_id: parsed.emojiId ?? null, expires_at: null } })
+    });
+    if (closeStatusType && closeStatusType !== "auto")
+        fetch("https://discord.com/api/v9/users/@me/settings", {
+            method: "PATCH", keepalive: true,
+            headers: { "authorization": token, "content-type": "application/json" },
+            body: JSON.stringify({ status: closeStatusType })
+        });
+}
+
+function fireCloseClan(): void {
+    if (!closeClanEnabled) return;
+    const id = closeClanId.trim();
+    if (!id || !/^\d{17,20}$/.test(id)) return;
+    const token = getToken();
+    if (!token) return;
+    fetch("https://discord.com/api/v9/users/@me/clan", {
+        method: "PUT", keepalive: true,
+        headers: { "authorization": token, "content-type": "application/json", "x-discord-locale": "en-US", "x-discord-timezone": "UTC" },
+        body: JSON.stringify({ identity_enabled: true, identity_guild_id: id })
+    });
+}
+
+function fireCloseBanner(): void {
+    if (!closeBannerEnabled) return;
+    const hex = closeBannerColor.trim();
+    if (!bcrIsValidHex(hex)) return;
+    const token = getToken();
+    if (!token) return;
+    fetch("https://discord.com/api/v9/users/@me", {
+        method: "PATCH", keepalive: true,
+        headers: { "authorization": token, "content-type": "application/json" },
+        body: JSON.stringify({ banner_color: hex })
+    });
 }
 
 const saveData = () => DataStore.set(SK, {
@@ -758,26 +838,22 @@ function getActiveClanIds(): string[] {
     return cachedClanGuilds;
 }
 
-async function applyClan(id: string, retries = 4): Promise<void> {
+async function applyClan(id: string, retries = 4, signal?: AbortSignal): Promise<void> {
     const token = getToken(); if (!token) return;
     for (let attempt = 0; attempt < retries; attempt++) {
+        if (signal?.aborted) return;
         try {
             const res = await fetch("https://discord.com/api/v9/users/@me/clan", {
                 method: "PUT",
-                headers: {
-                    "authorization": token,
-                    "content-type": "application/json",
-                    "x-discord-locale": "en-US",
-                    "x-discord-timezone": "UTC",
-                },
-                body: JSON.stringify({ identity_enabled: true, identity_guild_id: id })
+                headers: { "authorization": token, "content-type": "application/json", "x-discord-locale": "en-US", "x-discord-timezone": "UTC" },
+                body: JSON.stringify({ identity_enabled: true, identity_guild_id: id }),
+                signal,
             });
-            if (res.ok) {
-                if (settings.store.enableLogs) console.log(`[RS/Clan] -> ${id} attempt=${attempt + 1}`);
-                return;
-            }
+            if (signal?.aborted) return;
+            if (res.ok) { if (settings.store.enableLogs) console.log(`[RS/Clan] -> ${id} attempt=${attempt + 1}`); return; }
             if (res.status === 300) {
                 const json = await res.json().catch(() => ({}));
+                if (signal?.aborted) return;
                 const ra = Math.max((json?.retry_after ?? 3), 1);
                 await new Promise(r => setTimeout(r, ra * 1000 + 300));
                 continue;
@@ -785,6 +861,7 @@ async function applyClan(id: string, retries = 4): Promise<void> {
             if (settings.store.enableLogs) console.error(`[RS/Clan] HTTP ${res.status} attempt=${attempt + 1}`);
             if (attempt < retries - 1) await new Promise(r => setTimeout(r, 1500));
         } catch (e) {
+            if (signal?.aborted) return;
             if (settings.store.enableLogs) console.error(`[RS/Clan] attempt=${attempt + 1} err:`, e);
             if (attempt < retries - 1) await new Promise(r => setTimeout(r, 1500));
         }
@@ -792,23 +869,30 @@ async function applyClan(id: string, retries = 4): Promise<void> {
 }
 
 function tickClan() {
-    if (!settings.store.clanEnabled) return;
+    if (!settings.store.clanEnabled || !pluginActive || isManualStop || wasInvisible) return;
     const list = getActiveClanIds(); if (!list.length) return;
     const { val: id, next, lastPicked } = pickItem(list, clanSeqIdx, settings.store.clanRandomize, clanLastVal);
     clanSeqIdx = next; clanLastVal = lastPicked;
-    if (id) applyClan(id);
+    if (id) {
+        if (clanAbortCtrl) clanAbortCtrl.abort();
+        clanAbortCtrl = new AbortController();
+        applyClan(id, 4, clanAbortCtrl.signal);
+    }
 }
 
 function scheduleClanLoop() {
     if (clanTimer !== null) return;
     clanTimer = setTimeout(() => {
         clanTimer = null;
-        if (!pluginActive) return;
+        if (!pluginActive || isManualStop || wasInvisible) return;
         tickClan(); saveData();
         if (settings.store.clanEnabled) scheduleClanLoop();
     }, getMs(settings.store.clanIntervalSeconds));
 }
-function stopClanTimer() { if (clanTimer) { clearTimeout(clanTimer); clanTimer = null; } }
+function stopClanTimer() {
+    if (clanTimer) { clearTimeout(clanTimer); clanTimer = null; }
+    if (clanAbortCtrl) { clanAbortCtrl.abort(); clanAbortCtrl = null; }
+}
 
 async function patchProfile(body: Record<string, string>) {
     try {
@@ -1032,7 +1116,7 @@ function formatStopDuration(ms: number): string {
 function doGlobalStop(durationMs: number | null) {
     isManualStop = true;
     stopAllRotators();
-    setTimeout(() => void applyOnCloseAll(), 600);
+    void applyOnCloseAll();
     if (globalStopTimer) { clearTimeout(globalStopTimer); globalStopTimer = null; }
     if (durationMs !== null && durationMs > 0) {
         globalStopEndTime = Date.now() + durationMs;
@@ -1073,7 +1157,7 @@ function startInvisibleWatcher() {
         if (nowInvis && !wasInvisible) {
             wasInvisible = true;
             stopAllRotators();
-            setTimeout(() => void applyOnCloseAll(), 600);
+            void applyOnCloseAll();
             Toasts.show({ message: "Invisible detected - Rotators paused", type: Toasts.Type.MESSAGE, id: Toasts.genId() });
         } else if (!nowInvis && wasInvisible) {
             wasInvisible = false;
