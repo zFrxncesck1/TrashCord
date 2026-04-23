@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import "./style/styles.css";
+import managedStyle from "./style/styles.css?managed";
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
@@ -500,7 +500,10 @@ export default definePlugin({
     name: "vAnalyzer",
     description: "Analyze message attachments, trace URLs, check certificates, avoid scams and more.",
     authors: [{ name: "nay-cat", id: 1159977353661919363n }],
+    tags: ["Privacy", "Utility", "Chat", "Security", "URL Scanner", "File Analyzer", "Scam Prevention"],
+    enabledByDefault: false,
     settings,
+    managedStyle,
 
     async start() {
         await initFilters();
