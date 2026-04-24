@@ -156,7 +156,7 @@ export default definePlugin({
             id: 456195985404592149n
         }
     ],
-    tags: ["Utility", "Chat"],
+    tags: ["Utility", "Fun", "Chat", "Nitro"],
     enabledByDefault: false,
     settings,
 
