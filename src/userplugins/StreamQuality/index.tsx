@@ -5,7 +5,7 @@
  */
 
 import { definePluginSettings } from "@api/Settings";
-import { TestcordDevs } from "@utils/constants";
+import { Devs } from "@utils/constants";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { MediaEngineStore, UserStore } from "@webpack/common";
@@ -474,7 +474,8 @@ export default definePlugin({
     name: "CustomStreamQuality",
     description: "Customize your stream quality beyond Discord's limits. Set custom FPS, resolution, bitrate, codec, keyframe interval, and HDR.",
     tags: ["Voice", "Utility"],
-    authors: [TestcordDevs.x2b],
+    enabledByDefault: false,
+    authors: [Devs.x2b],
     settings,
     patches: [
         {
