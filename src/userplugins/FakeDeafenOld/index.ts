@@ -33,7 +33,7 @@ export default definePlugin({
     name: "FakeDeafenOld",
     description: "Fake deafens you. (So you still hear things.)",
     authors: [{ name: "MisleadingName", id: 892072557988151347n }, { name: "Exotic", id: 287667540178501634n }],
-    tags: ["Voice", "Fun"],
+    tags: ["Voice", "Privacy", "Fun"],
     enabledByDefault: false,
 
     flux: {

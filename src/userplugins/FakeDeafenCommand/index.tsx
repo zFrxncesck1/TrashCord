@@ -32,7 +32,7 @@ export default definePlugin({
     name: "FakeDeafenCommand",
     description: "Appear deafened to others while still being able to hear them. Use /fd to toggle",
     authors: [Devs.Nobody],
-    tags: ["Voice", "Fun"],
+    tags: ["Voice", "Privacy", "Commands", "Fun"],
     enabledByDefault: false,
     
     patches: [
