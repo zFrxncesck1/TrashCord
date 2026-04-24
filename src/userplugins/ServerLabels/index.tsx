@@ -34,8 +34,8 @@ const settings = definePluginSettings({
     maxWidth: {
         type: OptionType.SLIDER,
         description: "Max width of server name labels (px)",
-        default: 150,
-        markers: [80, 100, 120, 150, 180, 200],
+        default: 160,
+        markers: [80, 100, 120, 150, 160, 180, 200],
         onChange: () => updateCSSVars(),
     },
 });
@@ -48,8 +48,18 @@ let observer: MutationObserver | null = null;
 let navBootstrapObserver: MutationObserver | null = null;
 let styleEl: HTMLStyleElement | null = null;
 let rafId: number | null = null;
+let guildsNav: HTMLElement | null = null;
 
 const activeLabels = new Set<HTMLElement>();
+// Secondary index: parentFolderId → labels, so syncFolderOpenState is an O(1) lookup
+// instead of a full scan of activeLabels on every folder expand/collapse.
+const labelsByFolder = new Map<string, Set<HTMLElement>>();
+
+function pruneLabel(el: HTMLElement) {
+    activeLabels.delete(el);
+    const fid = el.dataset.parentFolderId;
+    if (fid) labelsByFolder.get(fid)?.delete(el);
+}
 
 /** Reads settings and writes them into an injected <style> tag so Discord can't wipe them. */
 function updateCSSVars() {
@@ -59,6 +69,52 @@ function updateCSSVars() {
         --serverlabels-font-weight: ${settings.store.fontWeight};
         --serverlabels-max-width: ${settings.store.maxWidth}px;
     }`;
+    // Re-measure after layout settles — max-width changes affect overflow amounts.
+    requestAnimationFrame(remeasureAllMarquees);
+}
+
+/**
+ * Measures how far the inner text span overflows its pill container and stores
+ * the result as --marquee-offset. Adds vc-serverlabels-overflow when text is
+ * actually clipped so the fade mask and animation only apply when needed.
+ */
+function measureMarquee(label: HTMLElement) {
+    if (!label.isConnected) return;
+    const inner = label.querySelector("span") as HTMLElement | null;
+    if (!inner) return;
+    const style = getComputedStyle(label);
+    const hPad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const overflow = inner.scrollWidth - (label.clientWidth - hPad);
+    if (overflow > 2) {
+        label.style.setProperty("--marquee-offset", `-${overflow}px`);
+        label.classList.add("vc-serverlabels-overflow");
+    } else {
+        label.style.removeProperty("--marquee-offset");
+        label.classList.remove("vc-serverlabels-overflow");
+    }
+}
+
+function remeasureAllMarquees() {
+    // Read pass — collect all measurements before touching the DOM
+    const measurements: Array<[HTMLElement, number]> = [];
+    for (const el of activeLabels) {
+        if (!el.isConnected) continue;
+        const inner = el.querySelector("span") as HTMLElement | null;
+        if (!inner) continue;
+        const style = getComputedStyle(el);
+        const hPad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+        measurements.push([el, inner.scrollWidth - (el.clientWidth - hPad)]);
+    }
+    // Write pass — apply results without interleaving reads
+    for (const [el, overflow] of measurements) {
+        if (overflow > 2) {
+            el.style.setProperty("--marquee-offset", `-${overflow}px`);
+            el.classList.add("vc-serverlabels-overflow");
+        } else {
+            el.style.removeProperty("--marquee-offset");
+            el.classList.remove("vc-serverlabels-overflow");
+        }
+    }
 }
 
 function getFolderColor(guildId: string): string | null {
@@ -89,7 +145,7 @@ function isInFolder(guildId: string): boolean {
  */
 function labelAtPoint(x: number, y: number): HTMLElement | null {
     for (const el of activeLabels) {
-        if (!el.isConnected) { activeLabels.delete(el); continue; }
+        if (!el.isConnected) { pruneLabel(el); continue; }
         const r = el.getBoundingClientRect();
         if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
             return el;
@@ -129,9 +185,9 @@ function onDocumentMouseMove(e: MouseEvent) {
         rafId = null;
         const hovered = labelAtPoint(e.clientX, e.clientY);
         for (const el of activeLabels) {
-            if (el.dataset.guildId) el.classList.toggle(LABEL_HOVER_CLASS, el === hovered);
+            el.classList.toggle(LABEL_HOVER_CLASS, el === hovered);
         }
-        document.body.style.cursor = hovered ? "pointer" : "";
+        if (guildsNav) guildsNav.style.cursor = hovered ? "pointer" : "";
     });
 }
 
@@ -147,9 +203,7 @@ function injectFolderLabel(treeitem: Element) {
 
     const idStr = rawId.slice("guildsnav___".length);
     const idNum = Number(idStr);
-    // Folder IDs are plain integers (~10 digits); guild snowflakes are 18-19 digits.
-    // Reject anything that's not a finite positive integer, or looks like a guild snowflake.
-    if (!Number.isFinite(idNum) || idNum <= 0 || idStr.length > 15) return;
+    if (!Number.isFinite(idNum) || idNum <= 0) return;
 
     try {
         const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
@@ -164,8 +218,11 @@ function injectFolderLabel(treeitem: Element) {
 
         const label = document.createElement("span");
         label.className = LABEL_CLASS;
-        label.textContent = folder.folderName;
+        label.setAttribute("aria-label", folder.folderName);
         label.dataset.folderId = idStr;
+        const folderInner = document.createElement("span");
+        folderInner.textContent = folder.folderName;
+        label.appendChild(folderInner);
 
         if (folder.folderColor) {
             label.style.setProperty("--serverlabels-folder-color", `#${folder.folderColor.toString(16).padStart(6, "0")}`);
@@ -174,6 +231,7 @@ function injectFolderLabel(treeitem: Element) {
 
         treeitem.appendChild(label);
         activeLabels.add(label);
+        requestAnimationFrame(() => measureMarquee(label));
     } catch {
         return;
     }
@@ -214,10 +272,12 @@ function injectLabel(treeitem: Element) {
 
     const label = document.createElement("span");
     label.className = LABEL_CLASS;
-    label.textContent = guild.name;
     label.setAttribute("aria-label", guild.name);
     // Store the guild ID so the document-level click handler can navigate.
     label.dataset.guildId = guildId;
+    const inner = document.createElement("span");
+    inner.textContent = guild.name;
+    label.appendChild(inner);
 
     if (folderColor) {
         label.style.setProperty("--serverlabels-folder-color", folderColor);
@@ -226,6 +286,21 @@ function injectLabel(treeitem: Element) {
 
     if (isInFolder(guildId)) {
         label.dataset.inFolder = "true";
+        try {
+            const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
+            const parentFolder = folders.find(f => f.folderId != null && f.guildIds?.includes(guildId));
+            if (parentFolder?.folderId) {
+                const folderId = String(parentFolder.folderId);
+                label.dataset.parentFolderId = folderId;
+                if (!labelsByFolder.has(folderId)) labelsByFolder.set(folderId, new Set());
+                labelsByFolder.get(folderId)!.add(label);
+                // Initialize open state immediately based on current DOM
+                const folderTreeitem = document.querySelector(`[data-list-item-id="guildsnav___${folderId}"]`);
+                if (folderTreeitem?.getAttribute("aria-expanded") === "true") {
+                    label.classList.add("vc-serverlabels-folder-open");
+                }
+            }
+        } catch {}
     }
 
     // Append the label inside the icon span so it becomes the absolute positioning
@@ -235,6 +310,7 @@ function injectLabel(treeitem: Element) {
     // listeners registered in start() to avoid triggering Discord's tooltip.
     iconSpan.appendChild(label);
     activeLabels.add(label);
+    requestAnimationFrame(() => measureMarquee(label));
 }
 
 function applyAllLabels() {
@@ -247,15 +323,67 @@ function applyAllLabels() {
 function removeAllLabels() {
     activeLabels.forEach(el => el.remove());
     activeLabels.clear();
+    labelsByFolder.clear();
+}
+
+function refreshLabelColors() {
+    // Discord may replace the nav element on theme/settings changes — reconnect the observer if so.
+    const nav = document.querySelector('nav[class*="guilds"]');
+    if (nav && nav !== guildsNav) {
+        guildsNav = nav as HTMLElement;
+        observer?.disconnect();
+        observer?.observe(guildsNav, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded"] });
+        applyAllLabels();
+    } else if (nav) {
+        guildsNav = nav as HTMLElement;
+    }
+    try {
+        const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
+        for (const el of activeLabels) {
+            if (!el.isConnected) { pruneLabel(el); continue; }
+            let colorHex: string | null = null;
+            if (el.dataset.folderId) {
+                const idNum = Number(el.dataset.folderId);
+                const folder = folders.find(f => f.folderId === idNum);
+                const c = folder?.folderColor;
+                if (c) colorHex = `#${c.toString(16).padStart(6, "0")}`;
+            } else if (el.dataset.guildId) {
+                colorHex = getFolderColor(el.dataset.guildId);
+            }
+            if (colorHex) {
+                el.style.setProperty("--serverlabels-folder-color", colorHex);
+                el.dataset.hasColor = "true";
+            } else {
+                el.style.removeProperty("--serverlabels-folder-color");
+                delete el.dataset.hasColor;
+            }
+        }
+    } catch {}
+}
+
+/**
+ * Syncs the vc-serverlabels-folder-open class on all server labels belonging to
+ * the given folder treeitem, based on its current aria-expanded state.
+ */
+function syncFolderOpenState(treeitem: Element) {
+    const rawId = treeitem.getAttribute("data-list-item-id") ?? "";
+    if (!rawId.startsWith("guildsnav___")) return;
+    const folderId = rawId.slice("guildsnav___".length);
+    const isOpen = treeitem.getAttribute("aria-expanded") === "true";
+    const children = labelsByFolder.get(folderId);
+    if (!children) return;
+    for (const el of children) {
+        el.classList.toggle("vc-serverlabels-folder-open", isOpen);
+    }
 }
 
 export default definePlugin({
     name: "ServerLabels",
     description: "Displays server names next to their icons in the server list.",
     authors: [{ name: ".dave64", id: 140194457222905856n }],
+    managedStyle,
     tags: ["Servers", "Utility"],
     enabledByDefault: false,
-    managedStyle,
     settings,
     patches: [],
 
@@ -271,12 +399,20 @@ export default definePlugin({
         // Labels have pointer-events: none, so all interaction is handled here.
         document.addEventListener("click", onDocumentClick, true);
         document.addEventListener("mousemove", onDocumentMouseMove);
+        SortedGuildStore.addChangeListener(refreshLabelColors);
 
         // Watch for Discord re-rendering the guild list (e.g. new notifications,
         // server reorder, folder expand/collapse) and re-inject labels as needed.
         observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
+                if (mutation.type === "attributes" && mutation.attributeName === "aria-expanded") {
+                    syncFolderOpenState(mutation.target as Element);
+                    continue;
+                }
                 if (mutation.type !== "childList") continue;
+                for (const el of activeLabels) {
+                    if (!el.isConnected) pruneLabel(el);
+                }
                 for (const node of mutation.addedNodes) {
                     if (!(node instanceof Element)) continue;
                     if (node.matches(TREEITEM_SELECTOR)) {
@@ -293,27 +429,30 @@ export default definePlugin({
 
         const nav = document.querySelector('nav[class*="guilds"]');
         if (nav) {
-            observer.observe(nav, { childList: true, subtree: true });
+            guildsNav = nav as HTMLElement;
+            observer.observe(nav, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded"] });
         } else {
             // Guild sidebar not ready yet — watch body briefly, then switch to nav.
             observer.observe(document.body, { childList: true, subtree: true });
             navBootstrapObserver = new MutationObserver(() => {
                 const n = document.querySelector('nav[class*="guilds"]');
                 if (!n) return;
+                guildsNav = n as HTMLElement;
                 navBootstrapObserver!.disconnect();
                 navBootstrapObserver = null;
                 observer?.disconnect();
-                observer?.observe(n, { childList: true, subtree: true });
+                observer?.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded"] });
             });
-            navBootstrapObserver.observe(document.body, { childList: true });
+            navBootstrapObserver.observe(document.body, { childList: true, subtree: true });
         }
     },
 
     stop() {
         document.body.classList.remove("vc-serverlabels-active");
-        document.body.style.cursor = "";
+        if (guildsNav) { guildsNav.style.cursor = ""; guildsNav = null; }
         document.removeEventListener("click", onDocumentClick, true);
         document.removeEventListener("mousemove", onDocumentMouseMove);
+        SortedGuildStore.removeChangeListener(refreshLabelColors);
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         navBootstrapObserver?.disconnect();
         navBootstrapObserver = null;
