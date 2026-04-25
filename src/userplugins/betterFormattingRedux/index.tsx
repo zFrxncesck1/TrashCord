@@ -275,6 +275,7 @@ export default definePlugin({
     description: "Adds a button to enable different text formatting options in the input-bar.",
     tags: ["Chat", "Utility", "Appearance"],
     authors: [EquicordDevs.omaw],
+    enabledByDefault: false,
     managedStyle,
     dependencies: ["ChatInputButtonAPI"],
     start: () => {
