@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { definePluginSettings } from "@api/Settings";
 import { ApplicationCommandInputType, sendBotMessage } from "@api/Commands";
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
+import { Menu } from "@webpack/common";
 
 interface DomainInfo {
     domain: string;
@@ -33,6 +35,24 @@ interface IPInfo {
     zip?: string;
 }
 
+const OSINT_TOOLS = [
+    { id: "see-know", name: "See-Know", url: "https://see-know.eu/", description: "" },
+    { id: "epieos", name: "Epieos", url: "https://epieos.com/", description: "" },
+    { id: "osintx", name: "Osintx_", url: "https://www.osintx.io/", description: "" },    
+    { id: "socialeye", name: "SocialEye", url: "https://socialeye.net/", description: "" },
+    { id: "cloudsint", name: "Cloudsint", url: "https://cloudsint.net/", description: "" },    
+    { id: "proximity", name: "Proximity OSINT", url: "https://www.proximityosint.com/", description: "" },
+    { id: "deadeye", name: "DeadEye", url: "https://deadeye.cc/", description: "" },
+    { id: "indicia", name: "Indicia", url: "https://indicia.app/", description: "" },
+    { id: "tempemail", name: "Snapmail (Temp-Email)", url: "https://www.snapmail.in/", description: "" }
+];
+
+const OSINT_RESOURCES = [
+    { id: "pikaosint", name: "PikaOSINT", url: "https://pikaosint.pages.dev/", description: "OSINT tools collection" },
+    { id: "osintframework", name: "OSINT Framework", url: "https://osintframework.com/", description: "OSINT framework and tools" },
+    { id: "photo-osint", name: "Photo OSINT", url: "https://start.me/p/0PgzqO/photo-osint", description: "Photo investigation resources" }
+];
+
 const settings = definePluginSettings({
     enableLogging: {
         type: OptionType.BOOLEAN,
@@ -46,12 +66,15 @@ const settings = definePluginSettings({
             "/domain <domain> - Lookup a domain via RDAP\n" +
             "/iplookup <ipv4> - Lookup an IPv4 address\n" +
             "/myip - Show your public IP information\n" +
+            "/usersearch <username> - Generate a usersearch.org link for a username\n" +
             "\n" +
             "Example:\n" +
             "/domain google.com\n" +
             "/iplookup 1.1.1.1\n" +
-            "/myip",
-        default: "OSINTToolkit command list"
+            "/myip\n" +
+            "/usersearch johndoe\n" +
+            "\n" +
+            "Right-click on any message to access OSINT tools!",
     }
 });
 
@@ -79,6 +102,10 @@ function isValidIPv4(ip: string): boolean {
         const num = Number(octet);
         return Number.isInteger(num) && num >= 0 && num <= 255;
     });
+}
+
+function normalizeUsername(input: string): string {
+    return input.trim().replace(/^@+/, "");
 }
 
 async function getDomainInfo(domain: string): Promise<DomainInfo | null> {
@@ -259,13 +286,57 @@ function createIPMessage(info: IPInfo) {
     ].join("\n");
 }
 
+function openUrl(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+}
+
+const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { message }) => {
+    if (!message || !message.author) return;
+
+    const osintGroup = children.find((child: any) => child?.props?.id === "osint-tools");
+    if (osintGroup) return;
+
+    children.push(
+        <Menu.MenuGroup id="osint-tools">
+            <Menu.MenuItem id="osint-toolkit-main" label="OSINT Toolkit">
+                <Menu.MenuItem id="csint-tools" label="CSINT Tools">
+                    {OSINT_TOOLS.map(tool => (
+                        <Menu.MenuItem
+                            key={`csint-${tool.id}`}
+                            id={`csint-${tool.id}`}
+                            label={tool.name}
+                            hint={tool.description}
+                            action={() => openUrl(tool.url)}
+                        />
+                    ))}
+                </Menu.MenuItem>
+                <Menu.MenuItem id="osint-tools" label="OSINT Tools">
+                    {OSINT_RESOURCES.map(resource => (
+                        <Menu.MenuItem
+                            key={`osint-${resource.id}`}
+                            id={`osint-${resource.id}`}
+                            label={resource.name}
+                            hint={resource.description}
+                            action={() => openUrl(resource.url)}
+                        />
+                    ))}
+                </Menu.MenuItem>
+            </Menu.MenuItem>
+        </Menu.MenuGroup>
+    );
+};
+
 export default definePlugin({
     name: "OSINTToolkit",
-    description: "OSINT - Domain age lookup & IP information",
-    authors: [{ name: "Irritably", id: 928787166916640838n }],
+    description: "OSINT - Domain age lookup, IP information, and username search",
     tags: ["Developers", "Utility"],
     enabledByDefault: false,
+    authors: [{ name: "Irritably", id: 928787166916640838n }],
     settings,
+
+    contextMenus: {
+        "message": messageContextMenuPatch
+    },
 
     commands: [
         {
@@ -305,7 +376,9 @@ export default definePlugin({
 
                     sendBotMessage(channelId, { content: createDomainMessage(info) });
                 } catch {
-                    sendBotMessage(channelId, { content: `An unexpected error occurred while looking up **${domain}**` });
+                    sendBotMessage(channelId, {
+                        content: `An unexpected error occurred while looking up **${domain}**`
+                    });
                 }
             }
         },
@@ -334,7 +407,9 @@ export default definePlugin({
                 const ip = ipInput.trim();
 
                 if (!isValidIPv4(ip)) {
-                    sendBotMessage(channelId, { content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)" });
+                    sendBotMessage(channelId, {
+                        content: "Invalid IP address format! Please use IPv4 format (e.g., 8.8.8.8)"
+                    });
                     return;
                 }
 
@@ -352,7 +427,9 @@ export default definePlugin({
 
                     sendBotMessage(channelId, { content: createIPMessage(info) });
                 } catch {
-                    sendBotMessage(channelId, { content: `An unexpected error occurred while looking up **${ip}**` });
+                    sendBotMessage(channelId, {
+                        content: `An unexpected error occurred while looking up **${ip}**`
+                    });
                 }
             }
         },
@@ -361,7 +438,7 @@ export default definePlugin({
             description: "Show your public IP address and geolocation",
             inputType: ApplicationCommandInputType.BUILT_IN,
             predicate: () => true,
-            execute: async (args: any[], ctx: any) => {
+            execute: async (_args: any[], ctx: any) => {
                 const channelId = ctx.channel.id;
 
                 try {
@@ -376,8 +453,55 @@ export default definePlugin({
 
                     sendBotMessage(channelId, { content: createIPMessage(info) });
                 } catch {
-                    sendBotMessage(channelId, { content: "An unexpected error occurred while retrieving your IP." });
+                    sendBotMessage(channelId, {
+                        content: "An unexpected error occurred while retrieving your IP."
+                    });
                 }
+            }
+        },
+        {
+            name: "usersearch",
+            description: "Generate a usersearch.org link for a username",
+            inputType: ApplicationCommandInputType.BUILT_IN,
+            predicate: () => true,
+            options: [
+                {
+                    name: "username",
+                    description: "The username to search (e.g., johndoe)",
+                    type: 3,
+                    required: true
+                }
+            ],
+            execute: async (args: any[], ctx: any) => {
+                const channelId = ctx.channel.id;
+                const usernameInput = args[0]?.value as string;
+
+                if (!usernameInput) {
+                    sendBotMessage(channelId, { content: "Please provide a username!" });
+                    return;
+                }
+
+                const username = normalizeUsername(usernameInput);
+
+                if (!username) {
+                    sendBotMessage(channelId, { content: "Invalid username!" });
+                    return;
+                }
+
+                const searchUrl = `https://usersearch.org/results.php?type=standard&URL_username=${encodeURIComponent(username)}`;
+                const whatsMyNameUrl = `https://whatsmyname.app/?q=${encodeURIComponent(username)}`;
+
+                logDebug("Generating usersearch link for:", username);
+
+                sendBotMessage(channelId, {
+                    content: [
+                        "```txt",
+                        `[USER SEARCH] ${username}`,
+                        `Link UserSearch : ${searchUrl}`,
+                        `Link Whatsmyname : ${whatsMyNameUrl}`,
+                        "```"
+                    ].join("\n")
+                });
             }
         }
     ]
