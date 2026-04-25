@@ -14,12 +14,15 @@ const settings = definePluginSettings({
         default: true,
         restartNeeded: true,
     },
-    optimizeDispatch: {
-        type: OptionType.BOOLEAN,
-        description: "Optimizes the READY event dispatcher - skips unnecessary operations on startup and reconnect.",
-        default: true,
-        restartNeeded: true,
-    },
+    // DISABLED: optimizeDispatch patch strips parts of the READY event handler that other plugins
+    // rely on (e.g. plugins hooking into dispatcher internals). Re-enable only after verifying
+    // no conflicts with your installed plugins — it will likely cause crashes or silent failures.
+    // optimizeDispatch: {
+    //     type: OptionType.BOOLEAN,
+    //     description: "Optimizes the READY event dispatcher - skips unnecessary operations on startup and reconnect.",
+    //     default: true,
+    //     restartNeeded: true,
+    // },
     disableQuests: {
         type: OptionType.BOOLEAN,
         description: "Removes the Quest bar above the user panel - skips rendering entirely, saving CPU and RAM.",
@@ -47,11 +50,13 @@ export default definePlugin({
                 { match: /(\.gameId;return null!=\w\[\w\]&&\().+?,(.+?,)\w={\.\.\.\w\},/, replace: (_, a, b) => a + b },
             ],
         },
-        {
-            find: "getDispatchHandler needs to be passed in first!",
-            predicate: () => settings.store.optimizeDispatch,
-            replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
-        },
+        // DISABLED: this patch aggressively trims the READY handler and breaks plugins that
+        // hook into the dispatch pipeline or expect the full handler chain to be intact.
+        // {
+        //     find: "getDispatchHandler needs to be passed in first!",
+        //     predicate: () => settings.store.optimizeDispatch,
+        //     replacement: { match: /(\.flush\(\w,\w\),"READY"===\w\)\{).+?;(.+?\)),.+?\}/, replace: (_, a, b) => a + b + "}" },
+        // },
         {
 
             find: "--custom-app-panels-height",
