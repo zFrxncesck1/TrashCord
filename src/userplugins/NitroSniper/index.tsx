@@ -26,7 +26,7 @@ const settings = definePluginSettings({
     },
     notifyOnFail: {
         type: OptionType.BOOLEAN,
-        default: true,
+        default: false,
         description: "Show a notification when failing to redeem a nitro code."
     }
 });
@@ -88,7 +88,7 @@ function processQueue() {
 
 export default definePlugin({
     name: "NitroSniper",
-    description: "Automatically redeems Nitro gift links sent in chat",
+    description: "Automatically redeems Nitro gift links sent in chat. ⚠️ WARNING: excessive use may trigger Discord captchas. Use at your own risk.",
     authors: [
         { name: "neoarz", id: 1015372540937502851n },
         { name: "irritably", id: 928787166916640838n }

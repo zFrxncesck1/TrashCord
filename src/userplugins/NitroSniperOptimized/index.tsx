@@ -77,7 +77,13 @@ const settings = definePluginSettings({
         description: "Max ping before pause (ms)",
         default: 300,
         markers: [0, 25, 50, 75, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500],
-        stickToMarkers: false
+        stickToMarkers: false,
+        componentProps: {
+            onValueChange: (v: number) => {
+                settings.store.maxPing = Math.floor(v);
+            },
+            onValueRender: (v: number): string => `${Math.floor(v)}`
+        }
     }
 });
 
