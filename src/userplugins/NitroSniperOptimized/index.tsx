@@ -126,7 +126,7 @@ function notifySuccess(code: string, location: string) {
 
     if (settings.store.notifyNative) {
         showNotification({
-            title: "NitroSniper — Success!",
+            title: "NitroSniper - Success!",
             body: `Code: ${code.slice(0, 16)}...\n${location}`,
         });
     }
