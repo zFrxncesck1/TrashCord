@@ -16,7 +16,7 @@ export default definePlugin({
     description: "Prevents the camera from being mirrored on your screen",
     authors: [Devs.nyx],
     tags: ["Voice", "Utility"],
-    enabledByDefault: false,
+    enabledByDefault: true,
 
     start() {
         const style = document.createElement("style");
