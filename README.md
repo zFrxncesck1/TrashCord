@@ -85,7 +85,6 @@ Special thanks to:
 
 Discord is trademark of Discord Inc., and solely mentioned for the sake of descriptivity.
 Mentioning it does not imply any affiliation with or endorsement by Discord Inc.
-Vencord is not connected to Equicord and as such, all donation links go to Vendicated's donation link.
 
 <details>
 <summary>Using TrashCord violates Discord's terms of service</summary>
