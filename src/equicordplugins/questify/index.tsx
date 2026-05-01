@@ -1400,9 +1400,9 @@ export default definePlugin({
     patches: [
         {
             // Needed for GuildlessServerListItemComponent component in components.tsx
-            find: "=\"DOWNLOAD_APPS\";function",
+            find: '="DOWNLOAD_APPS";function',
             replacement: {
-                match: /(?<=function\(\i,\i,\i\){\i.\i\(\i,{)(?=.{0,25000}?ariaHidden:!0,asContainer:!\i,children:\i}\)}var \i=\i\(\d+\);let (\i)=\i.forwardRef\(function)/,
+                match: /(?=\i:\(\)=>\i.*?asContainer:!\i.{0,50};let (\i)=\i.forwardRef\(function)/,
                 replace: "GuildlessServerListItemComponent:()=>$1,"
             }
         },
@@ -1842,7 +1842,7 @@ export default definePlugin({
                 {
                     match: /(?<="primary",onClick:)(\i)/,
                     replace: "()=>{!$self.processQuestForAutoComplete(arguments[0].quest,true)&&$1()}"
-                }
+                },
             ]
         },
         {
