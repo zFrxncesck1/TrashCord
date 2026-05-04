@@ -62,7 +62,7 @@ export default definePlugin({
             find: "--custom-app-panels-height",
             predicate: () => settings.store.disableQuests,
             replacement: {
-                match: /,\(0,\w+\.jsx\)\(\w+\.A,\{\}\)(?=,\(0,\w+\.jsx\)\(\w+\.A,\{\}\),\(0,\w+\.jsx\)\(\w+\.A,\{section:)/,
+                match: /,\(0,\w+\.jsx\)\(\w+\.A,\{\}\)(?=,\(0,\w+\.jsx\)\(\w+(?:\.\w+)?,\{\}\),\(0,\w+\.jsx\)\(\w+\.A,\{section:)/,
                 replace: "",
             },
         },
