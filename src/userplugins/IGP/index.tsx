@@ -5,11 +5,13 @@
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
+import { ApplicationCommandInputType, ApplicationCommandOptionType, sendBotMessage } from "@api/Commands";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
+import { sendMessage } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, SelectedChannelStore, showToast, Toasts, UserStore } from "@webpack/common";
+import { ChannelStore, showToast, Toasts, UserStore } from "@webpack/common";
 
 import { buildDecryptModal } from "./decryptModal";
 import { buildModal } from "./modal";
@@ -20,7 +22,6 @@ const ChatBarIcon: ChatBarButtonFactory = ({ isMainChat, channel }) => {
     if (!channel || (channel.type !== 1 && channel.type !== 3)) {
         return null; // not a DM or Group DM → don't render
     }
-
 
     return (
         <ChatBarButton
@@ -63,43 +64,47 @@ function DecryptMessageIcon() {
 }
 
 function formatKey(key: string): string {
-    const start: string = key.match(/-----.*?-----/g)?.at(0)?.toString()!;
-    const end: string = key.match(/-----.*?-----/g)?.pop()?.toString()!;
+    const trimmed = key.trim();
+    const markers = trimmed.match(/-----.*?-----/g);
+    const start = markers?.at(0);
+    const end = markers?.at(-1);
 
-    return start + key.replace(start, "").replace(end, "").replaceAll(" ", "\n") + end;
+    if (!start || !end || trimmed.includes("\n")) return trimmed;
+
+    return `${start}\n${trimmed.replace(start, "").replace(end, "").trim().replace(/\s+/g, "\n")}\n${end}`;
 }
 
 function normalizeSingleLineKey(key: string): string {
     // Remove extra whitespace and normalize the key
-    let normalized = key.trim();
-    
+    const normalized = key.trim();
+
     // If the key appears to be in single-line format, try to reformat it
     if (!normalized.includes("\n") && normalized.includes("-----BEGIN PGP") && normalized.includes("-----END PGP")) {
         // Extract the header
         const headerMatch = normalized.match(/(-----BEGIN PGP [^-----]+-----)/);
         const header = headerMatch ? headerMatch[1] : "";
-        
+
         // Extract the footer
         const footerMatch = normalized.match(/(-----END PGP [^-----]+-----)/);
         const footer = footerMatch ? footerMatch[1] : "";
-        
+
         // Extract the content between header and footer
         let content = normalized;
         if (header) content = content.replace(header, "");
         if (footer) content = content.replace(footer, "");
-        
+
         // Clean up extra spaces and split into reasonable chunks
         content = content.trim().replace(/\s+/g, " ");
-        
+
         // Try to identify base64-like segments and put them on separate lines
         // This is a heuristic approach that looks for base64-like patterns
         const segments = content.split(" ");
         const formattedSegments: string[] = [];
-        
+
         let currentLine = "";
         for (const segment of segments) {
             if (segment.trim() === "") continue;
-            
+
             // If segment is very long (likely base64), put it on its own line
             if (segment.length > 64 && segment.match(/^[A-Za-z0-9+/=]+$/)) {
                 if (currentLine) {
@@ -117,9 +122,9 @@ function normalizeSingleLineKey(key: string): string {
                 }
             }
         }
-        
+
         if (currentLine) formattedSegments.push(currentLine.trim());
-        
+
         // Combine everything with proper formatting
         let result = header + "\n";
         if (formattedSegments.length > 0) {
@@ -128,70 +133,106 @@ function normalizeSingleLineKey(key: string): string {
             result += "\n";
         }
         result += footer;
-        
+
         return result;
     }
-    
+
     // If it's already formatted, return as is
     return normalized;
 }
 
-let openpgp: any = null;
+type OpenPGPOptions = Record<string, unknown>;
+type OpenPGPPrivateKey = {
+    isDecrypted(): boolean;
+};
+type OpenPGPPublicKey = {
+    getFingerprint(): string;
+    getUserIDs(): string[];
+};
+type OpenPGPClearTextMessage = {
+    getText(): string;
+};
+type OpenPGPSignature = {
+    verified: Promise<void>;
+    keyID: {
+        toHex(): string;
+    };
+};
+type OpenPGPDecryptResult = {
+    data: string;
+    signatures?: OpenPGPSignature[];
+};
+type OpenPGPVerifyResult = {
+    data: string;
+    signatures?: OpenPGPSignature[];
+};
+type OpenPGP = {
+    createCleartextMessage(options: OpenPGPOptions): Promise<unknown>;
+    createMessage(options: OpenPGPOptions): Promise<unknown>;
+    decrypt(options: OpenPGPOptions): Promise<OpenPGPDecryptResult>;
+    decryptKey(options: OpenPGPOptions): Promise<OpenPGPPrivateKey>;
+    encrypt(options: OpenPGPOptions): Promise<string>;
+    generateKey(options: OpenPGPOptions): Promise<{ privateKey: string; publicKey: string; }>;
+    readCleartextMessage(options: OpenPGPOptions): Promise<OpenPGPClearTextMessage>;
+    readKey(options: OpenPGPOptions): Promise<OpenPGPPublicKey>;
+    readMessage(options: OpenPGPOptions): Promise<unknown>;
+    readPrivateKey(options: OpenPGPOptions): Promise<OpenPGPPrivateKey>;
+    sign(options: OpenPGPOptions): Promise<string>;
+    verify(options: OpenPGPOptions): Promise<OpenPGPVerifyResult>;
+};
+
+let openpgp: OpenPGP | null = null;
 let openpgpLoaded = false;
 let openpgpLoadPromise: Promise<void> | null = null;
 const logger = new Logger("VGP");
+const PGP_MESSAGE_BEGIN = "-----BEGIN PGP MESSAGE-----";
+const PGP_MESSAGE_END = "-----END PGP MESSAGE-----";
+const PGP_MESSAGE_REGEX = /-----BEGIN PGP MESSAGE-----[\s\S]+?-----END PGP MESSAGE-----/;
 
 async function loadOpenPGP(): Promise<void> {
     if (openpgpLoaded) return;
     if (openpgpLoadPromise) return openpgpLoadPromise;
 
-    openpgpLoadPromise = new Promise(async (resolve, reject) => {
-        // First try to load from unpkg
-        const script = document.createElement("script");
-        script.src = "https://unpkg.com/openpgp@5.11.3/dist/openpgp.min.js";
-        script.onload = () => {
-            const loadedOpenpgp = (window as any).openpgp;
-            if (!loadedOpenpgp) {
-                reject(new Error("OpenPGP.js loaded but global object not available"));
-                return;
-            }
-            openpgp = loadedOpenpgp;
-            openpgpLoaded = true;
-            logger.info("OpenPGP.js loaded from CDN");
-            resolve();
-        };
-        script.onerror = async () => {
-            logger.warn("Failed to load from unpkg, trying jsDelivr...");
-            // Fallback to jsDelivr CDN
-            const script2 = document.createElement("script");
-            script2.src = "https://cdn.jsdelivr.net/npm/openpgp@5.11.3/dist/openpgp.min.js";
-            script2.onload = () => {
-                const loadedOpenpgp = (window as any).openpgp;
-                if (!loadedOpenpgp) {
-                    reject(new Error("OpenPGP.js loaded but global object not available"));
-                    return;
-                }
-                openpgp = loadedOpenpgp;
-                openpgpLoaded = true;
-                logger.info("OpenPGP.js loaded from jsDelivr CDN");
-                resolve();
-            };
-            script2.onerror = () => {
-                reject(new Error("Failed to load OpenPGP.js from both CDNs"));
-            };
-            document.head.appendChild(script2);
-        };
-        document.head.appendChild(script);
+    openpgpLoadPromise = import("./openpgp.min.mjs").then((module: unknown) => {
+        openpgp = module as OpenPGP;
+        openpgpLoaded = true;
+        logger.info("OpenPGP.js loaded");
     });
 
     return openpgpLoadPromise;
 }
 
-function requireOpenPGP() {
+function requireOpenPGP(): OpenPGP {
     if (!openpgpLoaded || !openpgp) {
         throw new Error("OpenPGP.js not loaded yet. Please wait a moment and try again.");
     }
     return openpgp;
+}
+
+function formatError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function normalizePgpMessage(message: string): string {
+    const trimmed = message.trim();
+    if (trimmed.includes("\n")) return trimmed;
+
+    const start = trimmed.indexOf(PGP_MESSAGE_BEGIN);
+    const end = trimmed.indexOf(PGP_MESSAGE_END);
+    if (start === -1 || end === -1) return trimmed;
+
+    const compactBody = trimmed
+        .slice(start + PGP_MESSAGE_BEGIN.length, end)
+        .replace(/\s+/g, "");
+    const checksum = compactBody.match(/=[A-Za-z0-9+/]{4}$/)?.[0] ?? "";
+    const payload = checksum ? compactBody.slice(0, -checksum.length) : compactBody;
+    const body = payload.match(/.{1,64}/g)?.join("\n") ?? payload;
+
+    return `${PGP_MESSAGE_BEGIN}\n\n${body}${checksum ? `\n${checksum}` : ""}\n${PGP_MESSAGE_END}`;
+}
+
+function extractPgpMessage(message: string): string {
+    return normalizePgpMessage(message.match(PGP_MESSAGE_REGEX)?.[0] ?? message);
 }
 
 async function ensureOpenPGP() {
@@ -209,19 +250,20 @@ export function preprocessKey(key: string): string {
 async function generateKeyPair(name: string, email: string, passphrase: string, type: "ecc" | "rsa" = "ecc"): Promise<{ publicKey: string; privateKey: string }> {
     await ensureOpenPGP();
     const pgp = requireOpenPGP();
-    
-    const keyOptions: any = {
+
+    const keyOptions = type === "ecc" ? {
         type,
         userIDs: [{ name, email }],
         passphrase,
         format: "armored",
+        curve: "curve25519",
+    } : {
+        type,
+        userIDs: [{ name, email }],
+        passphrase,
+        format: "armored",
+        rsaBits: 4096,
     };
-
-    if (type === "ecc") {
-        keyOptions.curve = "curve25519";
-    } else {
-        keyOptions.rsaBits = 4096;
-    }
 
     const { privateKey, publicKey } = await pgp.generateKey(keyOptions);
     settings.store.pgpPrivateKey = privateKey;
@@ -233,14 +275,14 @@ async function generateKeyPair(name: string, email: string, passphrase: string, 
 export async function encrypt(message: string, public_key_recipient: string): Promise<string> {
     await ensureOpenPGP();
     const pgp = requireOpenPGP();
-    
+
     let private_key, public_key;
 
     try {
-        let privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
+        const privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
         // Decrypt private key if it requires a passphrase
         if (!privateKeyObj.isDecrypted()) {
-            const passphrase = settings.store.passphrase;
+            const { passphrase } = settings.store;
             if (!passphrase) {
                 throw new Error("Passphrase required for private key but not provided");
             }
@@ -290,44 +332,28 @@ interface StoredKey {
 
 class KeyManager {
     private keyCache: Map<string, StoredKey> = new Map();
-    private initialized = false;
 
     constructor() {
+        this.loadKeys();
     }
 
     private loadKeys(): void {
-        if (this.initialized) return;
         try {
-            const stored = JSON.parse(settings.store?.knownPublicKeys || "{}");
-            this.keyCache = new Map(Object.entries(stored || {}));
-            this.initialized = true;
+            const stored = JSON.parse(settings.store.knownPublicKeys || "{}");
+            this.keyCache = new Map(Object.entries(stored));
             logger.info(`Loaded ${this.keyCache.size} known public keys`);
         } catch (err) {
             logger.error("Failed to load keys:", err);
             this.keyCache = new Map();
-            this.initialized = true;
         }
     }
 
-    private ensureInitialized() {
-        if (!this.initialized) {
-            this.loadKeys();
-        }
-    }
-
-private saveKeys(): void {
-        this.ensureInitialized();
+    private saveKeys(): void {
         const obj = Object.fromEntries(this.keyCache);
         settings.store.knownPublicKeys = JSON.stringify(obj);
     }
 
-    getVerifiedKeyForUser(userId: string): StoredKey | null {
-        this.ensureInitialized();
-        return this.keyCache.get(userId) || null;
-    }
-
     async importPublicKeyForUser(userId: string, armoredKey: string): Promise<StoredKey> {
-        this.ensureInitialized();
         await ensureOpenPGP();
         const pgp = requireOpenPGP();
         // Preprocess the key to handle single-line format
@@ -347,17 +373,14 @@ private saveKeys(): void {
     }
 
     getPublicKeyForUser(userId: string): string | null {
-        this.ensureInitialized();
         return this.keyCache.get(userId)?.publicKey || null;
     }
 
     getAllKeysWithUsers(): Array<{ userId: string; key: StoredKey }> {
-        this.ensureInitialized();
         return Array.from(this.keyCache.entries()).map(([userId, key]) => ({ userId, key }));
     }
 
     removeKeyForUser(userId: string): boolean {
-        this.ensureInitialized();
         const had = this.keyCache.delete(userId);
         if (had) this.saveKeys();
         return had;
@@ -371,8 +394,6 @@ private saveKeys(): void {
         return true;
     }
 }
-
-const keyManager = new KeyManager();
 
 export const KEYSERVERS = {
     OPENPGP: "https://keys.openpgp.org",
@@ -398,19 +419,20 @@ async function searchKeyserver(query: string, keyserver: KeyserverName = "OPENPG
     }
 }
 
-async function decryptMessage(message: string, authorId: string): Promise<any> {
+async function decryptMessage(message: string, authorId: string): Promise<{ data: string; verified: boolean; }> {
     await ensureOpenPGP();
     const pgp = requireOpenPGP();
-    
+    const armoredMessage = extractPgpMessage(message);
+
     // Check if the message is a signed message that contains an encrypted message inside
-    if (message.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
+    if (armoredMessage.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
         // This is a signed message, not an encrypted one
         // We need to extract the content and handle it appropriately
         try {
             // Parse the signed message to extract the content
-            const signedMsg = await pgp.readCleartextMessage({ cleartextMessage: message });
+            const signedMsg = await pgp.readCleartextMessage({ cleartextMessage: armoredMessage });
             const content = signedMsg.getText();
-            
+
             // Check if the content itself contains an encrypted message
             if (content.includes("-----BEGIN PGP MESSAGE-----") && content.includes("-----END PGP MESSAGE-----")) {
                 // Extract the encrypted message and try to decrypt it separately
@@ -420,23 +442,23 @@ async function decryptMessage(message: string, authorId: string): Promise<any> {
                     return await decryptMessage(encryptedPart[0], authorId);
                 }
             }
-            
+
             // If we get here, it's a signed message without an encrypted part inside
             // So we should verify it instead of trying to decrypt it
-            const verificationResult = await verifyMessage(message);
+            const verificationResult = await verifyMessage(armoredMessage);
             return { data: verificationResult.text, verified: verificationResult.valid };
-        } catch (e: any) {
-            showToast("Cannot process signed message: " + e.message, Toasts.Type.FAILURE);
+        } catch (e) {
+            showToast("Cannot process signed message: " + formatError(e), Toasts.Type.FAILURE);
             throw e;
         }
     }
-    
+
     let private_key;
     try {
-        let privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
+        const privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
         // Decrypt private key if it requires a passphrase
         if (!privateKeyObj.isDecrypted()) {
-            const passphrase = settings.store.passphrase;
+            const { passphrase } = settings.store;
             if (!passphrase) {
                 throw new Error("Passphrase required for private key but not provided");
             }
@@ -449,7 +471,6 @@ async function decryptMessage(message: string, authorId: string): Promise<any> {
         throw e;
     }
 
-
     let verificationKeyArmored: string = "";
 
     // If the author is the current user, use the user's public key for verification
@@ -457,8 +478,7 @@ async function decryptMessage(message: string, authorId: string): Promise<any> {
         verificationKeyArmored = formatKey(settings.store.pgpPublicKey);
     } else {
         // First check our key manager for the sender's key
-        const senderId = ChannelStore.getChannel(SelectedChannelStore.getChannelId()).recipients[0];
-        const keyFromManager = keyManager.getPublicKeyForUser(senderId);
+        const keyFromManager = keyManager.getPublicKeyForUser(authorId);
         if (keyFromManager) {
             verificationKeyArmored = keyFromManager;
         } else {
@@ -467,8 +487,8 @@ async function decryptMessage(message: string, authorId: string): Promise<any> {
                 const dataStorageKeys = await DataStore.get("gpgPublicKeys");
                 if (dataStorageKeys) {
                     const publicKeys = JSON.parse(dataStorageKeys);
-                    if (publicKeys[senderId]) {
-                        verificationKeyArmored = publicKeys[senderId];
+                    if (publicKeys[authorId]) {
+                        verificationKeyArmored = publicKeys[authorId];
                     }
                 }
             } catch (e) {
@@ -478,56 +498,55 @@ async function decryptMessage(message: string, authorId: string): Promise<any> {
         }
     }
 
-    const verificationKey = await pgp.readKey({ armoredKey: verificationKeyArmored });
+    const verificationKeys = verificationKeyArmored ? [await pgp.readKey({ armoredKey: verificationKeyArmored })] : undefined;
 
     let decrypted;
     try {
         decrypted = await pgp.decrypt({
-            message: await pgp.readMessage({ armoredMessage: message }),
+            message: await pgp.readMessage({ armoredMessage }),
             decryptionKeys: [private_key],
             // Set to false to see the message anyways, but will show the key not verified warning
             expectSigned: false,
-            verificationKeys: [verificationKey]
+            ...(verificationKeys ? { verificationKeys } : {})
         });
     } catch (e) {
         showToast("Cannot decrypt message: check your private key", Toasts.Type.FAILURE);
         throw e;
     }
 
-
     // Verify signature
     const { signatures } = decrypted;
     let verified = false;
     if (signatures && signatures.length > 0) {
         try {
-            const verificationResult = await signatures[0].verified;
+            await signatures[0].verified;
             // If verification completes without error, signature is valid
             verified = true;
         } catch (verificationError) {
-            console.error("Signature verification failed:", verificationError);
+            logger.warn("Signature verification failed:", verificationError);
             verified = false;
         }
     }
 
-        return { ...decrypted, verified };
+    return { data: typeof decrypted.data === "string" ? decrypted.data : String(decrypted.data), verified };
 }
 
 // Message signing and verification functions
 async function signMessage(text: string): Promise<string> {
     await ensureOpenPGP();
     const pgp = requireOpenPGP();
-    
+
     // Check if we have a private key set up
     if (!settings.store.pgpPrivateKey) {
         throw new Error("No private key configured. Please set up your PGP keys in plugin settings.");
     }
-    
+
     let privateKey;
     try {
-        let privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
+        const privateKeyObj = await pgp.readPrivateKey({ armoredKey: formatKey(settings.store.pgpPrivateKey) });
         // Decrypt private key if it requires a passphrase
         if (!privateKeyObj.isDecrypted()) {
-            const passphrase = settings.store.passphrase;
+            const { passphrase } = settings.store;
             if (!passphrase) {
                 throw new Error("Passphrase required for private key but not provided");
             }
@@ -539,7 +558,7 @@ async function signMessage(text: string): Promise<string> {
         showToast("Cannot read your private key", Toasts.Type.FAILURE);
         throw e;
     }
-    
+
     const message = await pgp.createCleartextMessage({ text });
     return await pgp.sign({ message, signingKeys: privateKey, format: "armored" });
 }
@@ -547,30 +566,30 @@ async function signMessage(text: string): Promise<string> {
 async function verifyMessage(signedMessage: string): Promise<{ valid: boolean; text: string; signedBy?: string }> {
     await ensureOpenPGP();
     const pgp = requireOpenPGP();
-    
+
     try {
         let message;
         let text;
         let signatures;
-        
+
         // Determine the type of message and handle accordingly
         if (signedMessage.includes("-----BEGIN PGP SIGNED MESSAGE-----")) {
             // This is a cleartext signed message
             message = await pgp.readCleartextMessage({ cleartextMessage: signedMessage });
-            
+
             // Prepare verification keys - include our own public key and known contact keys
-            const verificationKeys: any[] = [];
+            const verificationKeys: OpenPGPPublicKey[] = [];
             if (settings.store.pgpPublicKey) {
                 verificationKeys.push(await pgp.readKey({ armoredKey: formatKey(settings.store.pgpPublicKey) }));
             }
-            
+
             // Add all known public keys from key manager
             for (const { key } of keyManager.getAllKeysWithUsers()) {
                 try {
                     verificationKeys.push(await pgp.readKey({ armoredKey: key.publicKey }));
                 } catch { /* skip invalid keys */ }
             }
-            
+
             if (verificationKeys.length === 0) {
                 return { valid: false, text: message.getText() };
             }
@@ -582,20 +601,20 @@ async function verifyMessage(signedMessage: string): Promise<{ valid: boolean; t
             // This might be a signed and encrypted message
             // We need to parse the message to determine the correct verification approach
             const parsedMessage = await pgp.readMessage({ armoredMessage: signedMessage });
-            
+
             // Prepare verification keys - include our own public key and known contact keys
-            const verificationKeys: any[] = [];
+            const verificationKeys: OpenPGPPublicKey[] = [];
             if (settings.store.pgpPublicKey) {
                 verificationKeys.push(await pgp.readKey({ armoredKey: formatKey(settings.store.pgpPublicKey) }));
             }
-            
+
             // Add all known public keys from key manager
             for (const { key } of keyManager.getAllKeysWithUsers()) {
                 try {
                     verificationKeys.push(await pgp.readKey({ armoredKey: key.publicKey }));
                 } catch { /* skip invalid keys */ }
             }
-            
+
             if (verificationKeys.length === 0) {
                 return { valid: false, text: "No verification keys available" };
             }
@@ -605,26 +624,25 @@ async function verifyMessage(signedMessage: string): Promise<{ valid: boolean; t
             text = result.data;
             signatures = result.signatures;
         }
-        
+
         // Process signatures
         // Check if there are any signatures to verify
         if (!signatures || signatures.length === 0) {
-            console.log("No signatures found in the message");
             return { valid: false, text: text };
         }
-        
+
         for (const sig of signatures) {
             try {
                 // Verify the signature
-                const verificationResult = await sig.verified;
+                await sig.verified;
                 // If verification doesn't throw, the signature is valid
                 return { valid: true, text, signedBy: sig.keyID.toHex() };
             } catch (verificationError) {
-                console.error("Signature verification failed:", verificationError);
+                logger.warn("Signature verification failed:", verificationError);
                 // Continue to try next signature
             }
         }
-        
+
         return { valid: false, text };
     } catch (err) {
         return { valid: false, text: "", signedBy: `Error: ${err}` };
@@ -638,45 +656,47 @@ function formatFingerprint(fp: string): string {
 const settings = definePluginSettings({
     pgpPrivateKey: {
         type: OptionType.STRING,
-        description: "Your PGP private key (armored format)",
-    tags: ["Utility"],
+        description: "Your PGP private key (armored format).",
+        tags: ["Privacy", "Utility"],
         default: "",
         hidden: false,
     },
     pgpPublicKey: {
         type: OptionType.STRING,
-        description: "Your PGP public key (armored format)",
+        description: "Your PGP public key (armored format).",
         default: "",
         hidden: false,
     },
     passphrase: {
         type: OptionType.STRING,
-        description: "Passphrase for your private key",
+        description: "Passphrase for your private key.",
         default: "",
         hidden: false,
     },
     knownPublicKeys: {
         type: OptionType.STRING,
-        description: "JSON map of user IDs to their public keys",
+        description: "JSON map of user IDs to their public keys.",
         default: "{}",
         hidden: false,
     },
     signMessages: {
         type: OptionType.BOOLEAN,
-        description: "Sign encrypted messages with your private key",
+        description: "Sign encrypted messages with your private key.",
         default: true,
     },
     encryptionIndicator: {
         type: OptionType.STRING,
-        description: "Prefix for encrypted messages (visual indicator)",
+        description: "Prefix for encrypted messages (visual indicator).",
         default: "🔒",
     },
 });
 
+const keyManager = new KeyManager();
+
 export default definePlugin({
     name: "IGP",
-    description: "Illegalcord PGP encryption",
-    authors: [{ name: "irritably", id: 928787166916640838n }], 
+    description: "Illegalcord PGP encryption.",
+    authors: [{ name: "irritably", id: 928787166916640838n }],
     tags: ["Privacy", "Utility"],
     enabledByDefault: false,
     settings,
@@ -684,7 +704,7 @@ export default definePlugin({
     renderChatBarButton: ChatBarIcon,
     decryptMessageIcon: () => <DecryptMessageIcon />,
 
-    GPG_REGEX: /-----BEGIN PGP MESSAGE-----[A-Za-z0-9+/=\r\n]+?-----END PGP MESSAGE-----/g,
+    GPG_REGEX: PGP_MESSAGE_REGEX,
     renderMessagePopoverButton(message) {
         return this.GPG_REGEX.test(message?.content) ?
             {
@@ -703,176 +723,243 @@ export default definePlugin({
     commands: [
         {
             name: "pgp",
-            description: "PGP encryption commands",
+            description: "PGP encryption commands.",
+            inputType: ApplicationCommandInputType.BUILT_IN,
             options: [
-                { name: "encrypt", description: "Encrypt a message", type: 1, options: [
-                    { name: "message", description: "Message to encrypt", type: 3, required: true },
-                    { name: "user", description: "Recipient", type: 6, required: true }
-                ]},
-                { name: "decrypt", description: "Decrypt a message", type: 1, options: [
-                    { name: "message", description: "PGP message to decrypt", type: 3, required: true }
-                ]},
-                { name: "sign", description: "Sign a message", type: 1, options: [
-                    { name: "message", description: "Message to sign", type: 3, required: true }
-                ]},
-                { name: "verify", description: "Verify a signed message", type: 1, options: [
-                    { name: "message", description: "Signed message to verify", type: 3, required: true }
-                ]},
-                { name: "sharekey", description: "Share your public key", type: 1 },
-                { name: "fingerprint", description: "Show your key fingerprint", type: 1 },
-                { name: "generate", description: "Generate a new PGP key pair", type: 1, options: [
-                    { name: "name", description: "Your name", type: 3, required: true },
-                    { name: "email", description: "Your email", type: 3, required: true },
-                    { name: "passphrase", description: "Passphrase for private key", type: 3, required: true },
-                    { name: "type", description: "Key type", type: 3, choices: [
-                        { name: "ECC (recommended)", value: "ecc" },
-                        { name: "RSA 4096", value: "rsa" }
-                    ]}
-                ]},
-                { name: "import", description: "Import a contact's public key", type: 1, options: [
-                    { name: "key", description: "Public key", type: 3, required: true },
-                    { name: "user", description: "User ID", type: 6, required: true }
-                ]},
-                { name: "search", description: "Search for a public key", type: 1, options: [
-                    { name: "query", description: "Email or key ID to search for", type: 3, required: true }
-                ]}
+                { name: "encrypt", description: "Encrypt a message.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "message", description: "Message to encrypt.", type: ApplicationCommandOptionType.STRING, required: true },
+                    { name: "user", description: "Recipient.", type: ApplicationCommandOptionType.USER, required: true }
+                ] },
+                { name: "decrypt", description: "Decrypt a message.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "message", description: "PGP message to decrypt.", type: ApplicationCommandOptionType.STRING, required: true }
+                ] },
+                { name: "sign", description: "Sign a message.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "message", description: "Message to sign.", type: ApplicationCommandOptionType.STRING, required: true }
+                ] },
+                { name: "verify", description: "Verify a signed message.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "message", description: "Signed message to verify.", type: ApplicationCommandOptionType.STRING, required: true }
+                ] },
+                { name: "howtouse", description: "Show how to use IGP.", type: ApplicationCommandOptionType.SUB_COMMAND },
+                { name: "sharekey", description: "Share your public key.", type: ApplicationCommandOptionType.SUB_COMMAND },
+                { name: "fingerprint", description: "Show your key fingerprint.", type: ApplicationCommandOptionType.SUB_COMMAND },
+                { name: "generate", description: "Generate a new PGP key pair.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "name", description: "Your name.", type: ApplicationCommandOptionType.STRING, required: true },
+                    { name: "email", description: "Your email.", type: ApplicationCommandOptionType.STRING, required: true },
+                    { name: "passphrase", description: "Passphrase for private key.", type: ApplicationCommandOptionType.STRING, required: true },
+                    { name: "type", description: "Key type.", type: ApplicationCommandOptionType.STRING, choices: [
+                        { label: "ECC (recommended)", name: "ECC (recommended)", value: "ecc" },
+                        { label: "RSA 4096", name: "RSA 4096", value: "rsa" }
+                    ] }
+                ] },
+                { name: "import", description: "Import a contact's public key.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "key", description: "Public key.", type: ApplicationCommandOptionType.STRING, required: true },
+                    { name: "user", description: "User.", type: ApplicationCommandOptionType.USER, required: true }
+                ] },
+                { name: "search", description: "Search for a public key.", type: ApplicationCommandOptionType.SUB_COMMAND, options: [
+                    { name: "query", description: "Email or key ID to search for.", type: ApplicationCommandOptionType.STRING, required: true }
+                ] }
             ],
             async execute(args, ctx) {
+                const reply = (content: string) => {
+                    sendBotMessage(ctx.channel.id, { content });
+                };
                 const sub = args[0];
-                const getOpt = (n: string) => sub.options?.find((o: any) => o.name === n)?.value;
+                if (!sub) {
+                    reply("Choose a PGP command.");
+                    return;
+                }
+
+                const getOpt = (n: string) => sub.options?.find(o => o.name === n)?.value;
 
                 try {
                     await ensureOpenPGP();
-                    
+
                     switch (sub.name) {
+                        case "howtouse": {
+                            reply([
+                                "**IGP PGP complete guide**",
+                                "",
+                                "1. Create your key pair with `/pgp generate`. Use ECC unless you specifically need RSA. Your private key stays in the plugin settings, while your public key is what other people need to message you.",
+                                "",
+                                "2. Share your public key with `/pgp sharekey`. This command and `/pgp encrypt` are sent to the real chat because other people need to see the key or encrypted message.",
+                                "",
+                                "3. When someone shares their public key, import it with `/pgp import user:@user key:key`. After that, you can encrypt messages for that person.",
+                                "",
+                                "4. Message someone with `/pgp encrypt user:@user message:text`. Everyone can see the PGP block in the channel, but only the owner of the matching private key can read the content.",
+                                "",
+                                "5. To read a message, copy the full block from `-----BEGIN PGP MESSAGE-----` to `-----END PGP MESSAGE-----` and run `/pgp decrypt message:block`. If Discord also copies the lock icon, leave it there. IGP strips it automatically.",
+                                "",
+                                "6. Use `/pgp fingerprint` to show your key fingerprint and compare it outside Discord. If it matches, you know the imported key is the right one.",
+                                "",
+                                "7. `/pgp sign` signs text with your private key. `/pgp verify` checks a signature using your public key and the imported contact keys.",
+                                "",
+                                "8. `/pgp search` tries to find public keys on keyservers. Only import keys you have verified because anyone can publish a key with a similar name.",
+                                "",
+                                "Note: `decrypt`, `import`, `generate`, `fingerprint`, `sign`, `verify`, `search`, and `howtouse` are local Clyde replies. Other people do not see them."
+                            ].join("\n"));
+                            return;
+                        }
+
                         case "encrypt": {
                             const userOpt = getOpt("user");
                             const messageOpt = getOpt("message");
-                            
+
                             if (!userOpt || !messageOpt) {
-                                return { content: "❌ Missing required options for encrypt" };
+                                reply("❌ Missing required options for encrypt.");
+                                return;
                             }
-                            
-                            const userId = (userOpt as any).id;
+
+                            const userId = userOpt;
                             const publicKey = keyManager.getPublicKeyForUser(userId);
-                            if (!publicKey) return { content: "❌ No public key for this user. Use `/pgp import` to add their key." };
-                            
+                            if (!publicKey) {
+                                reply("❌ No public key for this user. Use `/pgp import` to add their key.");
+                                return;
+                            }
+
                             const encrypted = await encrypt(messageOpt, publicKey);
-                            return { content: `${settings.store.encryptionIndicator}\n${encrypted}` };
+                            await sendMessage(ctx.channel.id, { content: `${settings.store.encryptionIndicator}\n${encrypted}` });
+                            return;
                         }
-                        
+
                         case "decrypt": {
                             const messageOpt = getOpt("message");
-                            
+
                             if (!messageOpt) {
-                                return { content: "❌ Message parameter is required for decrypt" };
+                                reply("❌ Message parameter is required for decrypt.");
+                                return;
                             }
-                            
+
                             const result = await decryptMessage(messageOpt, UserStore.getCurrentUser().id);
-                            return { content: `🔓${result.verified ? " ✅" : ""}\n${result.data}` };
+                            reply(`🔓${result.verified ? " ✅" : ""}\n${result.data}`);
+                            return;
                         }
-                        
+
                         case "sign": {
-                            if (!settings.store.pgpPrivateKey) return { content: "❌ No private key configured. Use `/pgp generate` to create keys or set them in plugin settings." };
-                            
-                            const messageOpt = getOpt("message");
-                            
-                            if (!messageOpt) {
-                                return { content: "❌ Message parameter is required for sign" };
+                            if (!settings.store.pgpPrivateKey) {
+                                reply("❌ No private key configured. Use `/pgp generate` to create keys or set them in plugin settings.");
+                                return;
                             }
-                            
+
+                            const messageOpt = getOpt("message");
+
+                            if (!messageOpt) {
+                                reply("❌ Message parameter is required for sign.");
+                                return;
+                            }
+
                             const signed = await signMessage(messageOpt);
-                            return { content: `✍️\n\`\`\`\n${signed}\n\`\`\`` };
+                            reply(✍️\n\`\`\`\n${signed}\n\`\`\``);
+                            return;
                         }
-                        
+
                         case "verify": {
                             const messageOpt = getOpt("message");
-                            
+
                             if (!messageOpt) {
-                                return { content: "❌ Message parameter is required for verify" };
+                                reply("❌ Message parameter is required for verify.");
+                                return;
                             }
-                            
+
                             const result = await verifyMessage(messageOpt);
-                            return result.valid ? 
-                                { content: `✅ Valid signature from ${result.signedBy}\n\n${result.text}` } :
-                                { content: `❌ Invalid signature\n\n${result.text}` };
+                            reply(result.valid ?
+                                `✅ Valid signature from ${result.signedBy}\n\n${result.text}` :
+                                `❌ Invalid signature\n\n${result.text}`);
+                            return;
                         }
-                        
+
                         case "sharekey": {
                             const key = settings.store.pgpPublicKey;
-                            return key ? { content: `📤\n\`\`\`\n${key}\n\`\`\`` } : { content: "❌ No public key configured" };
+                            if (!key) {
+                                reply("❌ No public key configured.");
+                                return;
+                            }
+
+                            await sendMessage(ctx.channel.id, { content: `📤\n\`\`\`\n${key}\n\`\`\`` });
+                            return;
                         }
-                        
+
                         case "fingerprint": {
-                            if (!settings.store.pgpPublicKey) return { content: "❌ No public key configured" };
-                            
+                            if (!settings.store.pgpPublicKey) {
+                                reply("❌ No public key configured.");
+                                return;
+                            }
+
                             await ensureOpenPGP();
                             const pgp = requireOpenPGP();
                             const key = await pgp.readKey({ armoredKey: formatKey(settings.store.pgpPublicKey) });
                             const fingerprint = key.getFingerprint().toUpperCase();
-                            return { content: `🔑 \`${formatFingerprint(fingerprint)}\`` };
+                            reply(`🔑 \`${formatFingerprint(fingerprint)}\``);
+                            return;
                         }
-                        
+
                         case "generate": {
                             const name = getOpt("name");
                             const email = getOpt("email");
                             const passphrase = getOpt("passphrase");
-                            
+
                             if (!name || !email || !passphrase) {
-                                return { content: "❌ Name, email, and passphrase are required for key generation" };
+                                reply("❌ Name, email, and passphrase are required for key generation.");
+                                return;
                             }
-                            
-                            const type = getOpt("type") || "ecc";
-                            
+
+                            const type = (getOpt("type") || "ecc") as "ecc" | "rsa";
+
                             try {
-                                await generateKeyPair(name, email, passphrase, type as "ecc" | "rsa");
-                                return { content: `✅ Generated ${type.toUpperCase()} key pair. Your keys are now saved in plugin settings.` };
+                                await generateKeyPair(name, email, passphrase, type);
+                                reply(`✅ Generated ${type.toUpperCase()} key pair. Your keys are now saved in plugin settings.`);
+                                return;
                             } catch (e) {
-                                return { content: `❌ Error generating keys: ${e}` };
+                                reply(`❌ Error generating keys: ${formatError(e)}`);
+                                return;
                             }
                         }
-                        
+
                         case "import": {
                             const userValue = getOpt("user");
                             const keyValue = getOpt("key");
-                            
+
                             if (!userValue || !keyValue) {
-                                return { content: "❌ Missing required options for import" };
+                                reply("❌ Missing required options for import.");
+                                return;
                             }
-                            
-                            // Type assertion since we know user options have an id property
-                            const userId = (userValue as any).id;
+
+                            const userId = userValue;
                             const key = preprocessKey(keyValue);
-                            
+
                             try {
                                 await keyManager.importPublicKeyForUser(userId, key);
-                                return { content: `✅ Imported public key for <@${userId}>` };
+                                reply(`✅ Imported public key for <@${userId}>`);
+                                return;
                             } catch (e) {
-                                return { content: `❌ Error importing key: ${e}` };
+                                reply(`❌ Error importing key: ${formatError(e)}`);
+                                return;
                             }
                         }
-                        
+
                         case "search": {
                             const query = getOpt("query");
-                            
+
                             if (!query) {
-                                return { content: "❌ Query parameter is required" };
+                                reply("❌ Query parameter is required.");
+                                return;
                             }
-                            
+
                             try {
                                 const result = await searchKeyserver(query);
                                 if (result.found) {
-                                    return { content: `🌐 Found ${result.keys.length} key(s) for "${query}". Use \`/pgp import\` to add them to your contacts.` };
+                                    reply(`🌐 Found ${result.keys.length} key(s) for "${query}". Use \`/pgp import\` to add them to your contacts.`);
                                 } else {
-                                    return { content: `🌐 No keys found for "${query}"` };
+                                    reply(`🌐 No keys found for "${query}".`);
                                 }
+                                return;
                             } catch (e) {
-                                return { content: `❌ Error searching keyserver: ${e}` };
+                                reply(`❌ Error searching keyserver: ${formatError(e)}`);
+                                return;
                             }
                         }
                     }
                 } catch (e) {
-                    return { content: `❌ Error: ${e}` };
+                    reply(`❌ Error: ${formatError(e)}`);
                 }
             }
         }
