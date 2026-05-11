@@ -1,0 +1,424 @@
+/* =====================================================
+   Archive Groups Plugin — Styles
+   ===================================================== */
+
+/* ── Sidebar Button ─────────────────────────────────── */
+
+.vc-archive-groups-button-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.vc-archive-groups-button {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--background-primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background-color 0.15s ease-out,
+        color 0.15s ease-out,
+        border-radius 0.15s ease-out,
+        transform 0.15s ease-out;
+    cursor: pointer;
+}
+
+.vc-archive-groups-button:hover {
+    background-color: var(--brand-experiment);
+    color: #fff;
+    border-radius: 16px;
+    transform: scale(1.05);
+}
+
+/* ── Modal Root ─────────────────────────────────────── */
+
+.vc-archive-modal-root {
+    border-radius: 12px !important;
+    overflow: hidden;
+}
+
+/* ── Modal Header ───────────────────────────────────── */
+
+.vc-archive-modal-header {
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-accent);
+    padding: 16px 20px !important;
+}
+
+.vc-archive-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.vc-archive-header-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--brand-experiment);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+.vc-archive-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.vc-archive-header-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--header-primary);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vc-archive-header-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* ── Modal Content ──────────────────────────────────── */
+
+.vc-archive-modal-content {
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--background-primary);
+}
+
+/* ── Search Bar ─────────────────────────────────────── */
+
+.vc-archive-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 12px 16px 0;
+    gap: 0;
+}
+
+.vc-archive-search-icon {
+    position: absolute;
+    left: 28px;
+    top: 50%;
+    transform: translateY(-10%);
+    color: var(--text-muted);
+    pointer-events: none;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+}
+
+.vc-archive-search-input {
+    width: 100% !important;
+    padding-left: 36px !important;
+    background: var(--background-secondary) !important;
+    border-radius: 8px !important;
+    border: 1.5px solid var(--background-modifier-accent) !important;
+    font-size: 14px !important;
+    height: 36px;
+    transition: border-color 0.15s ease;
+}
+
+.vc-archive-search-input:focus-within {
+    border-color: var(--brand-experiment) !important;
+}
+
+.vc-archive-search-clear {
+    position: absolute;
+    right: 26px;
+    top: 50%;
+    transform: translateY(-10%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.1s ease, background 0.1s ease;
+}
+
+.vc-archive-search-clear:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+/* ── List Container ─────────────────────────────────── */
+
+.vc-archive-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-auto-thumb) transparent;
+}
+
+.vc-archive-list-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.vc-archive-list-container::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-auto-thumb);
+    border-radius: 4px;
+}
+
+.vc-archive-guild-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ── Guild Card ─────────────────────────────────────── */
+
+.vc-archive-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--background-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--background-modifier-accent);
+    overflow: hidden;
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+    animation: vc-archive-card-in 0.2s ease both;
+}
+
+@keyframes vc-archive-card-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.vc-archive-card:hover {
+    border-color: var(--brand-experiment-400, var(--brand-experiment));
+    background: var(--background-secondary-alt);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+}
+
+.vc-archive-card-accent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--brand-experiment);
+    border-radius: 3px 0 0 3px;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.vc-archive-card:hover .vc-archive-card-accent {
+    opacity: 1;
+}
+
+.vc-archive-card-icon {
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.vc-archive-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.vc-archive-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+.vc-archive-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.vc-archive-card-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.vc-archive-pill-members {
+    background: var(--background-modifier-accent);
+    color: var(--text-muted);
+}
+
+.vc-archive-pill-date {
+    background: var(--background-modifier-accent);
+    color: var(--text-muted);
+}
+
+/* ── Card Action Buttons ────────────────────────────── */
+
+.vc-archive-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.vc-archive-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        transform 0.12s ease,
+        box-shadow 0.15s ease;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.vc-archive-btn:active {
+    transform: scale(0.96);
+}
+
+.vc-archive-btn-view {
+    background: var(--background-modifier-accent);
+    color: var(--text-normal);
+}
+
+.vc-archive-btn-view:hover {
+    background: var(--brand-experiment);
+    color: #fff;
+}
+
+.vc-archive-btn-unarchive {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1.5px solid var(--background-modifier-accent);
+}
+
+.vc-archive-btn-unarchive:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-color: var(--interactive-normal);
+}
+
+.vc-archive-btn-confirm {
+    background: var(--status-danger, #ed4245) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+    animation: vc-archive-pulse 0.4s ease;
+}
+
+@keyframes vc-archive-pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    40% {
+        transform: scale(1.06);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* ── Empty States ───────────────────────────────────── */
+
+.vc-archive-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    animation: vc-archive-card-in 0.25s ease both;
+}
+
+.vc-archive-empty-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--background-secondary);
+    border: 2px solid var(--background-modifier-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.vc-archive-empty-search .vc-archive-empty-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 22px;
+}
+
+.vc-archive-empty-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--header-primary);
+    line-height: 1.3;
+}
+
+.vc-archive-empty-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 280px;
+    line-height: 1.5;
+}
+
+.vc-archive-empty-hint strong {
+    color: var(--text-normal);
+}
