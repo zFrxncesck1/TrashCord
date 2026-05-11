@@ -8,6 +8,7 @@
 .vc-serverlabels-name {
     font-size: var(--serverlabels-font-size, 14px);
     font-weight: var(--serverlabels-font-weight, 400);
+    font-family: var(--serverlabels-font-family, var(--font-primary));
     max-width: var(--serverlabels-max-width, 160px);
     color: #ffffff;
     white-space: nowrap;
@@ -17,7 +18,7 @@
     display: inline-flex;
     align-items: center;
     padding: 0 12px;
-    border-radius: 4px;
+    border-radius: var(--serverlabels-radius, 16px);
 
     /* Default background for servers not in a colored folder */
     background-color: rgba(255, 255, 255, 0.1);
@@ -53,36 +54,29 @@
 }
 
 /*
- * For folder labels, the label is inside folderButton, which sits inside
- * folderHeader → listItem. Both ancestor divs need overflow: visible or they
- * will clip the absolutely-positioned label.
+ * For folder labels, the label is inside folderButton (the treeitem), which sits
+ * inside folderHeader → listItem. JS marks both ancestors with this class at inject
+ * time so we avoid deep :has() chains, which are the most expensive CSS selectors.
  */
-.vc-serverlabels-active :has(> *:has(> .vc-serverlabels-name)),
-.vc-serverlabels-active :has(> *:has(> *:has(> .vc-serverlabels-name))) {
+.vc-serverlabels-active .vc-serverlabels-anc {
     overflow: visible;
 }
 
 /*
  * Folder labels: 38px — reduced from the 48px folderPreviewWrapper height to reduce empty space.
  * Standalone server labels: 32px base height, border-radius: 16px to match folder style.
- * In-folder servers: 39px — slightly taller than standalone to fill the row better.
+ * In-folder servers: 34px — slightly shorter than folder labels to avoid overlap.
  */
 .vc-serverlabels-name[data-folder-id] {
     height: 38px;
-    border-radius: 16px;
 }
 
-/* Standalone servers use the rounder radius to match folder style,
-   but keep the original height to avoid overlapping the smaller icons. */
-.vc-serverlabels-name[data-guild-id]:not([data-in-folder]) {
-    border-radius: 16px;
-}
+/* Standalone server height matches base rule; no border-radius override needed. */
 
 /* Servers inside a folder get a tree branch connector before the label */
 .vc-serverlabels-name[data-in-folder="true"] {
     margin-left: 23px;
-    border-radius: 4px;
-    height: 39px;
+    height: 34px;
 }
 
 /*
@@ -102,6 +96,11 @@
     border-bottom: 1.5px solid var(--text-muted);
     border-bottom-left-radius: 2px;
     pointer-events: none;
+}
+
+/* Hides the L-shaped connector when the showTreeConnector setting is off */
+.vc-serverlabels-no-connector :has(> .vc-serverlabels-name[data-in-folder="true"])::before {
+    display: none;
 }
 
 /* Colored variant — folder color at ~40% opacity to match the folder icon transparency */
@@ -132,8 +131,22 @@
 }
 
 .theme-light .vc-serverlabels-name[data-has-color="true"] {
+    /* 60% opacity (vs 40% in dark theme) — dark folder colors need more saturation for legibility on light backgrounds */
+    background-color: color-mix(in srgb, var(--serverlabels-folder-color) 60%, transparent);
+}
+
+/* Open-state overrides for light theme — bump from 20% to 40% for the same reason */
+.theme-light [aria-expanded="true"] > .vc-serverlabels-name[data-has-color="true"],
+.theme-light .vc-serverlabels-name.vc-serverlabels-folder-open[data-has-color="true"] {
     background-color: color-mix(in srgb, var(--serverlabels-folder-color) 40%, transparent);
-    /* Dark text from the base light theme rule — white text on a transparent background has no contrast */
+}
+
+/*
+ * User-specified font color — placed after the light-theme rules so it wins in the
+ * cascade at equal specificity. Only applied when the user sets a non-empty fontColor.
+ */
+.vc-serverlabels-custom-color .vc-serverlabels-name {
+    color: var(--serverlabels-color);
 }
 
 /* Inner text span — must be inline-block so transform animates it independently */
@@ -186,10 +199,13 @@
    everything to the right of the icon column.
    ============================================================ */
 
-/* Top-level guild sidebar */
+/* Top-level guild sidebar — scales with the max-width setting.
+   Offset: ~80px icon column + 8px gap + 12px buffer = 100px.
+   At the default maxWidth of 160px this equals the previous hardcoded 260/300px. */
 .vc-serverlabels-active nav:has(.vc-serverlabels-name) {
-    min-width: 260px;
-    max-width: 300px;
+    position: relative;
+    min-width: calc(var(--serverlabels-max-width, 160px) + 100px);
+    max-width: calc(var(--serverlabels-max-width, 160px) + 140px);
     overflow: visible;
 }
 
@@ -208,4 +224,76 @@
    the visual gap between folder→first server is smaller than server→server. */
 .vc-serverlabels-active ul[id^="folder-items-"] > :first-child {
     margin-top: 4px;
+}
+
+/* ============================================================
+   Settings shortcut button — injected directly into guildsNav
+   ============================================================ */
+
+.vc-serverlabels-settings-btn {
+    position: absolute;
+    right: 8px;
+    /* top is set by JS, calculated from the home row's bounding rect */
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background 0.15s ease;
+
+    pointer-events: auto;
+    z-index: 1;
+    outline: none;
+}
+
+.vc-serverlabels-settings-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.vc-serverlabels-settings-btn:active {
+    opacity: 0.8;
+}
+
+.theme-light .vc-serverlabels-settings-btn {
+    color: #060607;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.theme-light .vc-serverlabels-settings-btn:hover {
+    background: rgba(0, 0, 0, 0.18);
+}
+
+
+/* ============================================================
+   Settings panel — 2-column layout rows
+   ============================================================ */
+
+.vc-serverlabels-settings-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    width: 100%;
+}
+
+.vc-serverlabels-settings-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vc-serverlabels-settings-cell-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #80848e);
 }

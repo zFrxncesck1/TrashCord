@@ -7,36 +7,84 @@
 import managedStyle from "./style.css?managed";
 
 import { definePluginSettings } from "@api/Settings";
+import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import definePlugin, { OptionType } from "@utils/types";
 import { findStoreLazy } from "@webpack";
-import { GuildStore, NavigationRouter } from "@webpack/common";
+import { Forms, GuildStore, NavigationRouter, React, SearchableSelect, Select, Slider, TextInput } from "@webpack/common";
 
 const SortedGuildStore = findStoreLazy("SortedGuildStore");
 
+interface FontEntry { url: string | null; css: string; }
+const FONT_CATALOG: Record<string, FontEntry> = {
+    // Special
+    "Discord Default":  { url: null,                                                                                               css: "var(--font-primary)" },
+    // Clean & modern
+    "Inter":            { url: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap",                    css: '"Inter", sans-serif' },
+    "Roboto":           { url: "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap",                   css: '"Roboto", sans-serif' },
+    "Poppins":          { url: "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&display=swap",                  css: '"Poppins", sans-serif' },
+    "Nunito":           { url: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;700&display=swap",                   css: '"Nunito", sans-serif' },
+    "DM Sans":          { url: "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap",                  css: '"DM Sans", sans-serif' },
+    "Lato":             { url: "https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap",                         css: '"Lato", sans-serif' },
+    // Bold & dramatic
+    "Oswald":           { url: "https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&display=swap",                   css: '"Oswald", sans-serif' },
+    "Bebas Neue":       { url: "https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap",                                css: '"Bebas Neue", sans-serif' },
+    // Stylish
+    "Playfair Display": { url: "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap",             css: '"Playfair Display", serif' },
+    // Fun & expressive
+    "Pacifico":         { url: "https://fonts.googleapis.com/css2?family=Pacifico&display=swap",                                  css: '"Pacifico", cursive' },
+    "Lobster":          { url: "https://fonts.googleapis.com/css2?family=Lobster&display=swap",                                   css: '"Lobster", cursive' },
+    "Dancing Script":   { url: "https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap",               css: '"Dancing Script", cursive' },
+    "Righteous":        { url: "https://fonts.googleapis.com/css2?family=Righteous&display=swap",                                 css: '"Righteous", cursive' },
+    "Bangers":          { url: "https://fonts.googleapis.com/css2?family=Bangers&display=swap",                                   css: '"Bangers", cursive' },
+    // Techy
+    "Space Mono":       { url: "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap",                   css: '"Space Mono", monospace' },
+    "Press Start 2P":   { url: "https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap",                            css: '"Press Start 2P", monospace' },
+};
+
 const settings = definePluginSettings({
-    fontSize: {
-        type: OptionType.SLIDER,
-        description: "Font size of server name labels (px)",
-        default: 14,
-        markers: [10, 12, 14, 16, 18, 20],
-        onChange: () => updateCSSVars(),
+    // ── Typography ──────────────────────────────────────────────────────────
+    typographyHeader: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <SettingsSection title="Typography" />,
     },
-    fontWeight: {
-        type: OptionType.SELECT,
-        description: "Font weight of server name labels",
-        options: [
-            { label: "Normal", value: "400", default: true },
-            { label: "Medium", value: "500" },
-            { label: "Bold", value: "700" },
-        ],
-        onChange: () => updateCSSVars(),
+    fontFamilyColorRow: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <FontFamilyColorRow />,
     },
-    maxWidth: {
-        type: OptionType.SLIDER,
-        description: "Max width of server name labels (px)",
-        default: 160,
-        markers: [80, 100, 120, 150, 160, 180, 200],
-        onChange: () => updateCSSVars(),
+    fontSizeWeightRow: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <FontSizeWeightRow />,
+    },
+    // ── Label Style ─────────────────────────────────────────────────────────
+    labelStyleHeader: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <SettingsSection title="Label Style" />,
+    },
+    labelRadiusWidthRow: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <LabelRadiusWidthRow />,
+    },
+    // ── Behavior ─────────────────────────────────────────────────────────────
+    behaviorHeader: {
+        type: OptionType.COMPONENT,
+        description: "",
+        component: () => <SettingsSection title="Behavior" />,
+    },
+    showTreeConnector: {
+        type: OptionType.BOOLEAN,
+        description: "Show the L-shaped branch connector for servers inside folders",
+        default: true,
+        onChange: (val: boolean) => document.body.classList.toggle("vc-serverlabels-no-connector", !val),
+    },
+    autoCollapseFolder: {
+        type: OptionType.BOOLEAN,
+        description: "Auto-collapse a folder when you navigate to a server inside it",
+        default: false,
     },
 });
 
@@ -47,28 +95,256 @@ const TREEITEM_SELECTOR = '[data-list-item-id^="guildsnav___"]';
 let observer: MutationObserver | null = null;
 let navBootstrapObserver: MutationObserver | null = null;
 let styleEl: HTMLStyleElement | null = null;
+const fontLinkEls = new Map<string, HTMLLinkElement>();
 let rafId: number | null = null;
 let guildsNav: HTMLElement | null = null;
+let settingsBtn: HTMLElement | null = null;
 
 const activeLabels = new Set<HTMLElement>();
 // Secondary index: parentFolderId → labels, so syncFolderOpenState is an O(1) lookup
 // instead of a full scan of activeLabels on every folder expand/collapse.
 const labelsByFolder = new Map<string, Set<HTMLElement>>();
 
+function loadFont(name: string) {
+    const entry = FONT_CATALOG[name];
+    if (!entry?.url || fontLinkEls.has(name)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = entry.url;
+    document.head.appendChild(link);
+    fontLinkEls.set(name, link);
+}
+
+function loadAllFonts() {
+    for (const name of Object.keys(FONT_CATALOG)) loadFont(name);
+}
+
+function unloadFont(name: string) {
+    const link = fontLinkEls.get(name);
+    if (!link) return;
+    link.remove();
+    fontLinkEls.delete(name);
+}
+
+function unloadAllFonts() {
+    for (const link of fontLinkEls.values()) link.remove();
+    fontLinkEls.clear();
+}
+
+function loadSelectedFont() {
+    loadFont(settings.store.fontFamily ?? "Discord Default");
+}
+
+function unloadNonSelectedFonts() {
+    const selected = settings.store.fontFamily ?? "Discord Default";
+    for (const name of [...fontLinkEls.keys()]) {
+        if (name !== selected) unloadFont(name);
+    }
+}
+
+function SettingsSection({ title }: { title: string; }) {
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", marginTop: "4px" }}>
+            <Forms.FormTitle tag="h5" style={{ margin: 0, whiteSpace: "nowrap" }}>{title}</Forms.FormTitle>
+            <div style={{ flex: 1, height: "1px", background: "var(--background-modifier-accent)" }} />
+        </div>
+    );
+}
+
+function FontFamilyPicker() {
+    const [selected, setSelected] = React.useState<string>(settings.store.fontFamily ?? "Discord Default");
+
+    React.useEffect(() => {
+        loadAllFonts();
+        return () => unloadNonSelectedFonts();
+    }, []);
+
+    const fontOptions = Object.keys(FONT_CATALOG).map(name => ({ label: name, value: name }));
+
+    return (
+        <SearchableSelect
+            options={fontOptions}
+            value={fontOptions.find(o => o.value === selected)?.value}
+            onChange={(v: string) => {
+                settings.store.fontFamily = v;
+                setSelected(v);
+                updateCSSVars();
+            }}
+            renderOptionLabel={option => (
+                <span style={{ fontFamily: FONT_CATALOG[option.value]?.css ?? "inherit" }}>
+                    {option.label}
+                </span>
+            )}
+            renderOptionValue={_options => (
+                <span style={{ fontFamily: FONT_CATALOG[selected]?.css ?? "inherit" }}>
+                    {selected}
+                </span>
+            )}
+            closeOnSelect={true}
+        />
+    );
+}
+
+function SettingsRow2Col({ left, right }: { left: React.ReactNode; right: React.ReactNode; }) {
+    return (
+        <div className="vc-serverlabels-settings-row">
+            {left}
+            {right}
+        </div>
+    );
+}
+
+function SettingsCell({ label, children }: { label: string; children: React.ReactNode; }) {
+    return (
+        <div className="vc-serverlabels-settings-cell">
+            <span className="vc-serverlabels-settings-cell-label">{label}</span>
+            {children}
+        </div>
+    );
+}
+
+function FontFamilyColorRow() {
+    const [color, setColor] = React.useState<string>(settings.store.fontColor ?? "");
+    return (
+        <SettingsRow2Col
+            left={
+                <SettingsCell label="Font Family">
+                    <FontFamilyPicker />
+                </SettingsCell>
+            }
+            right={
+                <SettingsCell label="Font Color">
+                    <TextInput
+                        type="text"
+                        placeholder="blank = theme default"
+                        value={color}
+                        onChange={(v: string) => {
+                            settings.store.fontColor = v;
+                            setColor(v);
+                            updateCSSVars();
+                        }}
+                        maxLength={null}
+                    />
+                </SettingsCell>
+            }
+        />
+    );
+}
+
+function FontSizeWeightRow() {
+    const [size, setSize] = React.useState<number>(settings.store.fontSize ?? 14);
+    const [weight, setWeight] = React.useState<string>(settings.store.fontWeight ?? "400");
+    return (
+        <SettingsRow2Col
+            left={
+                <SettingsCell label="Font Size">
+                    <Slider
+                        markers={[10, 12, 14, 16, 18, 20]}
+                        minValue={10}
+                        maxValue={20}
+                        initialValue={size}
+                        stickToMarkers={true}
+                        onValueChange={(v: number) => {
+                            const n = Math.round(v);
+                            settings.store.fontSize = n;
+                            setSize(n);
+                            updateCSSVars();
+                        }}
+                        onValueRender={(v: number) => `${Math.round(v)}px`}
+                    />
+                </SettingsCell>
+            }
+            right={
+                <SettingsCell label="Font Weight">
+                    <Select
+                        options={[
+                            { label: "Normal", value: "400" },
+                            { label: "Medium", value: "500" },
+                            { label: "Bold", value: "700" },
+                        ]}
+                        select={(v: string) => {
+                            settings.store.fontWeight = v;
+                            setWeight(v);
+                            updateCSSVars();
+                        }}
+                        isSelected={(v: string) => v === weight}
+                        serialize={String}
+                        closeOnSelect={true}
+                    />
+                </SettingsCell>
+            }
+        />
+    );
+}
+
+function LabelRadiusWidthRow() {
+    const [radius, setRadius] = React.useState<string>(settings.store.labelRadius ?? "16px");
+    const [width, setWidth] = React.useState<number>(settings.store.maxWidth ?? 160);
+    return (
+        <SettingsRow2Col
+            left={
+                <SettingsCell label="Label Radius">
+                    <Select
+                        options={[
+                            { label: "Pill", value: "16px" },
+                            { label: "Rounded", value: "8px" },
+                            { label: "Sharp", value: "4px" },
+                        ]}
+                        select={(v: string) => {
+                            settings.store.labelRadius = v;
+                            setRadius(v);
+                            updateCSSVars();
+                        }}
+                        isSelected={(v: string) => v === radius}
+                        serialize={String}
+                        closeOnSelect={true}
+                    />
+                </SettingsCell>
+            }
+            right={
+                <SettingsCell label="Max Width">
+                    <Slider
+                        markers={[80, 120, 160, 200]}
+                        minValue={80}
+                        maxValue={200}
+                        initialValue={width}
+                        stickToMarkers={false}
+                        onValueChange={(v: number) => {
+                            const n = Math.round(v);
+                            settings.store.maxWidth = n;
+                            setWidth(n);
+                            updateCSSVars();
+                        }}
+                        onValueRender={(v: number) => `${Math.round(v)}px`}
+                    />
+                </SettingsCell>
+            }
+        />
+    );
+}
+
 function pruneLabel(el: HTMLElement) {
     activeLabels.delete(el);
     const fid = el.dataset.parentFolderId;
-    if (fid) labelsByFolder.get(fid)?.delete(el);
+    if (fid) {
+        const s = labelsByFolder.get(fid);
+        if (s) { s.delete(el); if (s.size === 0) labelsByFolder.delete(fid); }
+    }
 }
 
 /** Reads settings and writes them into an injected <style> tag so Discord can't wipe them. */
 function updateCSSVars() {
     if (!styleEl) return;
+    const color = settings.store.fontColor?.trim();
     styleEl.textContent = `:root {
-        --serverlabels-font-size: ${settings.store.fontSize}px;
-        --serverlabels-font-weight: ${settings.store.fontWeight};
-        --serverlabels-max-width: ${settings.store.maxWidth}px;
+        --serverlabels-font-size: ${settings.store.fontSize ?? 14}px;
+        --serverlabels-font-weight: ${settings.store.fontWeight ?? "400"};
+        --serverlabels-max-width: ${settings.store.maxWidth ?? 160}px;
+        --serverlabels-radius: ${settings.store.labelRadius ?? "16px"};
+        --serverlabels-font-family: ${FONT_CATALOG[settings.store.fontFamily]?.css ?? "var(--font-primary)"};
+        ${color ? `--serverlabels-color: ${color};` : ""}
     }`;
+    document.body.classList.toggle("vc-serverlabels-custom-color", !!color);
     // Re-measure after layout settles — max-width changes affect overflow amounts.
     requestAnimationFrame(remeasureAllMarquees);
 }
@@ -117,26 +393,6 @@ function remeasureAllMarquees() {
     }
 }
 
-function getFolderColor(guildId: string): string | null {
-    try {
-        const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
-        const folder = folders.find(f => f.guildIds?.includes(guildId));
-        const color: number | null | undefined = folder?.folderColor;
-        if (!color) return null;
-        return `#${color.toString(16).padStart(6, "0")}`;
-    } catch {
-        return null;
-    }
-}
-
-function isInFolder(guildId: string): boolean {
-    try {
-        const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
-        return folders.some(f => f.folderId != null && f.guildIds?.includes(guildId));
-    } catch {
-        return false;
-    }
-}
 
 /**
  * Returns the label element (if any) whose bounding rect contains the given point.
@@ -166,6 +422,11 @@ function onDocumentClick(e: MouseEvent) {
     e.preventDefault();
     if (label.dataset.guildId) {
         NavigationRouter.transitionToGuild(label.dataset.guildId);
+        if (settings.store.autoCollapseFolder && label.dataset.parentFolderId) {
+            const folderTreeitem = document.querySelector(`[data-list-item-id="guildsnav___${label.dataset.parentFolderId}"]`);
+            if (folderTreeitem?.getAttribute("aria-expanded") === "true")
+                (folderTreeitem as HTMLElement).click();
+        }
     } else if (label.dataset.folderId) {
         // Simulate a click on the folder treeitem to expand/collapse it.
         const treeitem = document.querySelector(`[data-list-item-id="guildsnav___${label.dataset.folderId}"]`);
@@ -197,7 +458,7 @@ function onDocumentMouseMove(e: MouseEvent) {
  * the label as a sibling inside the existing listItem flex row —
  * without wrapping or moving any of Discord's original elements.
  */
-function injectFolderLabel(treeitem: Element) {
+function injectFolderLabel(treeitem: Element, folders: any[]) {
     const rawId = treeitem.getAttribute("data-list-item-id") ?? "";
     if (!rawId.startsWith("guildsnav___")) return;
 
@@ -206,7 +467,6 @@ function injectFolderLabel(treeitem: Element) {
     if (!Number.isFinite(idNum) || idNum <= 0) return;
 
     try {
-        const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
         const folder = folders.find(f => f.folderId === idNum);
         if (!folder?.folderName) return;
 
@@ -229,6 +489,10 @@ function injectFolderLabel(treeitem: Element) {
             label.dataset.hasColor = "true";
         }
 
+        // Mark ancestors so CSS can set overflow:visible without deep :has() chains.
+        treeitem.parentElement?.classList.add("vc-serverlabels-anc");
+        treeitem.parentElement?.parentElement?.classList.add("vc-serverlabels-anc");
+
         treeitem.appendChild(label);
         activeLabels.add(label);
         requestAnimationFrame(() => measureMarquee(label));
@@ -243,7 +507,7 @@ function suppressNativeTooltip(treeitem: Element) {
     treeitem.querySelectorAll("svg title").forEach(el => el.remove());
 }
 
-function injectLabel(treeitem: Element) {
+function injectLabel(treeitem: Element, folders: any[]) {
     const rawId = treeitem.getAttribute("data-list-item-id") ?? "";
     const guildId = rawId.startsWith("guildsnav___") ? rawId.slice("guildsnav___".length) : null;
     if (!guildId) return;
@@ -268,7 +532,13 @@ function injectLabel(treeitem: Element) {
     // Don't double-inject
     if (listItem.querySelector(`.${LABEL_CLASS}`)) return;
 
-    const folderColor = getFolderColor(guildId);
+    let folderColor: string | null = null;
+    let parentFolderId: string | null = null;
+    try {
+        const parentFolder = folders.find(f => f.guildIds?.includes(guildId));
+        if (parentFolder?.folderColor) folderColor = `#${parentFolder.folderColor.toString(16).padStart(6, "0")}`;
+        if (parentFolder?.folderId != null) parentFolderId = String(parentFolder.folderId);
+    } catch {}
 
     const label = document.createElement("span");
     label.className = LABEL_CLASS;
@@ -284,23 +554,16 @@ function injectLabel(treeitem: Element) {
         label.dataset.hasColor = "true";
     }
 
-    if (isInFolder(guildId)) {
+    if (parentFolderId) {
         label.dataset.inFolder = "true";
-        try {
-            const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
-            const parentFolder = folders.find(f => f.folderId != null && f.guildIds?.includes(guildId));
-            if (parentFolder?.folderId) {
-                const folderId = String(parentFolder.folderId);
-                label.dataset.parentFolderId = folderId;
-                if (!labelsByFolder.has(folderId)) labelsByFolder.set(folderId, new Set());
-                labelsByFolder.get(folderId)!.add(label);
-                // Initialize open state immediately based on current DOM
-                const folderTreeitem = document.querySelector(`[data-list-item-id="guildsnav___${folderId}"]`);
-                if (folderTreeitem?.getAttribute("aria-expanded") === "true") {
-                    label.classList.add("vc-serverlabels-folder-open");
-                }
-            }
-        } catch {}
+        label.dataset.parentFolderId = parentFolderId;
+        if (!labelsByFolder.has(parentFolderId)) labelsByFolder.set(parentFolderId, new Set());
+        labelsByFolder.get(parentFolderId)!.add(label);
+        // Initialize open state immediately based on current DOM
+        const folderTreeitem = document.querySelector(`[data-list-item-id="guildsnav___${parentFolderId}"]`);
+        if (folderTreeitem?.getAttribute("aria-expanded") === "true") {
+            label.classList.add("vc-serverlabels-folder-open");
+        }
     }
 
     // Append the label inside the icon span so it becomes the absolute positioning
@@ -313,10 +576,49 @@ function injectLabel(treeitem: Element) {
     requestAnimationFrame(() => measureMarquee(label));
 }
 
+function injectSettingsButton() {
+    if (document.getElementById("vc-serverlabels-settings-btn")) return;
+
+    const homeItem = document.querySelector('[data-list-item-id="guildsnav___home"]');
+    if (!homeItem) return;
+
+    const nav = homeItem.closest('nav[class*="guilds"]') as HTMLElement | null;
+    if (!nav) return;
+
+    // Bail if the nav isn't laid out yet — MutationObserver will retry.
+    const navRect = nav.getBoundingClientRect();
+    if (navRect.height === 0) return;
+
+    const homeRect = homeItem.getBoundingClientRect();
+    const topOffset = homeRect.top - navRect.top + (homeRect.height - 32) / 2;
+
+    const btn = document.createElement("button");
+    btn.id = "vc-serverlabels-settings-btn";
+    btn.className = "vc-serverlabels-settings-btn";
+    btn.setAttribute("aria-label", "Open ServerLabels Settings");
+    btn.style.top = `${topOffset}px`;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41L9.25 5.35c-.59.24-1.13.56-1.62.94L5.24 5.33c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.22-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94L2.84 14.52c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58ZM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6Z"/></svg>`;
+    btn.addEventListener("click", e => {
+        e.stopPropagation();
+        e.preventDefault();
+        const plugin = (window as any).Vencord?.Plugins?.plugins?.["ServerLabels"];
+        if (plugin) openPluginModal(plugin);
+    });
+
+    nav.appendChild(btn);
+    settingsBtn = btn;
+}
+
+function removeSettingsButton() {
+    settingsBtn?.remove();
+    settingsBtn = null;
+}
+
 function applyAllLabels() {
+    const folders: any[] = SortedGuildStore.getGuildFolders?.() ?? [];
     document.querySelectorAll(TREEITEM_SELECTOR).forEach(el => {
-        injectLabel(el);
-        injectFolderLabel(el);
+        injectLabel(el, folders);
+        injectFolderLabel(el, folders);
     });
 }
 
@@ -324,6 +626,7 @@ function removeAllLabels() {
     activeLabels.forEach(el => el.remove());
     activeLabels.clear();
     labelsByFolder.clear();
+    document.querySelectorAll(".vc-serverlabels-anc").forEach(el => el.classList.remove("vc-serverlabels-anc"));
 }
 
 function refreshLabelColors() {
@@ -348,7 +651,9 @@ function refreshLabelColors() {
                 const c = folder?.folderColor;
                 if (c) colorHex = `#${c.toString(16).padStart(6, "0")}`;
             } else if (el.dataset.guildId) {
-                colorHex = getFolderColor(el.dataset.guildId);
+                const parentFolder = folders.find(f => f.guildIds?.includes(el.dataset.guildId));
+                const c = parentFolder?.folderColor;
+                if (c) colorHex = `#${c.toString(16).padStart(6, "0")}`;
             }
             if (colorHex) {
                 el.style.setProperty("--serverlabels-folder-color", colorHex);
@@ -385,7 +690,6 @@ export default definePlugin({
     tags: ["Servers", "Utility"],
     enabledByDefault: false,
     settings,
-    patches: [],
 
     start() {
         styleEl = document.createElement("style");
@@ -393,8 +697,11 @@ export default definePlugin({
         document.head.appendChild(styleEl);
 
         document.body.classList.add("vc-serverlabels-active");
+        if (!settings.store.showTreeConnector) document.body.classList.add("vc-serverlabels-no-connector");
+        loadSelectedFont();
         updateCSSVars();
         applyAllLabels();
+        injectSettingsButton();
 
         // Labels have pointer-events: none, so all interaction is handled here.
         document.addEventListener("click", onDocumentClick, true);
@@ -404,6 +711,10 @@ export default definePlugin({
         // Watch for Discord re-rendering the guild list (e.g. new notifications,
         // server reorder, folder expand/collapse) and re-inject labels as needed.
         observer = new MutationObserver(mutations => {
+            // Lazy — only fetched if we actually process treeitem nodes.
+            let folders: any[] | null = null;
+            const getFolders = () => folders ??= SortedGuildStore.getGuildFolders?.() ?? [];
+
             for (const mutation of mutations) {
                 if (mutation.type === "attributes" && mutation.attributeName === "aria-expanded") {
                     syncFolderOpenState(mutation.target as Element);
@@ -416,14 +727,15 @@ export default definePlugin({
                 for (const node of mutation.addedNodes) {
                     if (!(node instanceof Element)) continue;
                     if (node.matches(TREEITEM_SELECTOR)) {
-                        injectLabel(node);
-                        injectFolderLabel(node);
+                        injectLabel(node, getFolders());
+                        injectFolderLabel(node, getFolders());
                     }
                     node.querySelectorAll(TREEITEM_SELECTOR).forEach(el => {
-                        injectLabel(el);
-                        injectFolderLabel(el);
+                        injectLabel(el, getFolders());
+                        injectFolderLabel(el, getFolders());
                     });
                 }
+                injectSettingsButton();
             }
         });
 
@@ -449,7 +761,10 @@ export default definePlugin({
 
     stop() {
         document.body.classList.remove("vc-serverlabels-active");
+        document.body.classList.remove("vc-serverlabels-no-connector");
+        document.body.classList.remove("vc-serverlabels-custom-color");
         if (guildsNav) { guildsNav.style.cursor = ""; guildsNav = null; }
+        removeSettingsButton();
         document.removeEventListener("click", onDocumentClick, true);
         document.removeEventListener("mousemove", onDocumentMouseMove);
         SortedGuildStore.removeChangeListener(refreshLabelColors);
@@ -461,5 +776,6 @@ export default definePlugin({
         removeAllLabels();
         styleEl?.remove();
         styleEl = null;
+        unloadAllFonts();
     },
 });
