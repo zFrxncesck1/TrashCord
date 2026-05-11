@@ -252,7 +252,7 @@ function registerSendTrailSettingsTab() {
 
 export default definePlugin({
     name: "SendTrail",
-    description: "Tracks your newly sent messages, lets you select them, and purges them in a dedicated Illegalcord settings page.",
+    description: "Tracks your newly sent messages, lets you select them, and purges them in a dedicated TrashCord settings page.",
     authors: [Devs.clrxxo],
     dependencies: ["Settings", "MessageEventsAPI"],
     enabledByDefault: false,
