@@ -1,0 +1,47 @@
+declare module "@webpack" {
+    export function findByPropsLazy<T = any>(...props: string[]): T;
+    export function findByCodeLazy<T = any>(...code: string[]): T;
+}
+
+declare module "@webpack/common" {
+    export const UserStore: any;
+    export const UserProfileStore: any;
+    export const RestAPI: any;
+    export const Toasts: any;
+    export const React: typeof import("react");
+    export const ReactDOM: any;
+    export const createRoot: (container: Element) => { render(node: any): void; unmount(): void };
+    export const ColorPicker: any;
+    export const useStateFromStores: <T>(stores: any[], compute: () => T) => T;
+    export const FluxDispatcher: {
+        subscribe(event: string, cb: (payload: any) => void): void;
+        unsubscribe(event: string, cb: (payload: any) => void): void;
+        dispatch(payload: any): void;
+    };
+}
+
+declare module "@utils/types" {
+    function definePlugin<T extends Record<string, any>>(plugin: T): T;
+    export default definePlugin;
+    export const OptionType: {
+        STRING: string;
+        BOOLEAN: string;
+        SELECT: string;
+        NUMBER: string;
+        COMPONENT: string;
+    };
+}
+
+declare module "@api/Settings" {
+    export const definePluginSettings: (def: any) => any;
+}
+
+declare module "@api/DataStore" {
+    export function get<T = any>(key: string): Promise<T | undefined>;
+    export function set(key: string, value: any): Promise<void>;
+    export function del(key: string): Promise<void>;
+}
+
+declare module "@components/Icons" {
+    export const PaintbrushIcon: any;
+}

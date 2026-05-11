@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["*.ts", "*.tsx", "vencord.d.ts.standalone", "tests/**/*"]
+}
