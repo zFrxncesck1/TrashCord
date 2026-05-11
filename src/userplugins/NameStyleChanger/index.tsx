@@ -43,38 +43,48 @@ export default definePlugin({
     name: "NameStyleChanger",
     description: "Change the font style of your own username and display name. (basically Display Name Styles but free)",
     authors: [Devs.x2b],
-    tags: ["Appearance", "Customisation"],
-    enabledByDefault: false,
+    tags: ["Customisation", "Appearance"],
     settings,
 
-    start() {
-        console.log("NameStyleChanger: Plugin loaded!");
-    },
+    start() { },
 
     patches: [
         {
             find: '="SYSTEM_TAG"',
             group: true,
-            replacement: {
-                match: /(?<=colorString:(\i),colorStrings:(\i).{0,900}?)style:.{0,120}?,(onClick:\i,onContextMenu:\i,children:)(.{0,250}?),"data-text":(\i\+\i)/,
-                replace: "$3$self.getMessageNameElement({...arguments[0],colorString:$1,colorStrings:$2})??($4),\"data-text\":$5"
-            }
+            replacement: [
+                {
+                    match: /(?<=colorString:(\i),colorStrings:(\i).{0,1000}?)style:.{0,150}?,(onClick:\i,onContextMenu:\i,children:)(.{0,300}?),"data-text":(\i\+\i)/,
+                    replace: "$3$self.getMessageNameElement({...arguments[0],colorString:$1,colorStrings:$2})??($4),\"data-text\":$self.getMessageNameText(arguments[0])??($5)"
+                },
+                {
+                    match: /(\(\{)(shouldSubscribe)/,
+                    replace: "$1message:arguments[0].message,$2"
+                }
+            ]
         }
     ],
 
     getMessageNameElement(props: any) {
-        const { author, children, message } = props;
-        // Try to get author from props or message
-        const authorId = author?.id ?? message?.author?.id;
+        const { message } = props;
+        const authorId = message?.author?.id;
         const currentUserId = UserStore.getCurrentUser()?.id;
-        // Debug logging
-        console.log("NameStyleChanger props:", { authorId, currentUserId, hasChildren: !!children, childrenType: typeof children });
+
+        if (!props.children) return null;
         if (!authorId || authorId !== currentUserId) return null;
-        if (!children) return null;
 
-        const fontFamily = fontMap[settings.store.font] ?? fontMap["gg-sans"];
+        const font = settings.store.font || "gg-sans";
+        const fontFamily = fontMap[font] ?? "'GG Sans', sans-serif";
 
-        // Handle different children types - may be string, array, or element
-        return <span style={{ fontFamily }}>{children}</span>;
+        return <span style={{ fontFamily }}>{props.children}</span>;
+    },
+
+    getMessageNameText(props: any) {
+        const { message } = props;
+        const authorId = message?.author?.id;
+        const currentUserId = UserStore.getCurrentUser()?.id;
+        if (!authorId || authorId !== currentUserId) return null;
+
+        return "";
     }
 });
