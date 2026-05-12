@@ -96,7 +96,7 @@ export default definePluginSettings({
         type: OptionType.BOOLEAN,
         description:
             "WARNING: Automatically bypass captcha challenges. This may violate Discord ToS and risk account ban. Use at your own risk!",
-        default: true,
+        default: false,
     },
     captchaSolvingService: {
         type: OptionType.SELECT,
