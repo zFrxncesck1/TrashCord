@@ -16,7 +16,7 @@ export default definePluginSettings({
     showQuestsButtonTopBar: {
         type: OptionType.BOOLEAN,
         description: "Whether to show the quests button in the top bar.",
-        default: true,
+        default: false,
         restartNeeded: true
     },
     showQuestsButtonSettingsBar: {
@@ -28,7 +28,7 @@ export default definePluginSettings({
     showQuestsButtonBadges: {
         type: OptionType.BOOLEAN,
         description: "Whether to show badges on the quests button.",
-        default: true
+        default: false
     },
     farmVideos: {
         type: OptionType.BOOLEAN,
