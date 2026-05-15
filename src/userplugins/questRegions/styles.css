@@ -141,6 +141,71 @@ div.vc-quest-regions-quest-region {
     pointer-events: none;
 }
 
+.vc-quest-regions-badge-overflow {
+    pointer-events: auto;
+    cursor: default;
+    background: rgb(0 0 0 / 62%);
+}
+
+.vc-quest-regions-age-restricted-badge {
+    pointer-events: auto;
+    cursor: default;
+    padding: 5px 14px;
+    background: rgb(0 0 0 / 78%);
+}
+
+.vc-quest-regions-age-restricted-badge .vc-quest-regions-badge-name {
+    font-size: 28px;
+    line-height: 1;
+    text-transform: none;
+}
+
+.vc-quest-regions-global-badge .vc-quest-regions-badge-flag {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.vc-quest-regions-global-badge .vc-quest-regions-badge-name {
+    font-size: 13px;
+    text-transform: uppercase;
+}
+
+.vc-quest-regions-quest-region-overflow-tooltip {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 280px;
+}
+
+.vc-quest-regions-quest-region-overflow-title {
+    color: var(--text-normal);
+}
+
+.vc-quest-regions-quest-region-overflow-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    color: var(--text-muted);
+}
+
+.vc-quest-regions-quest-region-overflow-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 6%);
+    color: var(--text-muted);
+}
+
+.vc-quest-regions-quest-region-overflow-item-flag {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--background-primary);
+}
+
 div:has(> .vc-quest-regions-quest-region) {
     position: relative;
 }
